@@ -60,10 +60,26 @@ const reloadTrigger = inject(ReloadRowDataHookInj, createEventHook())
 
 const reloadViewDataTrigger = inject(ReloadViewDataHookInj, createEventHook())
 
+const relation = computed(() => {
+  return injectedColumn!.value?.colOptions?.type
+})
+
 const linkRow = async (row: Record<string, any>, id: number) => {
   if (isNew.value) {
     addLTARRef(row, injectedColumn?.value as ColumnType)
-    isChildrenExcludedListLinked.value[id] = true
+    if (relation.value === 'oo' || relation.value === 'bt') {
+      isChildrenExcludedListLinked.value.forEach((isLinked, idx) => {
+        if (isLinked) {
+          isChildrenExcludedListLinked.value[idx] = false
+        }
+        if (id === idx) {
+          isChildrenExcludedListLinked.value[idx] = true
+        }
+      })
+    } else {
+      isChildrenExcludedListLinked.value[id] = true
+    }
+
     saveRow!()
 
     $e('a:links:link')
@@ -152,20 +168,17 @@ const fields = computedInject(FieldsInj, (_fields) => {
   return (relatedTableMeta.value.columns ?? [])
     .filter((col) => !isSystemColumn(col) && !isPrimary(col) && !isLinksOrLTAR(col) && !isAttachment(col))
     .sort((a, b) => {
-      if (a.meta?.defaultViewColOrder !== undefined && b.meta?.defaultViewColOrder !== undefined) {
-        return a.meta.defaultViewColOrder - b.meta.defaultViewColOrder
-      }
-      return 0
+      return (a.meta?.defaultViewColOrder ?? Infinity) - (b.meta?.defaultViewColOrder ?? Infinity)
     })
     .slice(0, isMobileMode.value ? 1 : 3)
 })
 
-const relation = computed(() => {
-  return injectedColumn!.value?.colOptions?.type
-})
-
 const totalItemsToShow = computed(() => {
   if (isForm.value || isNew.value) {
+    if (relation.value === 'bt' || relation.value === 'oo') {
+      return rowState.value?.[injectedColumn!.value?.title] ? 1 : 0
+    }
+
     return rowState.value?.[injectedColumn!.value?.title]?.length ?? 0
   }
 
@@ -467,6 +480,7 @@ const onFilterChange = () => {
         :row-id="extractPkFromRow(expandedFormRow, relatedTableMeta.columns as ColumnType[])"
         :state="newRowState"
         use-meta-fields
+        maintain-default-view-order
         :skip-reload="true"
         new-record-submit-btn-text="Create & Link"
         @created-record="onCreatedRecord"

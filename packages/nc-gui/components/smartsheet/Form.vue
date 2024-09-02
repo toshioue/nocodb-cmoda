@@ -6,6 +6,8 @@ import 'splitpanes/dist/splitpanes.css'
 
 import {
   type AttachmentResType,
+  type ColumnType,
+  type LinkToAnotherRecordType,
   ProjectRoles,
   RelationTypes,
   UITypes,
@@ -14,6 +16,7 @@ import {
   isLinksOrLTAR,
   isVirtualCol,
 } from 'nocodb-sdk'
+import type { ValidateInfo } from 'ant-design-vue/es/form/useForm'
 import type { ImageCropperConfig } from '~/lib/types'
 
 provide(IsFormInj, ref(true))
@@ -28,6 +31,7 @@ const hiddenColTypes = [
   UITypes.Formula,
   UITypes.QrCode,
   UITypes.Barcode,
+  UITypes.Button,
   UITypes.SpecificDBType,
   UITypes.CreatedTime,
   UITypes.LastModifiedTime,
@@ -53,6 +57,8 @@ const { isMobileMode, user } = useGlobal()
 const { $api, $e } = useNuxtApp()
 
 const { isUIAllowed } = useRoles()
+
+const { metas, getMeta } = useMetas()
 
 const { base } = storeToRefs(useBase())
 
@@ -86,6 +92,7 @@ const {
   validate,
   clearValidate,
   fieldMappings,
+  isValidRedirectUrl,
 } = useProvideFormViewStore(meta, view, formViewData, updateFormView, isEditable)
 
 const { preFillFormSearchParams } = storeToRefs(useViewsStore())
@@ -93,7 +100,7 @@ const { preFillFormSearchParams } = storeToRefs(useViewsStore())
 const reloadEventHook = inject(ReloadViewDataHookInj, createEventHook())
 
 reloadEventHook.on(async () => {
-  await loadFormView()
+  await Promise.all([loadFormView(), loadReleatedMetas()])
   setFormData()
 })
 
@@ -171,7 +178,99 @@ const { open, onChange: onChangeFile } = useFileDialog({
   reset: true,
 })
 
+const editOrAddProviderRef = ref()
+
+const onVisibilityChange = (state: 'showAddColumn' | 'showEditColumn') => {
+  dropdownStates.value[state] = true
+
+  if (editOrAddProviderRef.value && !editOrAddProviderRef.value?.isWebHookModalOpen()) {
+    dropdownStates.value[state] = false
+  }
+}
+
 const getFormLogoSrc = computed(() => getPossibleAttachmentSrc(parseProp(formViewData.value?.logo_url)))
+
+const isOpenRedirectUrlOption = ref(false)
+
+const redirectLinkValidation = ref<ValidateInfo>({
+  validateStatus: '',
+  help: undefined,
+})
+
+const isOpenRedirectUrl = computed({
+  get: () => {
+    return typeof formViewData.value?.redirect_url === 'string'
+  },
+  set: (value: boolean) => {
+    isOpenRedirectUrlOption.value = value
+    if (value) {
+      formViewData.value = {
+        ...formViewData.value,
+        redirect_url: '',
+      }
+    } else {
+      formViewData.value = {
+        ...formViewData.value,
+        redirect_url: null,
+      }
+
+      redirectLinkValidation.value = {
+        validateStatus: '',
+        help: undefined,
+      }
+    }
+    updateView()
+  },
+})
+
+const handleUpdateRedirectUrl = () => {
+  const validStatus = isValidRedirectUrl()
+
+  redirectLinkValidation.value = {
+    ...validStatus,
+  }
+
+  if (validStatus.validateStatus === 'error') {
+    return
+  }
+
+  updateView()
+}
+
+const getPrefillValue = (c: ColumnType, value: any) => {
+  let preFillValue: any
+
+  switch (c.uidt) {
+    case UITypes.LinkToAnotherRecord:
+    case UITypes.Links: {
+      const values = Array.isArray(value) ? value : [value]
+      const fk_related_model_id = (c?.colOptions as LinkToAnotherRecordType)?.fk_related_model_id
+
+      if (!fk_related_model_id) return
+
+      const rowIds = values
+        .map((row) => {
+          return extractPkFromRow(row, metas.value[fk_related_model_id].columns || [])
+        })
+        .filter((rowId) => !!rowId)
+        .join(',')
+
+      preFillValue = rowIds || undefined
+      // if bt/oo then extract object from array
+      if (c.colOptions?.type === RelationTypes.BELONGS_TO || c.colOptions?.type === RelationTypes.ONE_TO_ONE) {
+        preFillValue = rowIds[0]
+      }
+
+      break
+    }
+
+    default: {
+      return value
+    }
+  }
+
+  return preFillValue
+}
 
 const updatePreFillFormSearchParams = useDebounceFn(() => {
   if (isLocked.value || !isUIAllowed('dataInsert')) return
@@ -181,8 +280,20 @@ const updatePreFillFormSearchParams = useDebounceFn(() => {
   const searchParams = new URLSearchParams()
 
   for (const c of visibleColumns.value) {
-    if (c.title && preFilledData[c.title] && !isVirtualCol(c) && !(UITypes.Attachment === c.uidt)) {
-      searchParams.append(c.title, preFilledData[c.title])
+    if (
+      !c.title ||
+      !isValidValue(preFilledData[c.title]) ||
+      (isVirtualCol(c) && !isLinksOrLTAR(c)) ||
+      isAttachment(c) ||
+      c.uidt === UITypes.SpecificDBType
+    ) {
+      continue
+    }
+
+    const preFillValue = getPrefillValue(c, preFilledData[c.title])
+
+    if (preFillValue !== undefined) {
+      searchParams.append(c.title, preFillValue)
     }
   }
 
@@ -199,8 +310,14 @@ async function submitForm() {
   }
 
   try {
-    await validate(Object.keys(formState.value).map((title) => fieldMappings.value[title]))
+    await validate(
+      Object.keys(formState.value)
+        .map((title) => fieldMappings.value[title])
+        .filter((v) => v !== undefined),
+    )
   } catch (e: any) {
+    console.error(e)
+
     if (e?.errorFields?.length) {
       message.error(t('msg.error.someOfTheRequiredFieldsAreEmpty'))
       return
@@ -545,6 +662,31 @@ const updateFieldTitle = (value: string) => {
   }
 }
 
+const handleAutoScrollFormField = (title: string, isSidebar: boolean) => {
+  const field = document.querySelector(
+    `${isSidebar ? '.nc-form-field-item-' : '.nc-form-drag-'}${CSS.escape(title?.replaceAll(' ', ''))}`,
+  )
+
+  if (field) {
+    setTimeout(() => {
+      field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 50)
+  }
+}
+
+async function loadReleatedMetas() {
+  await Promise.all(
+    (localColumns.value || []).map(async (c: ColumnType) => {
+      const fk_related_model_id = (c?.colOptions as LinkToAnotherRecordType)?.fk_related_model_id
+
+      if (isVirtualCol(c) && isLinksOrLTAR(c) && fk_related_model_id) {
+        await getMeta(fk_related_model_id)
+      }
+      return c
+    }),
+  )
+}
+
 onMounted(async () => {
   if (imageCropperData.value.src) {
     URL.revokeObjectURL(imageCropperData.value.imageConfig.src)
@@ -553,7 +695,9 @@ onMounted(async () => {
   preFillFormSearchParams.value = ''
 
   isLoadingFormView.value = true
-  await loadFormView()
+
+  await Promise.all([loadFormView(), loadReleatedMetas()])
+
   setFormData()
   isLoadingFormView.value = false
 })
@@ -583,29 +727,20 @@ watch(
     for (const virtualField in state.value) {
       formState.value[virtualField] = state.value[virtualField]
     }
-
     updatePreFillFormSearchParams()
 
     try {
-      await validate(Object.keys(formState.value).map((title) => fieldMappings.value[title]))
+      await validate(
+        Object.keys(formState.value)
+          .map((title) => fieldMappings.value[title])
+          .filter((v) => v !== undefined),
+      )
     } catch {}
   },
   {
     deep: true,
   },
 )
-
-const handleAutoScrollFormField = (title: string, isSidebar: boolean) => {
-  const field = document.querySelector(
-    `${isSidebar ? '.nc-form-field-item-' : '.nc-form-drag-'}${CSS.escape(title?.replaceAll(' ', ''))}`,
-  )
-
-  if (field) {
-    setTimeout(() => {
-      field?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }, 50)
-  }
-}
 
 watch(activeField, (newValue, oldValue) => {
   if (newValue && autoScrollFormField.value) {
@@ -872,7 +1007,7 @@ useEventListener(
                             "
                             style="transition: all 0.3s ease-in"
                           >
-                            <LazyCellAttachmentImage
+                            <LazyCellAttachmentPreviewImage
                               v-if="formViewData.logo_url"
                               :key="formViewData.logo_url?.path"
                               :srcs="getFormLogoSrc"
@@ -1164,7 +1299,6 @@ useEventListener(
                         </NcButton>
 
                         <NcButton
-                          html-type="submit"
                           type="primary"
                           size="small"
                           :disabled="!isUIAllowed('dataInsert') || !visibleColumns.length"
@@ -1234,6 +1368,7 @@ useEventListener(
                         :trigger="['click']"
                         overlay-class-name="nc-dropdown-form-edit-column"
                         :disabled="!isUIAllowed('fieldEdit')"
+                        @visible-change="onVisibilityChange('showEditColumn')"
                       >
                         <NcButton type="secondary" size="small" class="nc-form-add-field" data-testid="nc-form-add-field">
                           {{ $t('general.edit') }} {{ $t('objects.field') }}
@@ -1242,6 +1377,7 @@ useEventListener(
                           <div class="nc-edit-or-add-provider-wrapper">
                             <LazySmartsheetColumnEditOrAddProvider
                               v-if="dropdownStates.showEditColumn"
+                              ref="editOrAddProviderRef"
                               :column="activeColumn"
                               @submit="editColumnCallback"
                               @cancel="dropdownStates.showEditColumn = false"
@@ -1267,7 +1403,7 @@ useEventListener(
                   </div>
                   <!-- Field text -->
                   <div class="nc-form-field-text p-4 flex flex-col gap-4 border-b border-gray-200">
-                    <div class="text-base font-bold text-gray-600">
+                    <div class="text-sm font-bold text-gray-800">
                       {{ $t('objects.field') }} {{ $t('general.text').toLowerCase() }}
                     </div>
 
@@ -1304,8 +1440,8 @@ useEventListener(
                   <Splitpanes v-if="formViewData" horizontal class="nc-form-settings w-full nc-form-right-splitpane">
                     <Pane min-size="30" size="50" class="nc-form-right-splitpane-item p-4 flex flex-col space-y-4 !min-h-200px">
                       <div class="flex flex-wrap justify-between items-center gap-2">
-                        <div class="flex gap-3">
-                          <div class="text-base font-bold text-gray-600">
+                        <div class="flex items-center gap-3">
+                          <div class="text-sm font-bold text-gray-800">
                             {{ $t('objects.viewType.form') }} {{ $t('objects.fields') }}
                           </div>
                           <NcBadge color="border-gray-200">
@@ -1318,6 +1454,7 @@ useEventListener(
                           v-model:visible="dropdownStates.showAddColumn"
                           :trigger="['click']"
                           overlay-class-name="nc-dropdown-form-add-column"
+                          @visible-change="onVisibilityChange('showAddColumn')"
                         >
                           <NcButton type="secondary" size="small" class="nc-form-add-field" data-testid="nc-form-add-field">
                             <div class="flex gap-2 items-center">
@@ -1330,6 +1467,7 @@ useEventListener(
                             <div class="nc-edit-or-add-provider-wrapper">
                               <LazySmartsheetColumnEditOrAddProvider
                                 v-if="dropdownStates.showAddColumn"
+                                ref="editOrAddProviderRef"
                                 @submit="addColumnCallback"
                                 @cancel="dropdownStates.showAddColumn = false"
                                 @click.stop
@@ -1495,7 +1633,7 @@ useEventListener(
                     <Pane min-size="20" size="50" class="nc-form-right-splitpane-item !overflow-y-auto nc-form-scrollbar">
                       <div class="p-4 flex flex-col space-y-4 border-b border-gray-200">
                         <!-- Appearance Settings -->
-                        <div class="text-base font-bold text-gray-600">{{ $t('labels.appearanceSettings') }}</div>
+                        <div class="text-sm font-bold text-gray-800">{{ $t('labels.appearanceSettings') }}</div>
 
                         <div class="flex flex-col space-y-3">
                           <div :class="isLocked || !isEditable ? 'pointer-events-none' : ''">
@@ -1575,44 +1713,84 @@ useEventListener(
 
                       <div class="p-4 flex flex-col space-y-4">
                         <!-- Post Form Submission Settings -->
-                        <div class="text-base font-bold text-gray-600">
+                        <div class="text-sm font-bold text-gray-800">
                           {{ $t('msg.info.postFormSubmissionSettings') }}
                         </div>
 
                         <div class="flex flex-col gap-3">
-                          <div class="flex items-center justify-between gap-3">
-                            <!-- Show "Submit Another Form" button -->
-                            <span>{{ $t('msg.info.submitAnotherForm') }}</span>
-                            <a-switch
-                              v-model:checked="formViewData.submit_another_form"
-                              v-e="[`a:form-view:submit-another-form`]"
-                              size="small"
-                              class="nc-form-checkbox-submit-another-form"
-                              data-testid="nc-form-checkbox-submit-another-form"
-                              :disabled="isLocked || !isEditable"
-                              @change="updateView"
-                            />
+                          <div class="flex flex-col gap-3">
+                            <div class="flex items-center justify-between gap-3">
+                              <!-- Redirect to URL -->
+                              <span>{{ $t('labels.redirectToUrl') }}</span>
+                              <a-switch
+                                v-model:checked="isOpenRedirectUrl"
+                                v-e="[`a:form-view:redirect-url`]"
+                                size="small"
+                                class="nc-form-checkbox-redirect-url"
+                                data-testid="nc-form-checkbox-redirect-url"
+                                :disabled="isLocked || !isEditable"
+                                @change="updateView"
+                              />
+                            </div>
+                            <div v-if="isOpenRedirectUrl" class="flex flex-col gap-2 max-w-[calc(100%_-_40px)]">
+                              <a-form-item class="!my-0" v-bind="redirectLinkValidation">
+                                <a-input
+                                  v-model:value="formViewData.redirect_url"
+                                  type="text"
+                                  class="!h-8 !px-3 !py-1 !rounded-lg"
+                                  placeholder="Paste redirect URL here"
+                                  data-testid="nc-form-redirect-url-input"
+                                  @input="handleUpdateRedirectUrl"
+                                ></a-input>
+                              </a-form-item>
+                              <div class="text-small leading-[18px] text-gray-400 pl-3">
+                                Use {record_id} to get ID of the newly created record.
+                                <a
+                                  href="https://docs.nocodb.com/views/view-types/form/#redirect-url"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  class="!no-underline !hover:underline"
+                                >
+                                  Learn more
+                                </a>
+                              </div>
+                            </div>
                           </div>
+                          <template v-if="!isOpenRedirectUrl">
+                            <div class="flex items-center justify-between gap-3">
+                              <!-- Show "Submit Another Form" button -->
+                              <span>{{ $t('msg.info.submitAnotherForm') }}</span>
+                              <a-switch
+                                v-model:checked="formViewData.submit_another_form"
+                                v-e="[`a:form-view:submit-another-form`]"
+                                size="small"
+                                class="nc-form-checkbox-submit-another-form"
+                                data-testid="nc-form-checkbox-submit-another-form"
+                                :disabled="isLocked || !isEditable"
+                                @change="updateView"
+                              />
+                            </div>
 
-                          <div class="flex items-center justify-between gap-3">
-                            <!-- Show a blank form after 5 seconds -->
-                            <span>{{ $t('msg.info.showBlankForm') }}</span>
-                            <a-switch
-                              v-model:checked="formViewData.show_blank_form"
-                              v-e="[`a:form-view:show-blank-form`]"
-                              size="small"
-                              class="nc-form-checkbox-show-blank-form"
-                              data-testid="nc-form-checkbox-show-blank-form"
-                              :disabled="isLocked || !isEditable"
-                              @change="updateView"
-                            />
-                          </div>
+                            <div class="flex items-center justify-between gap-3">
+                              <!-- Show a blank form after 5 seconds -->
+                              <span>{{ $t('msg.info.showBlankForm') }}</span>
+                              <a-switch
+                                v-model:checked="formViewData.show_blank_form"
+                                v-e="[`a:form-view:show-blank-form`]"
+                                size="small"
+                                class="nc-form-checkbox-show-blank-form"
+                                data-testid="nc-form-checkbox-show-blank-form"
+                                :disabled="isLocked || !isEditable"
+                                @change="updateView"
+                              />
+                            </div>
+                          </template>
 
                           <div class="flex items-center justify-between gap-3">
                             <!-- Email me at <email> -->
                             <span>
                               {{ $t('msg.info.emailForm') }}
-                              <span class="text-bold text-gray-600">{{ user?.email }}</span>
+                              <span class="text-bold text-gray-600 underline">{{ user?.email }}</span>
                             </span>
                             <a-switch
                               v-model:checked="emailMe"
@@ -1627,7 +1805,7 @@ useEventListener(
                         </div>
 
                         <!-- Show this message -->
-                        <div class="pb-10">
+                        <div v-if="!isOpenRedirectUrl" class="pb-10">
                           <div class="text-gray-800 mb-2">
                             {{ $t('msg.info.formDisplayMessage') }}
                           </div>
@@ -1687,7 +1865,9 @@ useEventListener(
 .nc-input {
   @apply appearance-none w-full;
   &:not(.layout-list) {
-    @apply !bg-white rounded-lg border-solid border-1 border-gray-200 !focus-within:border-brand-500;
+    &:not(.nc-cell-attachment) {
+      @apply !bg-white rounded-lg border-solid border-1 border-gray-200 !focus-within:border-brand-500;
+    }
   }
   &.layout-list {
     @apply h-auto !pl-0 !py-1;

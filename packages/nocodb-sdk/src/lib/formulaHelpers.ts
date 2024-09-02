@@ -1054,14 +1054,20 @@ export const formulas: Record<string, FormulaMeta> = {
 
     validation: {
       args: {
-        rqd: 1,
-        type: FormulaDataTypes.STRING,
+        min: 1,
+        max: 2,
+        type: [FormulaDataTypes.STRING, FormulaDataTypes.STRING],
       },
     },
     description:
       'Verify and convert to a hyperlink if the input is a valid URL.',
-    syntax: 'URL(str)',
-    examples: ['URL("https://github.com/nocodb/nocodb")', 'URL({column1})'],
+    syntax: 'URL(string, [label])',
+    examples: [
+      'URL("https://github.com/nocodb/nocodb")',
+      'URL({column1})',
+      'URL("https://github.com/nocodb/nocodb", "NocoDB")',
+      'URL({column1}, {column1})',
+    ],
     returnType: FormulaDataTypes.STRING,
   },
   URLENCODE: {
@@ -1886,6 +1892,24 @@ export async function validateFormulaAndExtractTreeWithType({
       } else {
         res.dataType = FormulaDataTypes.NUMERIC;
       }
+    } else if (parsedTree.type === JSEPNode.MEMBER_EXP) {
+      throw new FormulaError(
+        FormulaErrorType.NOT_SUPPORTED,
+        {},
+        'Bracket notation is not supported'
+      );
+    } else if (parsedTree.type === JSEPNode.ARRAY_EXP) {
+      throw new FormulaError(
+        FormulaErrorType.NOT_SUPPORTED,
+        {},
+        'Array is not supported'
+      );
+    } else if (parsedTree.type === JSEPNode.COMPOUND) {
+      throw new FormulaError(
+        FormulaErrorType.NOT_SUPPORTED,
+        {},
+        'Compound statement is not supported'
+      );
     }
 
     return res;

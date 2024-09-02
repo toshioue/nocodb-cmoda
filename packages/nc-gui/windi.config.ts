@@ -11,7 +11,7 @@ import animations from '@windicss/plugin-animations'
 // @ts-expect-error no types for plugin-question-mark
 import questionMark from '@windicss/plugin-question-mark'
 
-import { theme as colors, themeColors, themeV2Colors, themeV3Colors } from './utils/colorsUtils'
+import { theme as colors, lightTheme, themeColors, themeV2Colors, themeV3Colors } from './utils/colorsUtils'
 
 const isEE = process.env.EE
 
@@ -58,6 +58,7 @@ export default defineConfig({
     'scrollbar-thin-dull': 'scrollbar scrollbar-thin scrollbar-thumb-rounded-md scrollbar-thumb-gray-100 scrollbar-track-white',
     'nc-scrollbar-thin':
       'scrollbar scrollbar-thin scrollbar-thumb-gray-200 hover:scrollbar-thumb-gray-300 scrollbar-track-transparent',
+    'nc-content-max-w': 'max-w-[97.5rem]',
   },
 
   theme: {
@@ -116,12 +117,17 @@ export default defineConfig({
         hover: '0px 0px 4px 0px rgba(0, 0, 0, 0.24)',
         selected: '0px 0px 0px 2px var(--ant-primary-color-outline)',
         error: '0px 0px 0px 2px var(--ant-error-color-outline)',
+        focus: '0px 0px 0px 2px #fff, 0px 0px 0px 4px #3069fe',
       },
       colors: {
         ...windiColors,
         ...themeColors,
         ...themeV2Colors,
         ...themeV3Colors,
+        ...lightTheme.content,
+        ...lightTheme.border,
+        ...lightTheme.background,
+        ...lightTheme.fill,
         primary: 'rgba(var(--color-primary), var(--tw-bg-opacity))',
         accent: 'rgba(var(--color-accent), var(--tw-bg-opacity))',
         dark: colors.dark,

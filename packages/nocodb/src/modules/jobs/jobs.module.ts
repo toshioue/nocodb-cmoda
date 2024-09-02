@@ -18,6 +18,17 @@ import { SourceDeleteProcessor } from '~/modules/jobs/jobs/source-delete/source-
 import { WebhookHandlerProcessor } from '~/modules/jobs/jobs/webhook-handler/webhook-handler.processor';
 import { DataExportProcessor } from '~/modules/jobs/jobs/data-export/data-export.processor';
 import { DataExportController } from '~/modules/jobs/jobs/data-export/data-export.controller';
+import { ThumbnailGeneratorProcessor } from '~/modules/jobs/jobs/thumbnail-generator/thumbnail-generator.processor';
+import { AttachmentCleanUpProcessor } from '~/modules/jobs/jobs/attachment-clean-up/attachment-clean-up';
+
+// Job Processor
+import { JobsProcessor } from '~/modules/jobs/jobs.processor';
+import { JobsMap } from '~/modules/jobs/jobs-map.service';
+
+// Migration Jobs
+import { InitMigrationJobs } from '~/modules/jobs/migration-jobs/init-migration-jobs';
+import { AttachmentMigration } from '~/modules/jobs/migration-jobs/nc_job_001_attachment';
+import { ThumbnailMigration } from '~/modules/jobs/migration-jobs/nc_job_002_thumbnail';
 
 // Jobs Module Related
 import { JobsLogService } from '~/modules/jobs/jobs/jobs-log.service';
@@ -41,6 +52,9 @@ export const JobsModuleMetadata = {
           }),
           BullModule.registerQueue({
             name: JOBS_QUEUE,
+            defaultJobOptions: {
+              removeOnComplete: true,
+            },
           }),
         ]
       : []),
@@ -59,7 +73,7 @@ export const JobsModuleMetadata = {
       : []),
   ],
   providers: [
-    ...(process.env.NC_WORKER_CONTAINER !== 'true' ? [] : []),
+    JobsMap,
     JobsEventService,
     ...(process.env.NC_REDIS_JOB_URL ? [] : [FallbackQueueService]),
     {
@@ -69,6 +83,7 @@ export const JobsModuleMetadata = {
         : FallbackJobsService,
     },
     JobsLogService,
+    JobsProcessor,
     ExportService,
     ImportService,
     DuplicateProcessor,
@@ -78,6 +93,13 @@ export const JobsModuleMetadata = {
     SourceDeleteProcessor,
     WebhookHandlerProcessor,
     DataExportProcessor,
+    ThumbnailGeneratorProcessor,
+    AttachmentCleanUpProcessor,
+
+    // Migration Jobs
+    InitMigrationJobs,
+    AttachmentMigration,
+    ThumbnailMigration,
   ],
   exports: ['JobsService'],
 };

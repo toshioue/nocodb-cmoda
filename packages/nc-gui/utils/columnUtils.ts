@@ -1,4 +1,4 @@
-import type { ColumnType, LinkToAnotherRecordType } from 'nocodb-sdk'
+import type { ButtonType, ColumnType, FormulaType, LinkToAnotherRecordType } from 'nocodb-sdk'
 import { RelationTypes, UITypes } from 'nocodb-sdk'
 
 const uiTypes = [
@@ -56,7 +56,7 @@ const uiTypes = [
   },
   {
     name: UITypes.Year,
-    icon: iconMap.cellDate,
+    icon: iconMap.cellYear,
   },
   {
     name: UITypes.Time,
@@ -134,6 +134,11 @@ const uiTypes = [
   {
     name: UITypes.User,
     icon: iconMap.cellUser,
+  },
+  {
+    name: UITypes.Button,
+    icon: iconMap.cellButton,
+    virtual: 1,
   },
   {
     name: UITypes.CreatedTime,
@@ -233,11 +238,31 @@ const isColumnSupportsGroupBySettings = (colOrUidt: ColumnType) => {
   return [UITypes.SingleSelect, UITypes.User, UITypes.CreatedBy, UITypes.Checkbox, UITypes.Rating].includes(uidt)
 }
 
+const isColumnInvalid = (col: ColumnType) => {
+  switch (col.uidt) {
+    case UITypes.Formula:
+      return !!(col.colOptions as FormulaType).error
+    case UITypes.Button: {
+      const colOptions = col.colOptions as ButtonType
+      if (colOptions.type === 'webhook') {
+        return !colOptions.fk_webhook_id
+      } else if (colOptions.type === 'url') {
+        return !!colOptions.error
+      }
+    }
+  }
+
+  if (col.uidt === UITypes.Formula) {
+    return !!(col.colOptions as FormulaType).error
+  }
+}
+
 export {
   uiTypes,
   isTypableInputColumn,
   isColumnSupportsGroupBySettings,
   getUIDTIcon,
+  isColumnInvalid,
   getUniqueColumnName,
   isColumnRequiredAndNull,
   isColumnRequired,

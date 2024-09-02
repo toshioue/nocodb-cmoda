@@ -1,5 +1,4 @@
 <script lang="ts" setup>
-import type { VNodeRef } from '@vue/runtime-core'
 import type { TableType, ViewType, ViewTypes } from 'nocodb-sdk'
 import type { WritableComputedRef } from '@vue/reactivity'
 import { isDefaultBase as _isDefaultBase } from '#imports'
@@ -64,6 +63,10 @@ const isDefaultBase = computed(() => {
   return _isDefaultBase(source)
 })
 
+const { openViewDescriptionDialog: _openViewDescriptionDialog } = inject(TreeViewInj)!
+
+const input = ref<HTMLInputElement>()
+
 const isDropdownOpen = ref(false)
 
 const isEditing = ref(false)
@@ -92,6 +95,13 @@ const handleOnClick = () => {
   }
 }
 
+const focusInput = () => {
+  setTimeout(() => {
+    input.value?.focus()
+    input.value?.select()
+  })
+}
+
 /** Enable editing view name on dbl click */
 function onDblClick() {
   if (isMobileMode.value) return
@@ -101,6 +111,10 @@ function onDblClick() {
     isEditing.value = true
     _title.value = vModel.value.title
     $e('c:view:rename', { view: vModel.value?.type })
+
+    nextTick(() => {
+      focusInput()
+    })
   }
 }
 
@@ -142,10 +156,12 @@ const onRenameMenuClick = () => {
     isEditing.value = true
     _title.value = vModel.value.title
     $e('c:view:rename', { view: vModel.value?.type })
+
+    nextTick(() => {
+      focusInput()
+    })
   }
 }
-
-const focusInput: VNodeRef = (el) => (el as HTMLInputElement)?.focus()
 
 /** Rename a view */
 async function onRename() {
@@ -177,6 +193,12 @@ async function onRename() {
   emits('rename', vModel.value, originalTitle)
 
   onStopEdit()
+}
+
+const openViewDescriptionDialog = (view: ViewType) => {
+  isDropdownOpen.value = false
+
+  _openViewDescriptionDialog(view)
 }
 
 /** Cancel renaming view */
@@ -244,7 +266,7 @@ watch(isDropdownOpen, async () => {
 
       <a-input
         v-if="isEditing"
-        :ref="focusInput"
+        ref="input"
         v-model:value="_title"
         class="!bg-transparent !border-0 !ring-0 !outline-transparent !border-transparent !pl-0 !flex-1 mr-4"
         :class="{
@@ -267,6 +289,15 @@ watch(isDropdownOpen, async () => {
       </NcTooltip>
 
       <template v-if="!isEditing && !isLocked">
+        <NcTooltip v-if="vModel.description?.length" placement="bottom">
+          <template #title>
+            {{ vModel.description }}
+          </template>
+
+          <NcButton type="text" class="!hover:bg-transparent" size="xsmall">
+            <GeneralIcon icon="info" class="!w-3.5 !h-3.5 nc-info-icon group-hover:opacity-100 text-gray-600 opacity-0" />
+          </NcButton>
+        </NcTooltip>
         <NcDropdown v-model:visible="isDropdownOpen" overlay-class-name="!rounded-lg">
           <NcButton
             v-e="['c:view:option']"
@@ -291,6 +322,7 @@ watch(isDropdownOpen, async () => {
               @close-modal="isDropdownOpen = false"
               @rename="onRenameMenuClick"
               @delete="onDelete"
+              @description-update="openViewDescriptionDialog(vModel)"
             />
           </template>
         </NcDropdown>

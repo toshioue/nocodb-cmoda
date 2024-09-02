@@ -113,6 +113,8 @@ const expandForm = (row: RowType, state?: Record<string, any>) => {
   expandedFormRowState.value = state
 
   if (rowId && !isPublic.value) {
+    expandedFormRow.value = undefined
+
     router.push({
       query: {
         ...route.query,
@@ -137,6 +139,12 @@ const openNewRecordFormHookHandler = async () => {
     oldRow: {},
     rowMeta: { new: true },
   })
+}
+
+const handleClick = (col, event) => {
+  if (isButton(col)) {
+    event.stopPropagation()
+  }
 }
 
 openNewRecordFormHook?.on(openNewRecordFormHookHandler)
@@ -299,12 +307,12 @@ watch(
                   </template>
 
                   <template v-for="(attachment, index) in attachments(record)">
-                    <LazyCellAttachmentImage
+                    <LazyCellAttachmentPreviewImage
                       v-if="isImage(attachment.title, attachment.mimetype ?? attachment.type)"
                       :key="`carousel-${record.row.id}-${index}`"
                       class="h-52"
                       :class="[`${coverImageObjectFitClass}`]"
-                      :srcs="getPossibleAttachmentSrc(attachment)"
+                      :srcs="getPossibleAttachmentSrc(attachment, 'card_cover')"
                       @click="expandFormClick($event, record)"
                     />
                   </template>
@@ -336,7 +344,14 @@ watch(
                   <template v-else> - </template>
                 </h2>
 
-                <div v-for="col in fieldsWithoutDisplay" :key="`record-${record.row.id}-${col.id}`">
+                <div
+                  v-for="col in fieldsWithoutDisplay"
+                  :key="`record-${record.row.id}-${col.id}`"
+                  :class="{
+                    '!children:pointer-events-auto': isButton(col),
+                  }"
+                  @click="handleClick(col, $event)"
+                >
                   <div class="flex flex-col rounded-lg w-full">
                     <div class="flex flex-row w-full justify-start">
                       <div class="nc-card-col-header w-full !children:text-gray-500">

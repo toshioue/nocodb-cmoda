@@ -21,7 +21,11 @@ const globalSearchWrapperRef = ref<HTMLInputElement>()
 const { isMobileMode } = useGlobal()
 
 const columns = computed(
-  () => (meta.value as TableType)?.columns?.filter((column) => !isSystemColumn(column) && column?.uidt !== UITypes.Links) ?? [],
+  () =>
+    (meta.value as TableType)?.columns?.filter(
+      (column) =>
+        !isSystemColumn(column) && ![UITypes.Links, UITypes.Rollup, UITypes.DateTime, UITypes.Date].includes(column?.uidt),
+    ) ?? [],
 )
 
 watch(
@@ -81,6 +85,12 @@ onClickOutside(globalSearchWrapperRef, (e) => {
 
   showSearchBox.value = false
 })
+
+onMounted(() => {
+  if (search.value.query && !showSearchBox.value) {
+    showSearchBox.value = true
+  }
+})
 </script>
 
 <template>
@@ -122,6 +132,7 @@ onClickOutside(globalSearchWrapperRef, (e) => {
             :selected-option-id="search.field"
             show-selected-option
             :options="columns"
+            :search-input-placeholder="$t('placeholder.searchFields')"
             toolbar-menu="globalSearch"
             @selected="onSelectOption"
           />

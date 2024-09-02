@@ -155,6 +155,8 @@ const expandForm = (row: RowType, state?: Record<string, any>) => {
   const rowId = extractPkFromRow(row.row, meta.value!.columns!)
   expandedFormRowState.value = state
   if (rowId && !isPublic.value) {
+    expandedFormRow.value = undefined
+
     router.push({
       query: {
         ...route.value.query,
@@ -278,6 +280,8 @@ async function onMove(event: any, stackKey: string) {
 }
 
 const kanbanListScrollHandler = useDebounceFn(async (e: any) => {
+  if (!e.target) return
+
   if (e.target.scrollTop + e.target.clientHeight + INFINITY_SCROLL_THRESHOLD >= e.target.scrollHeight) {
     const stackTitle = e.target.getAttribute('data-stack-title')
     const pageSize = appInfo.value.defaultLimit || 25
@@ -320,6 +324,13 @@ const handleCollapseStack = async (stackIdx: number) => {
     await updateKanbanStackMeta()
   }
 }
+
+const handleCellClick = (col, event) => {
+  if (isButton(col)) {
+    event.stopPropagation()
+  }
+}
+
 const handleCollapseAllStack = async () => {
   groupingFieldColOptions.value.forEach((stack) => {
     if (stack.id !== addNewStackId && !stack.collapsed) {
@@ -627,7 +638,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                               >
                                 <div class="flex gap-2 items-center">
                                   <component :is="iconMap.plus" class="flex-none w-4 h-4" />
-                                  {{ $t('activity.addNewRecord') }}
+                                  {{ $t('activity.newRecord') }}
                                 </div>
                               </NcMenuItem>
                               <NcMenuItem
@@ -785,12 +796,12 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                                         </template>
 
                                         <template v-for="attachment in attachments(record)">
-                                          <LazyCellAttachmentImage
+                                          <LazyCellAttachmentPreviewImage
                                             v-if="isImage(attachment.title, attachment.mimetype ?? attachment.type)"
                                             :key="attachment.path"
                                             class="h-52"
                                             :class="[`${coverImageObjectFitClass}`]"
-                                            :srcs="getPossibleAttachmentSrc(attachment)"
+                                            :srcs="getPossibleAttachmentSrc(attachment, 'card_cover')"
                                           />
                                         </template>
                                       </a-carousel>
@@ -825,7 +836,14 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                                       <template v-else> - </template>
                                     </h2>
 
-                                    <div v-for="col in fieldsWithoutDisplay" :key="`record-${record.row.id}-${col.id}`">
+                                    <div
+                                      v-for="col in fieldsWithoutDisplay"
+                                      :key="`record-${record.row.id}-${col.id}`"
+                                      :class="{
+                                        '!children:pointer-events-auto': isButton(col),
+                                      }"
+                                      @click="handleCellClick(col, $event)"
+                                    >
                                       <div class="flex flex-col rounded-lg w-full">
                                         <div class="flex flex-row w-full justify-start">
                                           <div class="nc-card-col-header w-full !children:text-gray-500">
@@ -998,9 +1016,9 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                         </div>
                       </div>
 
-                      <div class="flex items-center gap-3">
+                      <div class="flex items-center gap-2 truncate">
                         <div
-                          class="nc-kanban-data-count px-1 rounded bg-gray-200 text-gray-800 text-sm font-weight-500"
+                          class="nc-kanban-data-count px-1 rounded bg-gray-200 text-gray-800 text-sm font-weight-500 truncate"
                           :style="{ 'word-break': 'keep-all', 'white-space': 'nowrap' }"
                         >
                           <!-- Record Count -->
@@ -1112,7 +1130,11 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
               <div v-e="['a:kanban:delete-record']" class="flex items-center gap-2 nc-kanban-context-menu-item">
                 <component :is="iconMap.delete" class="flex" />
                 <!-- Delete Record -->
-                {{ $t('activity.deleteRecord') }}
+                {{
+                  $t('general.deleteEntity', {
+                    entity: $t('objects.record').toLowerCase(),
+                  })
+                }}
               </div>
             </NcMenuItem>
           </NcMenu>

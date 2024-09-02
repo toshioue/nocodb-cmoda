@@ -111,6 +111,11 @@ function animate(target: AnimationTarget) {
 }
 
 const validateField = async (title: string) => {
+  if (fieldMappings.value[title] === undefined) {
+    console.warn('Missing mapping field for:', title)
+    return false
+  }
+
   try {
     await validate(fieldMappings.value[title])
 
@@ -311,7 +316,10 @@ onMounted(() => {
               </a-alert>
 
               <div
-                v-if="sharedFormView.show_blank_form || sharedFormView.submit_another_form"
+                v-if="
+                  typeof sharedFormView?.redirect_url !== 'string' &&
+                  (sharedFormView.show_blank_form || sharedFormView.submit_another_form)
+                "
                 class="mt-16 w-full flex justify-between items-center flex-wrap gap-3"
               >
                 <p v-if="sharedFormView?.show_blank_form" class="text-sm text-gray-500 dark:text-slate-300 m-0">
@@ -360,6 +368,11 @@ onMounted(() => {
             </template>
           </div>
         </template>
+        <div v-else class="px-6 lg:px-12">
+          <h1 class="text-2xl font-bold text-gray-900 line-clamp-2 text-center mb-2rem md:mb-4rem">
+            {{ sharedFormView.heading }}
+          </h1>
+        </div>
         <template v-if="isStarted && !submitted">
           <Transition :name="`slide-${transitionName}`" :duration="transitionDuration" mode="out-in">
             <a-form :model="formState">

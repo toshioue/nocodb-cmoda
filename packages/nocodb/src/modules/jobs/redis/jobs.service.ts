@@ -1,8 +1,15 @@
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bull';
+import type { JobOptions } from 'bull';
 import type { OnModuleInit } from '@nestjs/common';
-import { InstanceCommands, JOBS_QUEUE, JobStatus } from '~/interface/Jobs';
+import {
+  InstanceCommands,
+  JOBS_QUEUE,
+  JobStatus,
+  JobTypes,
+  JobVersions,
+} from '~/interface/Jobs';
 import { JobsRedis } from '~/modules/jobs/redis/jobs-redis';
 import { Job } from '~/models';
 import { RootScopes } from '~/utils/globals';
@@ -29,6 +36,8 @@ export class JobsService implements OnModuleInit {
       this.logger.log('Pausing local queue');
       await this.jobsQueue.pause(true);
     };
+
+    await this.add(JobTypes.InitMigrationJobs, {});
   }
 
   async toggleQueue() {
@@ -50,7 +59,7 @@ export class JobsService implements OnModuleInit {
     }
   }
 
-  async add(name: string, data: any) {
+  async add(name: string, data: any, options?: JobOptions) {
     await this.toggleQueue();
 
     const context = {
@@ -59,15 +68,38 @@ export class JobsService implements OnModuleInit {
       ...(data?.context || {}),
     };
 
-    const jobData = await Job.insert(context, {
-      job: name,
-      status: JobStatus.WAITING,
-      fk_user_id: data?.user?.id,
-    });
+    let jobData;
 
-    await this.jobsQueue.add(name, data, {
+    if (options?.jobId) {
+      const existingJob = await Job.get(context, options.jobId);
+      if (existingJob) {
+        jobData = existingJob;
+
+        if (existingJob.status !== JobStatus.WAITING) {
+          await Job.update(context, existingJob.id, {
+            status: JobStatus.WAITING,
+          });
+        }
+      }
+    }
+
+    if (!jobData) {
+      jobData = await Job.insert(context, {
+        job: name,
+        status: JobStatus.WAITING,
+        fk_user_id: data?.user?.id,
+      });
+    }
+
+    data.jobName = name;
+
+    if (JobVersions?.[name]) {
+      data._jobVersion = JobVersions[name];
+    }
+
+    await this.jobsQueue.add(data, {
       jobId: jobData.id,
-      removeOnComplete: true,
+      ...options,
     });
 
     return jobData;

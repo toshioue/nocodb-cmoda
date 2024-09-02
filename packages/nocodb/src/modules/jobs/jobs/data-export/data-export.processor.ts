@@ -1,10 +1,9 @@
 import { Readable } from 'stream';
 import path from 'path';
-import { Process, Processor } from '@nestjs/bull';
-import { Logger } from '@nestjs/common';
-import { Job } from 'bull';
+import { Injectable, Logger } from '@nestjs/common';
 import moment from 'moment';
-import { type DataExportJobData, JOBS_QUEUE, JobTypes } from '~/interface/Jobs';
+import type { Job } from 'bull';
+import { type DataExportJobData } from '~/interface/Jobs';
 import { elapsedTime, initTime } from '~/modules/jobs/helpers';
 import { ExportService } from '~/modules/jobs/jobs/export-import/export.service';
 import { Model, PresignedUrl, View } from '~/models';
@@ -12,16 +11,15 @@ import { NcError } from '~/helpers/catchError';
 import NcPluginMgrv2 from '~/helpers/NcPluginMgrv2';
 
 function getViewTitle(view: View) {
-  return view.is_default ? 'Default View' : view.title;
+  return view?.is_default ? 'Default View' : view?.title;
 }
 
-@Processor(JOBS_QUEUE)
+@Injectable()
 export class DataExportProcessor {
   private logger = new Logger(DataExportProcessor.name);
 
   constructor(private readonly exportService: ExportService) {}
 
-  @Process(JobTypes.DataExport)
   async job(job: Job<DataExportJobData>) {
     const {
       context,
@@ -93,20 +91,20 @@ export class DataExportProcessor {
       // if url is not defined, it is local attachment
       if (!url) {
         url = await PresignedUrl.getSignedUrl({
-          path: path.join(destPath.replace('nc/uploads/', '')),
+          pathOrUrl: path.join(destPath.replace('nc/uploads/', '')),
           filename: `${model.title} (${getViewTitle(view)}).csv`,
           expireSeconds: 3 * 60 * 60, // 3 hours
+          preview: false,
+          mimetype: 'text/csv',
         });
       } else {
-        if (url.includes('.amazonaws.com/')) {
-          const relativePath = decodeURI(url.split('.amazonaws.com/')[1]);
-          url = await PresignedUrl.getSignedUrl({
-            path: relativePath,
-            filename: `${model.title} (${getViewTitle(view)}).csv`,
-            s3: true,
-            expireSeconds: 3 * 60 * 60, // 3 hours
-          });
-        }
+        url = await PresignedUrl.getSignedUrl({
+          pathOrUrl: url,
+          filename: `${model.title} (${getViewTitle(view)}).csv`,
+          expireSeconds: 3 * 60 * 60, // 3 hours
+          preview: false,
+          mimetype: 'text/csv',
+        });
       }
 
       if (error) {
@@ -119,11 +117,18 @@ export class DataExportProcessor {
         'exportData',
       );
     } catch (e) {
-      throw NcError.badRequest(e);
+      throw {
+        data: {
+          extension_id: options?.extension_id,
+          title: `${model.title} (${getViewTitle(view)})`,
+        },
+        message: e.message,
+      };
     }
 
     return {
       timestamp: new Date(),
+      extension_id: options?.extension_id,
       type: exportAs,
       title: `${model.title} (${getViewTitle(view)})`,
       url,

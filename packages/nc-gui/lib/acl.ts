@@ -40,6 +40,7 @@ const rolePermissions = {
       baseReorder: true,
       orgAdminPanel: true,
       workspaceAuditList: true,
+      workspaceIntegrations: true,
     },
   },
   [OrgUserRoles.VIEWER]: {
@@ -59,9 +60,11 @@ const rolePermissions = {
       baseCreate: true,
       fieldUpdate: true,
       hookList: true,
+      hookCreate: true,
       tableCreate: true,
       tableRename: true,
       tableDelete: true,
+      tableDescriptionEdit: true,
       tableDuplicate: true,
       tableSort: true,
       layoutRename: true,
@@ -70,7 +73,6 @@ const rolePermissions = {
       jsonImport: true,
       excelImport: true,
       settingsPage: true,
-      newUser: true,
       webhook: true,
       fieldEdit: true,
       fieldAlter: true,
@@ -98,6 +100,7 @@ const rolePermissions = {
       viewFieldEdit: true,
       csvTableImport: true,
       excelTableImport: true,
+      hookTrigger: true,
     },
   },
   [ProjectRoles.COMMENTER]: {
@@ -116,6 +119,7 @@ const rolePermissions = {
       commentList: true,
       commentCount: true,
       auditListRow: true,
+      newUser: true,
     },
   },
   [ProjectRoles.NO_ACCESS]: {

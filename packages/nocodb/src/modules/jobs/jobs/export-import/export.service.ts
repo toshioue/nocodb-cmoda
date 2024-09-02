@@ -156,20 +156,22 @@ export class ExportService {
                 break;
               case 'formula':
                 // rewrite formula_raw with aliases
-                column.colOptions['formula_raw'] = column.colOptions[k].replace(
-                  /\{\{.*?\}\}/gm,
-                  (match) => {
-                    const col = model.columns.find(
-                      (c) => c.id === match.slice(2, -2),
-                    );
-                    return `{${col?.title}}`;
-                  },
-                );
+                column.colOptions['formula_raw'] = column.colOptions[
+                  k
+                ]?.replace(/\{\{.*?\}\}/gm, (match) => {
+                  const col = model.columns.find(
+                    (c) => c.id === match.slice(2, -2),
+                  );
+                  return `{${col?.title}}`;
+                });
 
-                column.colOptions[k] = column.colOptions[k].replace(
+                column.colOptions[k] = column.colOptions[k]?.replace(
                   /(?<=\{\{).*?(?=\}\})/gm,
                   (match) => idMap.get(match),
                 );
+                break;
+              case 'fk_webhook_id':
+                column.colOptions[k] = idMap.get(v as string);
                 break;
               case 'id':
               case 'created_at':
@@ -378,9 +380,11 @@ export class ExportService {
           prefix: base.prefix,
           title: model.title,
           table_name: clearPrefix(model.table_name, base.prefix),
+          description: model.description,
           pgSerialLastVal,
           meta: model.meta,
           columns: model.columns.map((column) => ({
+            description: column.description,
             id: idMap.get(column.id),
             ai: column.ai,
             column_name: column.column_name,
@@ -403,6 +407,7 @@ export class ExportService {
           })),
         },
         views: model.views.map((view) => ({
+          description: view.description,
           id: idMap.get(view.id),
           is_default: view.is_default,
           type: view.type,
@@ -568,6 +573,7 @@ export class ExportService {
                 break;
               case UITypes.Formula:
               case UITypes.Lookup:
+              case UITypes.Button:
               case UITypes.Rollup:
               case UITypes.Barcode:
               case UITypes.QrCode:

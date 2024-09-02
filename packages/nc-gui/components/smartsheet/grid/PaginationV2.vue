@@ -23,12 +23,9 @@ const showSizeChanger = toRef(props, 'showSizeChanger')
 
 const vPaginationData = useVModel(props, 'paginationData', emits)
 
-const { loadViewAggregate, updateAggregate, getAggregations, visibleFieldsComputed, displayFieldComputed } =
-  useViewAggregateOrThrow()
+const { updateAggregate, getAggregations, visibleFieldsComputed, displayFieldComputed } = useViewAggregateOrThrow()
 
 const scrollLeft = toRef(props, 'scrollLeft')
-
-const reloadViewDataHook = inject(ReloadViewDataHookInj)
 
 const containerElement = ref()
 
@@ -43,10 +40,6 @@ watch(
     immediate: true,
   },
 )
-
-reloadViewDataHook?.on(async () => {
-  await loadViewAggregate()
-})
 
 const count = computed(() => vPaginationData.value?.totalRows ?? Infinity)
 
@@ -111,7 +104,7 @@ const renderAltOrOptlKey = () => {
   <div ref="containerElement" class="bg-gray-50 w-full pr-1 border-t-1 border-gray-200 overflow-x-hidden no-scrollbar flex h-9">
     <div class="sticky flex items-center bg-gray-50 left-0">
       <NcDropdown
-        :disabled="[UITypes.SpecificDBType, UITypes.ForeignKey].includes(displayFieldComputed.column?.uidt!) || isLocked"
+        :disabled="[UITypes.SpecificDBType, UITypes.ForeignKey,  UITypes.Button].includes(displayFieldComputed.column?.uidt!) || isLocked"
         overlay-class-name="max-h-96 relative scroll-container nc-scrollbar-md overflow-auto"
       >
         <div
@@ -141,10 +134,15 @@ const renderAltOrOptlKey = () => {
               </span>
             </NcTooltip>
 
-            <template v-if="![UITypes.SpecificDBType, UITypes.ForeignKey].includes(displayFieldComputed.column?.uidt!)">
+            <template
+              v-if="![UITypes.SpecificDBType, UITypes.ForeignKey, UITypes.Button].includes(displayFieldComputed.column?.uidt!)"
+            >
               <div
                 v-if="!displayFieldComputed.field?.aggregation || displayFieldComputed.field?.aggregation === 'none'"
-                class="text-gray-500 opacity-0 transition group-hover:opacity-100"
+                :class="{
+                  'group-hover:opacity-100': ![UITypes.SpecificDBType, UITypes.ForeignKey, UITypes.Button].includes(displayFieldComputed.column?.uidt!)
+                }"
+                class="text-gray-500 opacity-0 transition"
               >
                 <GeneralIcon class="text-gray-500" icon="arrowDown" />
                 <span class="text-[10px] font-semibold"> Summary </span>
@@ -220,7 +218,7 @@ const renderAltOrOptlKey = () => {
       ></div>
       <NcDropdown
         v-if="field && column?.id"
-        :disabled="[UITypes.SpecificDBType, UITypes.ForeignKey].includes(column?.uidt!) || isLocked"
+        :disabled="[UITypes.SpecificDBType, UITypes.ForeignKey,  UITypes.Button].includes(column?.uidt!) || isLocked"
         overlay-class-name="max-h-96 relative scroll-container nc-scrollbar-md overflow-auto"
       >
         <div
@@ -231,10 +229,13 @@ const renderAltOrOptlKey = () => {
             'width': width,
           }"
         >
-          <template v-if="![UITypes.SpecificDBType, UITypes.ForeignKey].includes(column?.uidt!)">
+          <template v-if="![UITypes.SpecificDBType, UITypes.ForeignKey, UITypes.Button].includes(column?.uidt!)">
             <div
               v-if="field?.aggregation === 'none' || field?.aggregation === null"
-              class="text-gray-500 opacity-0 transition group-hover:opacity-100"
+              :class="{
+                  'group-hover:opacity-100': ![UITypes.SpecificDBType, UITypes.ForeignKey, UITypes.Button].includes(column?.uidt!)
+                }"
+              class="text-gray-500 opacity-0 transition"
             >
               <GeneralIcon class="text-gray-500" icon="arrowDown" />
               <span class="text-[10px] font-semibold"> Summary </span>

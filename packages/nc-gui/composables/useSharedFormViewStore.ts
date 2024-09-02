@@ -46,7 +46,7 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
 
   const { api, isLoading } = useApi()
 
-  const { metas, setMeta } = useMetas()
+  const { metas, setMeta, getMeta } = useMetas()
 
   const baseStore = useBase()
   const { base, sqlUis } = storeToRefs(baseStore)
@@ -63,7 +63,13 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
 
   const preFilledformState = ref<Record<string, any>>({})
 
+  const preFilledAdditionalState = ref<Record<string, any>>({})
+
   const preFilledDefaultValueformState = ref<Record<string, any>>({})
+
+  const isValidRedirectUrl = computed(
+    () => typeof sharedFormView.value?.redirect_url === 'string' && !!sharedFormView.value?.redirect_url?.trim(),
+  )
 
   useProvideSmartsheetLtarHelpers(meta)
   const { state: additionalState } = useProvideSmartsheetRowStore(
@@ -168,7 +174,7 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
         basesUser.value.set(viewMeta.base_id, viewMeta.users)
       }
 
-      handlePreFillForm()
+      await handlePreFillForm()
     } catch (e: any) {
       const error = await extractSdkResponseErrorMsgv2(e)
 
@@ -215,6 +221,10 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
                   (column.uidt === UITypes.Checkbox && !value) ||
                   (column.uidt !== UITypes.Checkbox && !requiredFieldValidatorFn(value))
                 ) {
+                  return reject(t('msg.error.fieldRequired'))
+                }
+
+                if (column.uidt === UITypes.Rating && (!value || Number(value) < 1)) {
                   return reject(t('msg.error.fieldRequired'))
                 }
               }
@@ -275,13 +285,18 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     handleAddMissingRequiredFieldDefaultState()
 
     try {
-      await validate([
-        ...Object.keys(formState.value).map((title) => fieldMappings.value[title]),
-        ...Object.keys(additionalState.value).map((title) => fieldMappings.value[title]),
-      ])
+      // filter `undefined` keys which is hidden prefilled fields
+      await validate(
+        [
+          ...Object.keys(formState.value).map((title) => fieldMappings.value[title]),
+          ...Object.keys(additionalState.value).map((title) => fieldMappings.value[title]),
+        ].filter((v) => v !== undefined),
+      )
       return true
     } catch (e: any) {
-      if (e.errorFields.length) {
+      console.error('Error occurred while validating all fields:', e)
+
+      if (e?.errorFields?.length) {
         message.error(t('msg.error.someOfTheRequiredFieldsAreEmpty'))
         return false
       }
@@ -312,16 +327,24 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
         ...attachment,
       })
 
-      await api.public.dataCreate(sharedView.value!.uuid!, filtedData, {
+      const newRecord = await api.public.dataCreate(sharedView.value!.uuid!, filtedData, {
         headers: {
           'xc-password': password.value,
         },
       })
 
-      submitted.value = true
-      progress.value = false
+      const pk = extractPkFromRow(newRecord, meta.value?.columns as ColumnType[])
+
+      if (pk && isValidRedirectUrl.value) {
+        const url = sharedFormView.value!.redirect_url!.replace('{record_id}', pk)
+        window.location.href = url
+        window.location.reload()
+      } else {
+        submitted.value = true
+        progress.value = false
+      }
     } catch (e: any) {
-      console.log(e)
+      console.error(e)
       await message.error(await extractSdkResponseErrorMsg(e))
     }
     progress.value = false
@@ -329,8 +352,10 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
 
   const clearForm = async () => {
     formResetHook.trigger()
+    additionalState.value = {
+      ...preFilledAdditionalState.value,
+    }
 
-    additionalState.value = {}
     formState.value = {
       ...preFilledDefaultValueformState.value,
       ...(sharedViewMeta.value.preFillEnabled ? preFilledformState.value : {}),
@@ -339,43 +364,66 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     clearValidate()
   }
 
-  function handlePreFillForm() {
-    if (Object.keys(route.query || {}).length && sharedViewMeta.value.preFillEnabled) {
-      columns.value = (columns.value || []).map((c) => {
-        const queryParam = route.query[c.title as string] || route.query[encodeURIComponent(c.title as string)]
-        if (
-          !c.title ||
-          !queryParam ||
-          isSystemColumn(c) ||
-          isVirtualCol(c) ||
-          isAttachment(c) ||
-          c.uidt === UITypes.SpecificDBType
-        ) {
-          return c
-        }
+  async function handlePreFillForm() {
+    if (Object.keys(route.query || {}).length) {
+      columns.value = await Promise.all(
+        (columns.value || []).map(async (c) => {
+          const queryParam = route.query[c.title as string] || route.query[encodeURIComponent(c.title as string)]
 
-        const preFillValue = getPreFillValue(c, decodeURIComponent(queryParam as string).trim())
-        if (preFillValue !== undefined) {
-          // Prefill form state
-          formState.value[c.title] = preFillValue
-          // preFilledformState will be used in clear form to fill the prefilled data
-          preFilledformState.value[c.title] = preFillValue
+          if (
+            !c.title ||
+            !queryParam ||
+            isSystemColumn(c) ||
+            (isVirtualCol(c) && !isLinksOrLTAR(c)) ||
+            (!sharedViewMeta.value.preFillEnabled && !isVirtualCol(c) && !isLinksOrLTAR(c)) ||
+            isAttachment(c) ||
+            c.uidt === UITypes.SpecificDBType
+          ) {
+            return c
+          }
+          const decodedQueryParam = Array.isArray(queryParam)
+            ? queryParam.map((qp) => decodeURIComponent(qp as string).trim())
+            : decodeURIComponent(queryParam as string).trim()
 
-          // Update column
-          switch (sharedViewMeta.value.preFilledMode) {
-            case PreFilledMode.Hidden: {
-              c.show = false
-              break
+          const preFillValue = await getPreFillValue(c, decodedQueryParam)
+          if (preFillValue !== undefined) {
+            if (isLinksOrLTAR(c)) {
+              // Prefill Link to another record / Links form state
+              additionalState.value = {
+                ...(additionalState.value || {}),
+                [c.title]: preFillValue,
+              }
+            } else {
+              // Prefill form state
+              formState.value[c.title] = preFillValue
             }
-            case PreFilledMode.Locked: {
-              c.read_only = true
-              break
+
+            if (sharedViewMeta.value.preFillEnabled) {
+              // Update column
+              switch (sharedViewMeta.value.preFilledMode) {
+                case PreFilledMode.Hidden: {
+                  c.show = false
+                  break
+                }
+                case PreFilledMode.Locked: {
+                  c.read_only = true
+                  break
+                }
+              }
             }
           }
-        }
 
-        return c
-      })
+          return c
+        }),
+      )
+
+      try {
+        // preFilledAdditionalState will be used in clear form to fill the prefilled data
+        preFilledAdditionalState.value = JSON.parse(JSON.stringify(additionalState.value || {}))
+
+        // preFilledformState will be used in clear form to fill the prefilled data
+        preFilledformState.value = JSON.parse(JSON.stringify(formState.value || {}))
+      } catch {}
     }
   }
 
@@ -383,7 +431,7 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     return (c?.source_id ? sqlUis.value[c?.source_id] : Object.values(sqlUis.value)[0])?.getAbstractType(c)
   }
 
-  function getPreFillValue(c: ColumnType, value: string) {
+  async function getPreFillValue(c: ColumnType, value: string | string[]) {
     let preFillValue: any
     switch (c.uidt) {
       case UITypes.SingleSelect:
@@ -511,6 +559,14 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
       }
       case UITypes.LinkToAnotherRecord:
       case UITypes.Links: {
+        const values = Array.isArray(value) ? value : value.split(',')
+        const rows = await loadLinkedRecords(c, values)
+
+        preFillValue = rows
+        // if bt/oo then extract object from array
+        if (c.colOptions?.type === RelationTypes.BELONGS_TO || c.colOptions?.type === RelationTypes.ONE_TO_ONE) {
+          preFillValue = preFillValue[0]
+        }
         // Todo: create an api which will fetch query params records and then autofill records
         break
       }
@@ -528,10 +584,38 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     return preFillValue
   }
 
+  async function loadLinkedRecords(column: ColumnType, ids: string[]) {
+    const relatedMeta = await getMeta((column.colOptions as LinkToAnotherRecordType)?.fk_related_model_id)
+    const pkCol = relatedMeta?.columns?.find((col) => col.pk)
+    const pvCol = relatedMeta?.columns?.find((col) => col.pv)
+
+    return (
+      await api.public.dataRelationList(
+        route.params.viewId as string,
+        column.id,
+        {},
+        {
+          headers: {
+            'xc-password': password.value,
+          },
+          query: {
+            limit: Math.max(25, ids.length),
+            where: `(${pkCol.title},in,${ids.join(',')})`,
+            fields: [pkCol.title, pvCol.title],
+          },
+        },
+      )
+    )?.list
+  }
+
   let intvl: NodeJS.Timeout
   /** reset form if show_blank_form is true */
   watch(submitted, (nextVal) => {
     if (nextVal && sharedFormView.value?.show_blank_form) {
+      if (typeof sharedFormView.value?.redirect_url === 'string') {
+        return
+      }
+
       secondsRemain.value = 5
       intvl = setInterval(() => {
         secondsRemain.value = secondsRemain.value - 1
@@ -595,7 +679,11 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     additionalState,
     async () => {
       try {
-        await validate(Object.keys(additionalState.value).map((title) => fieldMappings.value[title]))
+        await validate(
+          Object.keys(additionalState.value)
+            .map((title) => fieldMappings.value[title])
+            .filter((v) => v !== undefined),
+        )
       } catch {}
     },
     {
@@ -631,6 +719,7 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     isRequired,
     handleAddMissingRequiredFieldDefaultState,
     fieldMappings,
+    isValidRedirectUrl,
   }
 }, 'shared-form-view-store')
 

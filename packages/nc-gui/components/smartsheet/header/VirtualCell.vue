@@ -31,6 +31,8 @@ const editColumnDropdown = ref(false)
 
 const isDropDownOpen = ref(false)
 
+const enableDescription = ref(false)
+
 const isLocked = inject(IsLockedInj, ref(false))
 
 provide(ColumnInj, column)
@@ -115,12 +117,20 @@ const addField = async (payload: any) => {
   editColumnDropdown.value = true
 }
 
+const editOrAddProviderRef = ref()
+
 const closeAddColumnDropdown = () => {
   columnOrder.value = null
   editColumnDropdown.value = false
 }
 
-const openHeaderMenu = (e?: MouseEvent) => {
+watch(editColumnDropdown, (val) => {
+  if (!val) {
+    enableDescription.value = false
+  }
+})
+
+const openHeaderMenu = (e?: MouseEvent, description = false) => {
   if (isLocked.value || (isExpandedForm.value && e?.type === 'dblclick') || isExpandedBulkUpdateForm.value) return
 
   if (
@@ -129,6 +139,9 @@ const openHeaderMenu = (e?: MouseEvent) => {
     !isMobileMode.value &&
     (!isMetaReadOnly.value || readonlyMetaAllowedTypes.includes(column.value.uidt))
   ) {
+    if (description) {
+      enableDescription.value = true
+    }
     editColumnDropdown.value = true
   }
 }
@@ -142,6 +155,14 @@ const openDropDown = (e: Event) => {
   e.stopPropagation()
 
   isDropDownOpen.value = !isDropDownOpen.value
+}
+
+const onVisibleChange = () => {
+  editColumnDropdown.value = true
+  if (!editOrAddProviderRef.value?.isWebHookModalOpen()) {
+    editColumnDropdown.value = false
+    enableDescription.value = false
+  }
 }
 
 const onClick = (e: Event) => {
@@ -203,7 +224,6 @@ const onClick = (e: Event) => {
       </NcTooltip>
 
       <span v-if="isVirtualColRequired(column, meta?.columns || []) || required" class="text-red-500">&nbsp;*</span>
-
       <GeneralIcon
         v-if="isExpandedForm && !isMobileMode && isUIAllowed('fieldEdit') && !isExpandedBulkUpdateForm"
         icon="arrowDown"
@@ -223,7 +243,7 @@ const onClick = (e: Event) => {
         :is-hidden-col="isHiddenCol"
         :virtual="true"
         @add-column="addField"
-        @edit="editColumnDropdown = true"
+        @edit="openHeaderMenu"
       />
     </template>
 
@@ -233,6 +253,7 @@ const onClick = (e: Event) => {
       :trigger="['click']"
       :placement="isExpandedForm && !isExpandedBulkUpdateForm ? 'bottomLeft' : 'bottomRight'"
       :overlay-class-name="`nc-dropdown-edit-column ${editColumnDropdown ? 'active' : ''}`"
+      @visible-change="onVisibleChange"
     >
       <div v-if="isExpandedForm && !isExpandedBulkUpdateForm" class="h-[1px]" @dblclick.stop>&nbsp;</div>
       <div v-else />
@@ -240,9 +261,11 @@ const onClick = (e: Event) => {
         <div class="nc-edit-or-add-provider-wrapper">
           <LazySmartsheetColumnEditOrAddProvider
             v-if="editColumnDropdown"
+            ref="editOrAddProviderRef"
             :column="columnOrder ? null : column"
             :column-position="columnOrder"
             class="w-full"
+            :edit-description="enableDescription"
             @submit="closeAddColumnDropdown"
             @cancel="closeAddColumnDropdown"
             @click.stop

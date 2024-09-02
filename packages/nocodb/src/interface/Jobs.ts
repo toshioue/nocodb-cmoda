@@ -1,6 +1,11 @@
-import type { UserType } from 'nocodb-sdk';
+import type { AttachmentResType, UserType } from 'nocodb-sdk';
 import type { NcContext, NcRequest } from '~/interface/config';
 export const JOBS_QUEUE = 'jobs';
+
+export enum MigrationJobTypes {
+  Attachment = 'attachment',
+  Thumbnail = 'thumbnail',
+}
 
 export enum JobTypes {
   DuplicateBase = 'duplicate-base',
@@ -17,6 +22,9 @@ export enum JobTypes {
   HandleWebhook = 'handle-webhook',
   CleanUp = 'clean-up',
   DataExport = 'data-export',
+  ThumbnailGenerator = 'thumbnail-generator',
+  AttachmentCleanUp = 'attachment-clean-up',
+  InitMigrationJobs = 'init-migration-jobs',
 }
 
 export enum JobStatus {
@@ -27,12 +35,21 @@ export enum JobStatus {
   FAILED = 'failed',
   PAUSED = 'paused',
   REFRESH = 'refresh',
+  REQUEUED = 'requeued',
 }
 
 export enum JobEvents {
   STATUS = 'job.status',
   LOG = 'job.log',
 }
+
+export const JobVersions: {
+  [key in JobTypes]?: number;
+} = {};
+
+export const JOB_REQUEUED = 'job.requeued';
+
+export const JOB_REQUEUE_LIMIT = 10;
 
 export const InstanceTypes = {
   PRIMARY: `${process.env.NC_ENV ?? 'default'}-primary`,
@@ -47,6 +64,12 @@ export enum InstanceCommands {
 }
 
 export interface JobData {
+  // meta info
+  jobName: string;
+  _jobDelay?: number;
+  _jobAttempt?: number;
+  _jobVersion?: number;
+  // context
   context: NcContext;
   user: Partial<UserType>;
 }
@@ -114,9 +137,14 @@ export interface HandleWebhookJobData extends JobData {
 export interface DataExportJobData extends JobData {
   options?: {
     delimiter?: string;
+    extension_id?: string;
   };
   modelId: string;
   viewId: string;
   exportAs: 'csv' | 'json' | 'xlsx';
   ncSiteUrl: string;
+}
+
+export interface ThumbnailGeneratorJobData extends JobData {
+  attachments: AttachmentResType[];
 }

@@ -28,6 +28,8 @@ const isForm = inject(IsFormInj, ref(false))
 
 const row = useVModel(props, 'row')
 
+const { isLinked, isLoading } = toRefs(props)
+
 const isPublic = inject(IsPublicInj, ref(false))
 
 const readOnly = inject(ReadonlyInj, ref(false))
@@ -88,11 +90,11 @@ const displayValue = computed(() => {
             <a-carousel autoplay class="!w-11 !h-11 !max-h-11 !max-w-11">
               <template #customPaging> </template>
               <template v-for="(attachmentObj, index) in attachments">
-                <LazyCellAttachmentImage
+                <LazyCellAttachmentPreviewImage
                   v-if="isImage(attachmentObj.title, attachmentObj.mimetype ?? attachmentObj.type)"
                   :key="`carousel-${attachmentObj.title}-${index}`"
                   class="!w-11 !h-11 !max-h-11 !max-w-11object-cover !rounded-l-xl"
-                  :srcs="getPossibleAttachmentSrc(attachmentObj)"
+                  :srcs="getPossibleAttachmentSrc(attachmentObj, 'tiny')"
                 />
               </template>
             </a-carousel>

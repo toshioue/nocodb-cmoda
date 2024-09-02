@@ -6,6 +6,8 @@ const { isLeftSidebarOpen } = storeToRefs(useSidebarStore())
 
 const { isViewsLoading } = storeToRefs(useViewsStore())
 
+const { isLocalMode } = useViewColumnsOrThrow()
+
 const containerRef = ref<HTMLElement>()
 
 const { width } = useElementSize(containerRef)
@@ -14,6 +16,15 @@ const isTab = computed(() => {
   if (!isCalendar.value) return false
   return width.value > 1200
 })
+
+const isToolbarIconMode = computed(() => {
+  if (width.value < 768) {
+    return true
+  }
+  return false
+})
+
+provide(IsToolbarIconMode, isToolbarIconMode)
 </script>
 
 <template>
@@ -23,7 +34,7 @@ const isTab = computed(() => {
     :class="{
       'px-4': isMobileMode,
     }"
-    class="nc-table-toolbar relative px-3 flex gap-2 items-center border-b border-gray-200 overflow-hidden xs:(min-h-14) min-h-9 max-h-9 z-7"
+    class="nc-table-toolbar relative px-3 flex gap-2 items-center border-b border-gray-200 overflow-hidden xs:(min-h-14) min-h-[var(--toolbar-height)] max-h-[var(--toolbar-height)] z-7"
   >
     <template v-if="isViewsLoading">
       <a-skeleton-input :active="true" class="!w-44 !h-4 ml-2 !rounded overflow-hidden" />
@@ -49,9 +60,11 @@ const isTab = computed(() => {
 
         <LazySmartsheetToolbarColumnFilterMenu v-if="isGrid || isGallery || isKanban || isMap" />
 
-        <LazySmartsheetToolbarGroupByMenu v-if="isGrid" />
+        <LazySmartsheetToolbarGroupByMenu v-if="isGrid && !isLocalMode" />
 
         <LazySmartsheetToolbarSortListMenu v-if="isGrid || isGallery || isKanban" />
+
+        <LazySmartsheetToolbarOpenedViewAction v-if="isCalendar" />
       </div>
 
       <LazySmartsheetToolbarCalendarMode v-if="isCalendar && isTab" :tab="isTab" />
@@ -59,6 +72,7 @@ const isTab = computed(() => {
       <template v-if="!isMobileMode">
         <LazySmartsheetToolbarRowHeight v-if="isGrid" />
 
+        <LazySmartsheetToolbarOpenedViewAction v-if="!isCalendar" />
         <!-- <LazySmartsheetToolbarQrScannerButton v-if="isMobileMode && (isGrid || isKanban || isGallery)" /> -->
 
         <div class="flex-1" />

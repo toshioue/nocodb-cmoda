@@ -208,6 +208,10 @@ export class FieldsPage extends BasePage {
         break;
       case 'Links':
         await this.addOrEditColumn.locator('.nc-ltar-relation-type').getByTestId(relationType).click();
+        // await this.addOrEditColumn
+        //   .locator('.nc-ltar-relation-type >> .ant-radio')
+        //   .nth(relationType === 'Has Many' ? 1 : 0)
+        //   .click();
         await this.addOrEditColumn.locator('.ant-select-single').nth(1).click();
         await this.rootPage.locator(`.nc-ltar-child-table >> input[type="search"]`).first().fill(childTable);
         await this.rootPage
@@ -352,6 +356,7 @@ export class FieldsPage extends BasePage {
     const fieldId = await fieldActionDropdown.getByTestId('nc-field-item-id').textContent();
     await field.getByTestId('nc-field-item-action-button').click();
     await fieldActionDropdown.waitFor({ state: 'hidden' });
-    return fieldId;
+
+    return fieldId.split(':')[1]?.trim() || '';
   }
 }

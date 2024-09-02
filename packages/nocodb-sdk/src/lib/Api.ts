@@ -256,8 +256,12 @@ export interface AuditRowUpdateReqType {
  * Model for Source
  */
 export interface SourceType {
-  /** Source Name - Default BASE will be null by default */
+  /** Source Name */
   alias?: StringOrNullType;
+  /** Integration Name */
+  integration_title?: StringOrNullType;
+  /** Integration Id */
+  fk_integration_id?: StringOrNullType;
   /** Source Configuration */
   config?: any;
   /** Is this source enabled */
@@ -302,6 +306,43 @@ export interface SourceType {
     | 'snowflake'
     | 'sqlite3'
     | 'databricks';
+}
+
+/**
+ * Model for Integration
+ */
+export interface IntegrationType {
+  /** Source Name - Default BASE will be null by default */
+  title?: StringOrNullType;
+  /** Source Configuration */
+  config?: any;
+  /** Is this Intgration enabled */
+  enabled?: BoolType;
+  /** Unique Integration ID */
+  id?: string;
+  /** Unique Workspace ID */
+  fk_workspace_id?: string;
+  /**
+   * The order of the list of sources
+   * @example 1
+   */
+  order?: number;
+  /** The base ID that this source belongs to */
+  base_id?: string;
+  /** Model for Bool */
+  is_private?: BoolType;
+  /** Integration Type */
+  type?: IntegrationsType;
+  /**
+   * DB Type
+   * @example mysql2
+   */
+  sub_type?: string;
+  /**
+   * DB Type
+   * @example mysql2
+   */
+  created_by?: string;
 }
 
 /**
@@ -353,6 +394,35 @@ export interface BaseReqType {
     | 'snowflake'
     | 'sqlite3'
     | 'databricks';
+  fk_integration_id?: string;
+}
+
+/**
+ * Integration Type
+ */
+export enum IntegrationsType {
+  Database = 'database',
+}
+
+/**
+ * Model for Integration Request
+ */
+export interface IntegrationReqType {
+  /**
+   * Integration Name - Default BASE will be null by default
+   * @example Integration
+   */
+  title: string;
+  /** Source Configuration */
+  config: any;
+  /** Integration metas */
+  meta?: any;
+  /** Integration Type */
+  type: IntegrationsType;
+  /** Sub Type */
+  sub_type?: string;
+  /** ID of integration to be copied from. Used in Copy Integration. */
+  copy_from_id?: StringOrNullType;
 }
 
 /**
@@ -368,6 +438,8 @@ export interface ColumnType {
   ai?: BoolType;
   /** Auto Update Timestamp */
   au?: BoolType;
+  /** Column Description */
+  description?: TextOrNullType;
   /**
    * Source ID that this column belongs to
    * @example ds_krsappzu9f8vmo
@@ -519,18 +591,22 @@ export interface ColumnListType {
  * Model for Column Request
  */
 export type ColumnReqType = (
+  | ButtonColumnReqType
   | FormulaColumnReqType
   | LinkToAnotherColumnReqType
   | LookupColumnReqType
   | NormalColumnRequestType
   | RollupColumnReqType
-  | (FormulaColumnReqType &
+  | (ButtonColumnReqType &
+      FormulaColumnReqType &
       LinkToAnotherColumnReqType &
       LookupColumnReqType &
       NormalColumnRequestType &
       RollupColumnReqType)
 ) & {
   column_name?: string;
+  /** Model for TextOrNull */
+  description?: TextOrNullType;
   /** Column order in a specific view */
   column_order?: {
     order?: number;
@@ -1030,6 +1106,88 @@ export interface FormulaType {
 }
 
 /**
+ * Model for Button
+ */
+export interface ButtonType {
+  /** Unique ID */
+  id?: IdType;
+  /** Whether button is webhook or url */
+  type?: 'webhook' | 'url';
+  /** Label of Button */
+  label?: string;
+  /** Button Theme */
+  theme?: 'solid' | 'text' | 'light';
+  /** Button color */
+  color?:
+    | 'brand'
+    | 'red'
+    | 'green'
+    | 'maroon'
+    | 'blue'
+    | 'orange'
+    | 'pink'
+    | 'purple'
+    | 'yellow'
+    | 'gray';
+  /** Button Icon */
+  icon?: string;
+  /**
+   * Formula with column ID replaced
+   * @example CONCAT("FOO", {{cl_c5knoi4xs4sfpt}})
+   */
+  formula?: string;
+  /**
+   * Original Formula inputted in UI
+   * @example CONCAT("FOO", {Title})
+   */
+  formula_raw?: string;
+  /** Error Message */
+  error?: string;
+  /** Parsed Formula Tree */
+  parsed_tree?: object;
+  /** Webhook ID */
+  fk_webhook_id?: IdType;
+  /** Foreign Key to Column */
+  fk_column_id?: IdType;
+}
+
+/**
+ * Model for Button Column Request
+ */
+export interface ButtonColumnReqType {
+  /** Formula Title */
+  title?: string;
+  /** UI Data Type */
+  uidt?: 'Formula';
+  /** Whether button is webhook or url */
+  type?: 'webhook' | 'url';
+  /** Button Theme */
+  theme?: 'solid' | 'text' | 'light';
+  /** Button color */
+  color?:
+    | 'brand'
+    | 'red'
+    | 'green'
+    | 'maroon'
+    | 'blue'
+    | 'orange'
+    | 'pink'
+    | 'purple'
+    | 'yellow'
+    | 'gray';
+  /** Label of Button */
+  label?: string;
+  /** Button Icon */
+  icon?: string;
+  /** Webhook ID */
+  fk_webhook_id?: IdType;
+  /** Formula with column ID replaced */
+  formula?: string;
+  /** Original Formula inputted in UI */
+  formula_raw?: string;
+}
+
+/**
  * Model for Formula Column Request
  */
 export interface FormulaColumnReqType {
@@ -1277,7 +1435,7 @@ export interface HookType {
    * Event Type for the operation
    * @example after
    */
-  event?: 'after' | 'before';
+  event?: 'after' | 'before' | 'manual';
   /**
    * Foreign Key to Model
    * @example md_rsu68aqjsbyqtl
@@ -1297,7 +1455,8 @@ export interface HookType {
     | 'delete'
     | 'bulkInsert'
     | 'bulkUpdate'
-    | 'bulkDelete';
+    | 'bulkDelete'
+    | 'trigger';
   /**
    * Retry Count
    * @example 10
@@ -1346,7 +1505,7 @@ export interface HookReqType {
    * Event Type for the operation
    * @example after
    */
-  event: 'after' | 'before';
+  event: 'after' | 'before' | 'manual';
   /**
    * Foreign Key to Model
    * @example md_rsu68aqjsbyqtl
@@ -1366,7 +1525,8 @@ export interface HookReqType {
     | 'delete'
     | 'bulkInsert'
     | 'bulkUpdate'
-    | 'bulkDelete';
+    | 'bulkDelete'
+    | 'trigger';
   /**
    * Retry Count
    * @example 10
@@ -1424,7 +1584,7 @@ export interface HookLogType {
    * Hook Event
    * @example after
    */
-  event?: 'after' | 'before';
+  event?: 'after' | 'before' | 'manual';
   /**
    * Execution Time in milliseconds
    * @example 98
@@ -1446,7 +1606,8 @@ export interface HookLogType {
     | 'delete'
     | 'bulkInsert'
     | 'bulkUpdate'
-    | 'bulkDelete';
+    | 'bulkDelete'
+    | 'trigger';
   /**
    * Hook Payload
    * @example {"method":"POST","body":"{{ json data }}","headers":[{}],"parameters":[{}],"auth":"","path":"https://webhook.site/6eb45ce5-b611-4be1-8b96-c2965755662b"}
@@ -2272,6 +2433,7 @@ export interface RollupType {
     | 'min'
     | 'max'
     | 'avg'
+    | 'sum'
     | 'countDistinct'
     | 'sumDistinct'
     | 'avgDistinct';
@@ -2519,6 +2681,8 @@ export interface TableType {
   pinned?: BoolType;
   /** Unique Base ID */
   base_id?: string;
+  /** Table Description */
+  description?: TextOrNullType;
   /** Table Name. Prefix will be added for XCDB bases. */
   table_name: string;
   /** Currently not in use */
@@ -2545,6 +2709,8 @@ export interface TableListType {
 export interface TableReqType {
   /** The column models in this table */
   columns: NormalColumnRequestType[];
+  /** Table description */
+  description?: TextOrNullType;
   /** the meta data for this table */
   meta?: MetaType;
   /**
@@ -2646,6 +2812,8 @@ export interface ViewType {
   meta?: MetaType;
   /** The rder of the list of views */
   order?: number;
+  /** View Description */
+  description?: TextOrNullType;
   /** Password for protecting the view */
   password?: StringOrNullType;
   /** Unique Base ID */
@@ -2713,6 +2881,11 @@ export interface ViewUpdateReqType {
    * @example Grid View 1
    */
   title?: string;
+  /**
+   * Description of the view.
+   * @example This is a grid view.
+   */
+  description?: TextOrNullType;
   /**
    * View UUID. Used in Shared View.
    * @example e2457bbf-e29c-4fec-866e-fe3b01dba57f
@@ -5573,33 +5746,6 @@ export class Api<
       }),
 
     /**
-     * No description
-     *
-     * @tags Source
-     * @name CreateSqlView
-     * @summary Create sql view
-     * @request POST:/api/v1/db/meta/projects/:baseId/bases/:sourceId/sqlView
-     * @response `200` `object` OK
-     */
-    createSqlView: (
-      baseId: string,
-      sourceId: string,
-      data: {
-        view_name?: string;
-        view_definition?: string;
-      },
-      params: RequestParams = {}
-    ) =>
-      this.request<object, any>({
-        path: `/api/v1/db/meta/projects/${baseId}/bases/${sourceId}/sqlView`,
-        method: 'POST',
-        body: data,
-        type: ContentType.Json,
-        format: 'json',
-        ...params,
-      }),
-
-    /**
  * @description Get base source list
  * 
  * @tags Source
@@ -6007,6 +6153,11 @@ export class Api<
          * @example Users
          */
         title?: string;
+        /**
+         * Table description
+         * @example Table for storing User Information
+         */
+        description?: TextOrNullType;
         /**
          * Base ID
          * @example p_124hhlkbeasewh
@@ -9292,6 +9443,84 @@ export class Api<
       }),
 
     /**
+ * @description Read bulk data from a given table with provided filters
+ * 
+ * @tags Public
+ * @name DataTableBulkDataList
+ * @summary Read Shared View Bulk Data List
+ * @request POST:/api/v2/public/shared-view/{sharedViewUuid}/bulk/dataList
+ * @response `200` `object` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    dataTableBulkDataList: (
+      sharedViewUuid: string,
+      data: object[],
+      query?: {
+        /** Extra filtering */
+        where?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        object,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/public/shared-view/${sharedViewUuid}/bulk/dataList`,
+        method: 'POST',
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Read bulk group data from a given table with provided filters
+ * 
+ * @tags Public
+ * @name DataTableBulkGroup
+ * @summary Read Shared View Bulk Group Data
+ * @request POST:/api/v2/public/shared-view/{sharedViewUuid}/bulk/group
+ * @response `200` `object` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    dataTableBulkGroup: (
+      sharedViewUuid: string,
+      data: object[],
+      query?: {
+        /** Extra filtering */
+        where?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        object,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/public/shared-view/${sharedViewUuid}/bulk/group`,
+        method: 'POST',
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
  * @description Read aggregated data from a given table
  * 
  * @tags Public
@@ -9325,6 +9554,55 @@ export class Api<
         }
       >({
         path: `/api/v2/public/shared-view/${sharedViewUuid}/aggregate`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Download attachment from a shared view
+ * 
+ * @tags Public
+ * @name DataAttachmentDownload
+ * @summary Get Shared View Attachment
+ * @request GET:/api/v2/public/shared-view/{sharedViewUuid}/downloadAttachment/{columnId}/{rowId}
+ * @response `200` `{
+  \** URL to download the attachment *\
+  url?: string,
+  \** Path to download the attachment *\
+  path?: string,
+
+}` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    dataAttachmentDownload: (
+      sharedViewUuid: string,
+      columnId: IdType,
+      rowId: any,
+      query?: {
+        /** URL or Path of the attachment */
+        urlOrPath?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        {
+          /** URL to download the attachment */
+          url?: string;
+          /** Path to download the attachment */
+          path?: string;
+        },
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/public/shared-view/${sharedViewUuid}/downloadAttachment/${columnId}/${rowId}`,
         method: 'GET',
         query: query,
         format: 'json',
@@ -9816,6 +10094,88 @@ export class Api<
         ...params,
       }),
   };
+  dbDataTableBulkList = {
+    /**
+ * @description Read bulk data from a given table with given filters
+ * 
+ * @tags DB Data Table Bulk List
+ * @name DbDataTableBulkList
+ * @summary Read Bulk Data
+ * @request POST:/api/v2/tables/{tableId}/bulk/dataList
+ * @response `200` `object` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    dbDataTableBulkList: (
+      tableId: string,
+      query: {
+        /** View ID is required */
+        viewId: string;
+        /** Extra filtering */
+        where?: string;
+      },
+      data: object[],
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        object,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/tables/${tableId}/bulk/dataList`,
+        method: 'POST',
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+  };
+  dbDataTableBulkGroupList = {
+    /**
+ * @description Read bulk group data from a given table with given filters
+ * 
+ * @tags DB Data Table Bulk Group List
+ * @name DbDataTableBulkGroupList
+ * @summary Read Bulk Group Data
+ * @request POST:/api/v2/tables/{tableId}/bulk/group
+ * @response `200` `object` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    dbDataTableBulkGroupList: (
+      tableId: string,
+      query: {
+        /** View ID is required */
+        viewId: string;
+      },
+      data: object[],
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        object,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/tables/${tableId}/bulk/group`,
+        method: 'POST',
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+  };
   utils = {
     /**
  * @description List all audits
@@ -10201,24 +10561,6 @@ export class Api<
       }),
 
     /**
-     * No description
-     *
-     * @tags Utils
-     * @name SelectQuery
-     * @request POST:/api/v1/db/meta/connection/select
-     * @response `200` `any` OK
-     */
-    selectQuery: (data: any, params: RequestParams = {}) =>
-      this.request<any, any>({
-        path: `/api/v1/db/meta/connection/select`,
-        method: 'POST',
-        body: data,
-        type: ContentType.Json,
-        format: 'json',
-        ...params,
-      }),
-
-    /**
  * @description Extract XC URL From JDBC and parse to connection config
  * 
  * @tags Utils
@@ -10325,6 +10667,7 @@ export class Api<
   defaultLimit?: number,
   ncMin?: boolean,
   teleEnabled?: boolean,
+  errorReportingEnabled?: boolean,
   auditEnabled?: boolean,
   ncSiteUrl?: string,
   ee?: boolean,
@@ -10356,6 +10699,7 @@ export class Api<
           defaultLimit?: number;
           ncMin?: boolean;
           teleEnabled?: boolean;
+          errorReportingEnabled?: boolean;
           auditEnabled?: boolean;
           ncSiteUrl?: string;
           ee?: boolean;
@@ -10908,6 +11252,33 @@ export class Api<
         path: `/api/v1/db/meta/hooks/${hookId}`,
         method: 'DELETE',
         format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Trigger the manual WebHook
+ * 
+ * @tags DB Table Webhook
+ * @name Trigger
+ * @summary Trigger Manual Hook
+ * @request POST:/api/v2/meta/hooks/{hookId}/trigger/{rowId}
+ * @response `200` `void` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    trigger: (hookId: IdType, rowId: IdType, params: RequestParams = {}) =>
+      this.request<
+        void,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/meta/hooks/${hookId}/trigger/${rowId}`,
+        method: 'POST',
         ...params,
       }),
   };
@@ -11826,6 +12197,47 @@ export class Api<
       }),
 
     /**
+ * @description Download attachment from a given row
+ * 
+ * @tags DB Data Table Row
+ * @name AttachmentDownload
+ * @summary Download Attachment
+ * @request GET:/api/v2/downloadAttachment/{modelId}/{columnId}/{rowId}
+ * @response `200` `{
+  \** URL to download attachment *\
+  url?: string,
+  \** Path to download attachment *\
+  path?: string,
+
+}` OK
+ */
+    attachmentDownload: (
+      modelId: string,
+      columnId: string,
+      rowId: string,
+      query?: {
+        /** URL or Path of the attachment */
+        urlOrPath?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        {
+          /** URL to download attachment */
+          url?: string;
+          /** Path to download attachment */
+          path?: string;
+        },
+        any
+      >({
+        path: `/api/v2/downloadAttachment/${modelId}/${columnId}/${rowId}`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
  * @description Copy links from the one cell and paste them into another cell or delete all records from cell
  * 
  * @tags DB Data Table Row
@@ -12025,6 +12437,118 @@ export class Api<
         method: 'POST',
         body: data,
         type: ContentType.Json,
+        ...params,
+      }),
+  };
+  integration = {
+    /**
+     * @description List integrations
+     *
+     * @tags Integration
+     * @name List
+     * @summary List integrations
+     * @request GET:/api/v2/meta/integrations
+     * @response `200` `any` OK
+     */
+    list: (
+      query?: {
+        /** Integration Type */
+        type?: IntegrationsType;
+        includeDatabaseInfo?: boolean;
+        limit?: number;
+        offset?: number;
+        baseId?: string;
+        query?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<any, any>({
+        path: `/api/v2/meta/integrations`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Create integration
+     *
+     * @tags Integration
+     * @name Create
+     * @summary Create integration
+     * @request POST:/api/v2/meta/integrations
+     * @response `200` `IntegrationType` OK
+     */
+    create: (data: IntegrationReqType, params: RequestParams = {}) =>
+      this.request<IntegrationType, any>({
+        path: `/api/v2/meta/integrations`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Read integration
+     *
+     * @tags Integration
+     * @name Read
+     * @summary Read integration
+     * @request GET:/api/v2/meta/integrations/{integrationId}
+     * @response `200` `IntegrationType` OK
+     */
+    read: (
+      integrationId: string,
+      query?: {
+        includeConfig?: boolean;
+        includeSources?: boolean;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<IntegrationType, any>({
+        path: `/api/v2/meta/integrations/${integrationId}`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Update integration
+     *
+     * @tags Integration
+     * @name Update
+     * @summary Update integration
+     * @request PATCH:/api/v2/meta/integrations/{integrationId}
+     * @response `200` `void` OK
+     */
+    update: (
+      integrationId: string,
+      data: IntegrationReqType,
+      params: RequestParams = {}
+    ) =>
+      this.request<void, any>({
+        path: `/api/v2/meta/integrations/${integrationId}`,
+        method: 'PATCH',
+        body: data,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description Delete integration
+     *
+     * @tags Integration
+     * @name Delete
+     * @summary Delete integration
+     * @request DELETE:/api/v2/meta/integrations/{integrationId}
+     * @response `200` `void` OK
+     */
+    delete: (integrationId: string, params: RequestParams = {}) =>
+      this.request<void, any>({
+        path: `/api/v2/meta/integrations/${integrationId}`,
+        method: 'DELETE',
         ...params,
       }),
   };

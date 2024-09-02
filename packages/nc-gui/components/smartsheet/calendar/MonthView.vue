@@ -17,6 +17,7 @@ const {
   viewMetaProperties,
   showSideMenu,
   updateRowProperty,
+  updateFormat,
 } = useCalendarViewStoreOrThrow()
 
 const { $e } = useNuxtApp()
@@ -53,14 +54,6 @@ const { width: gridContainerWidth, height: gridContainerHeight } = useElementSiz
 
 const isDayInPagedMonth = (date: dayjs.Dayjs) => {
   return date.month() === selectedMonth.value.month()
-}
-
-const getDayIndex = (date: dayjs.Dayjs) => {
-  let dayIndex = date.day() - 1
-  if (dayIndex === -1) {
-    dayIndex = 6
-  }
-  return dayIndex
 }
 
 const dragElement = ref<HTMLElement | null>(null)
@@ -408,10 +401,7 @@ const calculateNewRow = (event: MouseEvent, updateSideBar?: boolean, skipChangeC
     ...dragRecord.value,
     row: {
       ...dragRecord.value?.row,
-      [fromCol!.title!]:
-        calDataType.value === UITypes.Date
-          ? dayjs(newStartDate).format('YYYY-MM-DD HH:mm:ssZ')
-          : dayjs(newStartDate).utc().format('YYYY-MM-DD HH:mm:ssZ'),
+      [fromCol!.title!]: dayjs(newStartDate).format(updateFormat.value),
     },
   }
 
@@ -431,10 +421,7 @@ const calculateNewRow = (event: MouseEvent, updateSideBar?: boolean, skipChangeC
       endDate = newStartDate.clone()
     }
 
-    newRow.row[toCol!.title!] =
-      calDataType.value === UITypes.Date
-        ? dayjs(endDate).format('YYYY-MM-DD HH:mm:ssZ')
-        : dayjs(endDate).utc().format('YYYY-MM-DD HH:mm:ssZ')
+    newRow.row[toCol!.title!] = dayjs(endDate).format(updateFormat.value)
     updateProperty.push(toCol!.title!)
   }
 
@@ -509,7 +496,7 @@ const onResize = (event: MouseEvent) => {
       ...resizeRecord.value,
       row: {
         ...resizeRecord.value.row,
-        [toCol!.title!]: dayjs(newEndDate).format('YYYY-MM-DD HH:mm:ssZ'),
+        [toCol!.title!]: dayjs(newEndDate).format(updateFormat.value),
       },
     }
   } else {
@@ -525,7 +512,7 @@ const onResize = (event: MouseEvent) => {
       ...resizeRecord.value,
       row: {
         ...resizeRecord.value.row,
-        [fromCol!.title!]: dayjs(newStartDate).format('YYYY-MM-DD HH:mm:ssZ'),
+        [fromCol!.title!]: dayjs(newStartDate).format(updateFormat.value),
       },
     }
   }
@@ -697,7 +684,7 @@ const addRecord = (date: dayjs.Dayjs) => {
   if (!fromCol) return
   const newRecord = {
     row: {
-      [fromCol.title!]: date.format('YYYY-MM-DD HH:mm:ssZ'),
+      [fromCol.title!]: date.format(updateFormat.value),
     },
   }
   emit('newRecord', newRecord)
