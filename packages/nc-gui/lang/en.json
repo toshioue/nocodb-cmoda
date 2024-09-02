@@ -830,7 +830,7 @@
     },
     "appearanceSettings": "Appearance settings",
     "backgroundColor": "Background Color",
-    "hideNocodbBranding": "Hide NocoDB Branding",
+    "hideNocodbBranding": "Hide CMODA-DB Branding",
     "showOnConditions": "Show on condtions",
     "showFieldOnConditionsMet": "Shows field only when conditions are met",
     "limitOptions": "Limit options",

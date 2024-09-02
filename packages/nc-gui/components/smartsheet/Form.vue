@@ -801,7 +801,7 @@ useEventListener(
                       :key="formViewData.banner_image_url?.path"
                       :banner-image-url="formViewData.banner_image_url"
                     />
-                    <div class="absolute bottom-0 right-0 hidden group-hover:block">
+                    <div class="absolute bottom-0 right-0 hidden group-hover:block" v-if="false">
                       <div class="flex items-center space-x-1 m-2">
                         <NcTooltip :disabled="isEeUI">
                           <template #title>
@@ -862,7 +862,7 @@ useEventListener(
                       <!-- form header -->
                       <div class="flex flex-col px-4 lg:px-6">
                         <!-- Form logo  -->
-                        <div class="mb-4">
+                        <div class="mb-4" v-if="false">
                           <div
                             class="nc-form-logo-wrapper mx-6 group relative inline-block h-56px overflow-hidden flex items-center"
                             :class="
@@ -1522,7 +1522,7 @@ useEventListener(
                             </div>
                           </div>
 
-                          <div class="flex items-center justify-between gap-3">
+                          <div class="flex items-center justify-between gap-3" v-if="false">
                             <!-- Hide NocoDB Branding -->
 
                             <span>{{ $t('labels.hideNocodbBranding') }}</span>
