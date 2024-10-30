@@ -428,7 +428,7 @@ export class BaseUsersService {
       if (emailAdapter) {
         await emailAdapter.mailSend({
           to: email,
-          subject: 'Verify email',
+          subject: 'CMODA DB Project Email Invitation',
           html: ejs.render(template, {
             signupLink: `${req.ncSiteUrl}${
               Noco.getConfig()?.dashboardPath
