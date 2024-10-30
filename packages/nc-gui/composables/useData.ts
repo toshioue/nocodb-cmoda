@@ -208,7 +208,7 @@ export function useData(args: {
         base?.value.id as string,
         metaValue?.id as string,
         viewMetaValue?.id as string,
-        id,
+        encodeURIComponent(id),
         {
           // if value is undefined treat it as null
           [property]: toUpdate.row[property] ?? null,
@@ -550,10 +550,7 @@ export function useData(args: {
     try {
       const row = formattedData.value[rowIndex]
       if (!row.rowMeta.new) {
-        const id = meta?.value?.columns
-          ?.filter((c) => c.pk)
-          .map((c) => row.row[c.title!])
-          .join('___')
+        const id = extractPkFromRow(row.row, meta?.value?.columns)
 
         const fullRecord = await $api.dbTableRow.read(
           NOCO,

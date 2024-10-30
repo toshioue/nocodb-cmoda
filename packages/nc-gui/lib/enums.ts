@@ -19,8 +19,10 @@ export enum Language {
   id = 'Bahasa Indonesia',
   it = 'Italiano',
   ja = '日本語',
+  kn = 'ಕನ್ನಡ',
   ko = '한국어',
   lv = 'Latviešu',
+  ml = 'മലയാളം',
   nl = 'Nederlandse',
   no = 'Norsk',
   pl = 'Polski',
@@ -39,7 +41,7 @@ export enum Language {
 }
 
 export enum LanguageAlias {
-  zn_CN = 'zh-Hans',
+  zh_CN = 'zh-Hans',
   zh_TW = 'zh-Hant',
 }
 

@@ -200,7 +200,7 @@ watch(inputWrapperRef, () => {
 <template>
   <div>
     <div
-      class="flex flex-row w-full long-text-wrapper"
+      class="flex flex-row w-full long-text-wrapper items-center"
       :class="{
         'min-h-10': rowHeight !== 1 || isExpandedFormOpen,
         'min-h-5.5': rowHeight === 1 && !isExpandedFormOpen,
@@ -242,6 +242,7 @@ watch(inputWrapperRef, () => {
       >
         <LazyCellRichText v-model:value="vModel" sync-value-change read-only />
       </div>
+      <!-- eslint-disable vue/use-v-on-exact -->
       <textarea
         v-else-if="(editEnabled && !isVisible) || isForm"
         :ref="focus"
@@ -259,6 +260,7 @@ watch(inputWrapperRef, () => {
         }"
         :disabled="readOnly"
         @blur="editEnabled = false"
+        @keydown.alt.stop
         @keydown.alt.enter.stop
         @keydown.shift.enter.stop
         @keydown.down.stop
@@ -359,6 +361,7 @@ watch(inputWrapperRef, () => {
             :style="{ resize: 'both' }"
             :disabled="readOnly"
             @keydown.escape="isVisible = false"
+            @keydown.alt.stop
           />
         </div>
 

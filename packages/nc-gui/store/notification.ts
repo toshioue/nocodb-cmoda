@@ -1,9 +1,13 @@
 import { defineStore } from 'pinia'
 import type { NotificationType } from 'nocodb-sdk'
 import axios, { type CancelTokenSource } from 'axios'
-import { CancelToken } from 'axios'
+import { useStorage } from '@vueuse/core'
+
+const CancelToken = axios.CancelToken
 
 export const useNotification = defineStore('notificationStore', () => {
+  const isTokenRefreshInProgress = useStorage(TOKEN_REFRESH_PROGRESS_KEY, false)
+
   const readNotifications = ref<NotificationType[]>([])
 
   const unreadNotifications = ref<NotificationType[]>([])
@@ -24,16 +28,24 @@ export const useNotification = defineStore('notificationStore', () => {
 
   let cancelTokenSource: CancelTokenSource | null
 
+  const pollNotificationsApiCall = async () => {
+    // set up cancel token for polling to cancel when token changes/token is removed
+    cancelTokenSource = CancelToken.source()
+
+    return await api.notification.poll({
+      cancelToken: cancelTokenSource.token,
+    })
+  }
+
+  const sharedExecutionPollNotificationsApiCall = useSharedExecutionFn('notification', pollNotificationsApiCall, {
+    timeout: 30000,
+  })
+
   const pollNotifications = async () => {
     try {
       if (!token.value) return
 
-      // set up cancel token for polling to cancel when token changes/token is removed
-      cancelTokenSource = CancelToken.source()
-
-      const res = await api.notification.poll({
-        cancelToken: cancelTokenSource.token,
-      })
+      const res = await sharedExecutionPollNotificationsApiCall()
 
       if (res.status === 'success') {
         if (notificationTab.value === 'unread') {
@@ -172,13 +184,19 @@ export const useNotification = defineStore('notificationStore', () => {
   })
 
   // function to clear polling and cancel any pending requests
-  const clearPolling = () => {
+  const clearPolling = async () => {
     if (timeOutId) {
       clearTimeout(timeOutId)
       timeOutId = null
     }
-    cancelTokenSource?.cancel()
+    // take a reference of the cancel token source and set the current one to null
+    // so that we can cancel the polling request even if token changes
+    const source = cancelTokenSource
     cancelTokenSource = null
+    // wait if refresh token generation is in progress and cancel the polling after that
+    // set a timeout of 10 seconds to avoid hanging
+    await until(isTokenRefreshInProgress).toMatch((v) => !v, { timeout: 10000 })
+    source?.cancel()
   }
 
   const init = async () => {
@@ -186,7 +204,7 @@ export const useNotification = defineStore('notificationStore', () => {
     // For playwright, polling will cause the test to hang indefinitely
     // as we wait for the networkidle event. So, we disable polling for playwright
     if (!(window as any).isPlaywright) {
-      clearPolling()
+      clearPolling().catch((e) => console.log(e))
       pollNotifications().catch((e) => console.log(e))
     }
   }
@@ -199,7 +217,7 @@ export const useNotification = defineStore('notificationStore', () => {
         if (newToken && newToken !== oldToken) {
           await init()
         } else if (!newToken) {
-          clearPolling()
+          clearPolling().catch((e) => console.log(e))
         }
       } catch (e) {
         console.error(e)

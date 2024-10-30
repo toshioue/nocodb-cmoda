@@ -151,6 +151,11 @@ const isCreateTableAllowed = computed(
 
 useEventListener(document, 'keydown', async (e: KeyboardEvent) => {
   const cmdOrCtrl = isMac() ? e.metaKey : e.ctrlKey
+
+  if (isActiveInputElementExist()) {
+    return
+  }
+
   if (e.altKey && !e.shiftKey && !cmdOrCtrl) {
     switch (e.keyCode) {
       case 84: {
@@ -255,22 +260,6 @@ watch(
     setTimeout(() => {
       scrollTableNode()
     }, 1000)
-  },
-  {
-    immediate: true,
-  },
-)
-
-watch(
-  activeProjectId,
-  () => {
-    const activeProjectDom = document.querySelector(`.nc-treeview [data-base-id="${activeProjectId.value}"]`)
-    if (!activeProjectDom) return
-
-    if (isElementInvisible(activeProjectDom)) {
-      // Scroll to the table node
-      activeProjectDom?.scrollIntoView({ behavior: 'smooth' })
-    }
   },
   {
     immediate: true,
