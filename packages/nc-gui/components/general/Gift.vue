@@ -12,7 +12,8 @@ const isAvailable = computed(() => {
     !isEeUI &&
     user.value?.email &&
     !/^[a-zA-Z0-9._%+-]+@(gmail|yahoo|hotmail|outlook|aol|icloud|qq|163|126|sina|nocodb)(\.com)?$/i.test(user.value?.email) &&
-    (!giftBannerDismissedCount.value || giftBannerDismissedCount.value < 5)
+    (!giftBannerDismissedCount.value || giftBannerDismissedCount.value < 5) &&
+    false
   )
 })
 
@@ -53,7 +54,7 @@ const closeAndShowAgain = () => {
 </script>
 
 <template>
-  <div v-if="isAvailable && !isBannerClosed && appInfo.giftUrl" class="container" @click="open">
+  <div v-if="isAvailable && !isBannerClosed && appInfo.giftUrl && false" class="container" @click="open">
     <div class="wrapper">
       <div class="header">
         <GeneralIcon class="icon" icon="gift" size="xlarge" />
