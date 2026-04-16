@@ -1,6 +1,49 @@
 import { extractLimitAndOffset } from '.';
-import type { PaginatedType } from 'nocodb-sdk';
+import type { NcContext, PaginatedType, PaginatedV3Type } from 'nocodb-sdk';
 import { NcError } from '~/helpers/catchError';
+import { extractProps } from '~/helpers/extractProps';
+
+type SearchParamValue = string | number | boolean | null | undefined;
+type SearchParamsObject = {
+  [key: string]: SearchParamValue | SearchParamValue[];
+};
+
+// handle fields[] in array format
+function objectToSearchParams(obj: SearchParamsObject): URLSearchParams {
+  const params = new URLSearchParams();
+
+  Object.entries(obj).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== null && item !== undefined) {
+          params.append(key, String(item));
+        }
+      });
+    } else if (value !== null && value !== undefined) {
+      params.append(key, String(value));
+    }
+  });
+
+  return params;
+}
+
+// a utility function which accept baseUrl, path and query params and constructs a url
+export function constructUrl({
+  baseUrl,
+  path,
+  query,
+}: {
+  baseUrl: string;
+  path: string;
+  query?: Record<string, any>;
+}) {
+  let url = `${baseUrl}${path}`;
+  if (query) {
+    const queryStr = objectToSearchParams(query).toString();
+    url = `${url}?${queryStr}`;
+  }
+  return url;
+}
 
 export class PagedResponseImpl<T> {
   constructor(
@@ -12,6 +55,7 @@ export class PagedResponseImpl<T> {
       l?: number;
       o?: number;
       limitOverride?: number;
+      page?: number;
     } = {},
     additionalProps?: Record<string, any>,
   ) {
@@ -49,4 +93,92 @@ export class PagedResponseImpl<T> {
   list: Array<T>;
   pageInfo: PaginatedType;
   errors?: any[];
+}
+
+export class PagedResponseV3Impl<T> {
+  next?: string;
+  prev?: string;
+  nestedNext?: string;
+  nestedPrev?: string;
+
+  constructor(
+    pagedResponse: PagedResponseImpl<T>,
+    {
+      context,
+      baseUrl = '',
+      tableId,
+      nestedNextPageAvail,
+      nestedPrevPageAvail,
+      queryParams = {},
+    }: {
+      context: NcContext;
+      baseUrl?: string;
+      tableId: string;
+      nestedNextPageAvail?: boolean;
+      nestedPrevPageAvail?: boolean;
+      queryParams?: Record<string, any>;
+    },
+  ) {
+    this.list = pagedResponse.list;
+    const pageInfo: PaginatedV3Type = {};
+
+    const commonProps = {
+      baseUrl,
+      path: `/api/v3/data/${context.base_id}/${tableId}/records`,
+    };
+
+    const commonQueryParams = extractProps(queryParams || {}, [
+      'sort',
+      'where',
+      'viewId',
+      'pageSize',
+      'fieldIdOnResult',
+      'fields',
+      'nestedPage',
+      'linksAsLtar',
+    ]);
+
+    if (!pagedResponse.pageInfo.isFirstPage && pagedResponse.pageInfo.page) {
+      pageInfo.prev = constructUrl({
+        ...commonProps,
+        query: { ...commonQueryParams, page: pagedResponse.pageInfo.page - 1 },
+      });
+    }
+
+    if (!pagedResponse.pageInfo.isLastPage && pagedResponse.pageInfo.page) {
+      pageInfo.next = constructUrl({
+        ...commonProps,
+        query: { ...commonQueryParams, page: pagedResponse.pageInfo.page + 1 },
+      });
+    }
+
+    const nestedPage = Math.max(+queryParams?.nestedPage, 1);
+
+    if (nestedNextPageAvail) {
+      pageInfo.nestedNext = constructUrl({
+        ...commonProps,
+        query: {
+          ...commonQueryParams,
+          page: pagedResponse.pageInfo.page,
+          nestedPage: nestedPage + 1,
+        },
+      });
+    }
+
+    if (nestedPrevPageAvail) {
+      pageInfo.nestedPrev = constructUrl({
+        ...commonProps,
+        query: {
+          ...commonQueryParams,
+          page: pagedResponse.pageInfo.page,
+          nestedPage: nestedPage - 1,
+        },
+      });
+    }
+
+    this.pageInfo = pageInfo;
+  }
+
+  list: Array<T>;
+  pageInfo: PaginatedV3Type;
 }

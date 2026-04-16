@@ -52,6 +52,40 @@ import * as nc_062_integration_store from '~/meta/migrations/v2/nc_062_integrati
 import * as nc_063_form_field_filter from '~/meta/migrations/v2/nc_063_form_field_filter';
 import * as nc_064_pg_minimal_dbs from '~/meta/migrations/v2/nc_064_pg_minimal_dbs';
 import * as nc_065_encrypt_flag from '~/meta/migrations/v2/nc_065_encrypt_flag';
+import * as nc_066_ai_button from '~/meta/migrations/v2/nc_066_ai_button';
+import * as nc_067_personal_view from '~/meta/migrations/v2/nc_067_personal_view';
+import * as nc_068_user_delete from '~/meta/migrations/v2/nc_068_user_delete';
+import * as nc_069_ai_prompt from '~/meta/migrations/v2/nc_069_ai_prompt';
+import * as nc_070_data_reflection from '~/meta/migrations/v2/nc_070_data_reflection';
+import * as nc_071_add_meta_in_users from '~/meta/migrations/v2/nc_071_add_meta_in_users';
+import * as nc_072_col_button_pk from '~/meta/migrations/v2/nc_072_col_button_pk';
+import * as nc_073_file_reference_indexes from '~/meta/migrations/v2/nc_073_file_reference_indexes';
+import * as nc_074_missing_context_indexes from '~/meta/migrations/v2/nc_074_missing_context_indexes';
+import * as nc_075_audit_refactor from '~/meta/migrations/v2/nc_075_audit_refactor';
+import * as nc_076_sync_configs from '~/meta/migrations/v2/nc_076_sync_configs';
+import * as nc_077_column_index_name from '~/meta/migrations/v2/nc_077_column_index_name';
+import * as nc_078_mcp_tokens from '~/meta/migrations/v2/nc_078_mcp_tokens';
+import * as nc_079_cross_base_link from '~/meta/migrations/v2/nc_079_cross_base_link';
+import * as nc_080_sync_mappings from '~/meta/migrations/v2/nc_080_sync_mappings';
+
+import * as nc_081_audit from '~/meta/migrations/v2/nc_081_audit';
+import * as nc_082_row_color_conditions from '~/meta/migrations/v2/nc_082_row_color_conditions';
+import * as nc_083_permissions from '~/meta/migrations/v2/nc_083_permissions';
+import * as nc_084_hook_trigger_fields from '~/meta/migrations/v2/nc_084_hook_trigger_fields';
+import * as nc_085_base_default_role from '~/meta/migrations/v2/nc_085_base_default_role';
+import * as nc_086_dashboards_widgets from '~/meta/migrations/v2/nc_086_dashboards_widgets';
+import * as nc_087_widget_error from '~/meta/migrations/v2/nc_087_widget_error';
+import * as nc_088_add_sso_client_to_api_tokens from '~/meta/migrations/v2/nc_088_add_sso_client_to_api_tokens';
+import * as nc_089_dashboard_sharing from '~/meta/migrations/v2/nc_089_dashboard_sharing';
+import * as nc_090_add_is_new_user_to_users from '~/meta/migrations/v2/nc_090_add_is_new_user_to_users';
+import * as nc_091_unify_model from '~/meta/migrations/v2/nc_091_unify_model';
+import * as nc_092_composite_pk from '~/meta/migrations/v2/nc_092_composite_pk';
+import * as nc_093_oauth_server from '~/meta/migrations/v2/nc_093_oauth_server';
+import * as nc_094_add_meta_to_filter_exp_v2 from '~/meta/migrations/v2/nc_094_add_meta_to_filter_exp_v2';
+
+import * as nc_096_deprecate_unused from '~/meta/migrations/v2/nc_096_deprecate_unused';
+import * as nc_097_unify_schema from '~/meta/migrations/v2/nc_097_unify_schema';
+import * as nc_098_default_workspace from '~/meta/migrations/v2/nc_098_default_workspace';
 
 // Create a custom migration source class
 export default class XcMigrationSourcev2 {
@@ -115,6 +149,38 @@ export default class XcMigrationSourcev2 {
       'nc_063_form_field_filter',
       'nc_064_pg_minimal_dbs',
       'nc_065_encrypt_flag',
+      'nc_066_ai_button',
+      'nc_067_personal_view',
+      'nc_068_user_delete',
+      'nc_069_ai_prompt',
+      'nc_070_data_reflection',
+      'nc_071_add_meta_in_users',
+      'nc_072_col_button_pk',
+      'nc_073_file_reference_indexes',
+      'nc_074_missing_context_indexes',
+      'nc_075_audit_refactor',
+      'nc_076_sync_configs',
+      'nc_077_column_index_name',
+      'nc_078_mcp_tokens',
+      'nc_079_cross_base_link',
+      'nc_080_sync_mappings',
+      'nc_081_audit',
+      'nc_082_row_color_conditions',
+      'nc_083_permissions',
+      'nc_084_hook_trigger_fields',
+      'nc_085_base_default_role',
+      'nc_086_dashboards_widgets',
+      'nc_087_widget_error',
+      'nc_088_add_sso_client_to_api_tokens',
+      'nc_089_dashboard_sharing',
+      'nc_090_add_is_new_user_to_users',
+      'nc_091_unify_model',
+      'nc_092_composite_pk',
+      'nc_093_oauth_server',
+      'nc_094_add_meta_to_filter_exp_v2',
+      'nc_096_deprecate_unused',
+      'nc_097_unify_schema',
+      'nc_098_default_workspace',
     ]);
   }
 
@@ -232,6 +298,70 @@ export default class XcMigrationSourcev2 {
         return nc_064_pg_minimal_dbs;
       case 'nc_065_encrypt_flag':
         return nc_065_encrypt_flag;
+      case 'nc_066_ai_button':
+        return nc_066_ai_button;
+      case 'nc_067_personal_view':
+        return nc_067_personal_view;
+      case 'nc_068_user_delete':
+        return nc_068_user_delete;
+      case 'nc_069_ai_prompt':
+        return nc_069_ai_prompt;
+      case 'nc_070_data_reflection':
+        return nc_070_data_reflection;
+      case 'nc_071_add_meta_in_users':
+        return nc_071_add_meta_in_users;
+      case 'nc_072_col_button_pk':
+        return nc_072_col_button_pk;
+      case 'nc_073_file_reference_indexes':
+        return nc_073_file_reference_indexes;
+      case 'nc_074_missing_context_indexes':
+        return nc_074_missing_context_indexes;
+      case 'nc_075_audit_refactor':
+        return nc_075_audit_refactor;
+      case 'nc_076_sync_configs':
+        return nc_076_sync_configs;
+      case 'nc_077_column_index_name':
+        return nc_077_column_index_name;
+      case 'nc_078_mcp_tokens':
+        return nc_078_mcp_tokens;
+      case 'nc_079_cross_base_link':
+        return nc_079_cross_base_link;
+      case 'nc_080_sync_mappings':
+        return nc_080_sync_mappings;
+      case 'nc_081_audit':
+        return nc_081_audit;
+      case 'nc_082_row_color_conditions':
+        return nc_082_row_color_conditions;
+      case 'nc_083_permissions':
+        return nc_083_permissions;
+      case 'nc_084_hook_trigger_fields':
+        return nc_084_hook_trigger_fields;
+      case 'nc_085_base_default_role':
+        return nc_085_base_default_role;
+      case 'nc_086_dashboards_widgets':
+        return nc_086_dashboards_widgets;
+      case 'nc_087_widget_error':
+        return nc_087_widget_error;
+      case 'nc_088_add_sso_client_to_api_tokens':
+        return nc_088_add_sso_client_to_api_tokens;
+      case 'nc_089_dashboard_sharing':
+        return nc_089_dashboard_sharing;
+      case 'nc_090_add_is_new_user_to_users':
+        return nc_090_add_is_new_user_to_users;
+      case 'nc_091_unify_model':
+        return nc_091_unify_model;
+      case 'nc_092_composite_pk':
+        return nc_092_composite_pk;
+      case 'nc_093_oauth_server':
+        return nc_093_oauth_server;
+      case 'nc_094_add_meta_to_filter_exp_v2':
+        return nc_094_add_meta_to_filter_exp_v2;
+      case 'nc_096_deprecate_unused':
+        return nc_096_deprecate_unused;
+      case 'nc_097_unify_schema':
+        return nc_097_unify_schema;
+      case 'nc_098_default_workspace':
+        return nc_098_default_workspace;
     }
   }
 }

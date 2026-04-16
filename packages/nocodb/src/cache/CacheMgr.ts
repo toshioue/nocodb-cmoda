@@ -1,8 +1,10 @@
 import debug from 'debug';
 import { Logger } from '@nestjs/common';
+import { getCircularReplacer } from 'nocodb-sdk';
 import type { ChainableCommander } from 'ioredis';
 import type IORedis from 'ioredis';
 import { CacheDelDirection, CacheGetType } from '~/utils/globals';
+import { NC_REDIS_GRACE_TTL, NC_REDIS_TTL } from '~/helpers/redisHelpers';
 
 const log = debug('nc:cache');
 const logger = new Logger('CacheMgr');
@@ -18,27 +20,10 @@ const logger = new Logger('CacheMgr');
   - getRaw returns the whole cache object with metadata
 */
 
-const NC_REDIS_TTL = +process.env.NC_REDIS_TTL || 60 * 60 * 24 * 3; // 3 days
-const NC_REDIS_GRACE_TTL = +process.env.NC_REDIS_GRACE_TTL || 60 * 60 * 24 * 1; // 1 day
-
 export default abstract class CacheMgr {
   client: IORedis;
   prefix: string;
   context: string;
-
-  // avoid circular structure to JSON
-  getCircularReplacer = () => {
-    const seen = new WeakSet();
-    return (_, value) => {
-      if (typeof value === 'object' && value !== null) {
-        if (seen.has(value)) {
-          return;
-        }
-        seen.add(value);
-      }
-      return value;
-    };
-  };
 
   // @ts-ignore
   async del(key: string[] | string): Promise<any> {
@@ -162,7 +147,7 @@ export default abstract class CacheMgr {
       return this.client
         .set(
           key,
-          JSON.stringify(value, this.getCircularReplacer()),
+          JSON.stringify(value, getCircularReplacer()),
           'EX',
           NC_REDIS_TTL,
         )
@@ -233,7 +218,7 @@ export default abstract class CacheMgr {
 
       return this.client.set(
         key,
-        JSON.stringify(value, this.getCircularReplacer()),
+        JSON.stringify(value, getCircularReplacer()),
         'EX',
         seconds,
       );
@@ -265,8 +250,8 @@ export default abstract class CacheMgr {
     // e.g. key = nc:<orgs>:<scope>:<project_id_1>:<source_id_1>:list
     const key =
       subKeys.length === 0
-        ? `${this.prefix}:${scope}:list`
-        : `${this.prefix}:${scope}:${subKeys.join(':')}:list`;
+        ? `${scope}:list`
+        : `${scope}:${subKeys.join(':')}:list`;
     // e.g. arr = ["nc:<orgs>:<scope>:<model_id_1>", "nc:<orgs>:<scope>:<model_id_2>"]
     const arr = (await this.get(key, CacheGetType.TYPE_ARRAY)) || [];
     log(`${this.context}::getList: getting list with key ${key}`);
@@ -390,8 +375,8 @@ export default abstract class CacheMgr {
     // e.g. nc:<orgs>:<scope>:<project_id_1>:<source_id_1>:list
     const listKey =
       subListKeys.length === 0
-        ? `${this.prefix}:${scope}:list`
-        : `${this.prefix}:${scope}:${subListKeys.join(':')}:list`;
+        ? `${scope}:list`
+        : `${scope}:${subListKeys.join(':')}:list`;
     if (!list.length) {
       // Set NONE here so that it won't hit the DB on each page load
       return this.set(listKey, ['NONE']);
@@ -406,11 +391,11 @@ export default abstract class CacheMgr {
 
     for (const o of list) {
       // construct key for Get
-      let getKey = `${this.prefix}:${scope}:${o.id}`;
+      let getKey = `${scope}:${o.id}`;
       if (props.length) {
         const propValues = props.map((p) => o[p]);
         // e.g. nc:<orgs>:<scope>:<prop_value_1>:<prop_value_2>
-        getKey = `${this.prefix}:${scope}:${propValues.join(':')}`;
+        getKey = `${scope}:${propValues.join(':')}`;
       }
       log(`${this.context}::setList: get key ${getKey}`);
       // get key
@@ -494,8 +479,8 @@ export default abstract class CacheMgr {
     // e.g. key = nc:<orgs>:<scope>:<project_id_1>:<source_id_1>:list
     const listKey =
       subListKeys.length === 0
-        ? `${this.prefix}:${scope}:list`
-        : `${this.prefix}:${scope}:${subListKeys.join(':')}:list`;
+        ? `${scope}:list`
+        : `${scope}:${subListKeys.join(':')}:list`;
     log(`${this.context}::appendToList: append key ${key} to ${listKey}`);
     let list = await this.get(listKey, CacheGetType.TYPE_ARRAY);
 
@@ -624,7 +609,7 @@ export default abstract class CacheMgr {
                   o.timestamp = timestamp;
                   pipeline.set(
                     key,
-                    JSON.stringify(o, this.getCircularReplacer()),
+                    JSON.stringify(o, getCircularReplacer()),
                     'EX',
                     NC_REDIS_TTL,
                   );
@@ -655,7 +640,7 @@ export default abstract class CacheMgr {
             rawValue.timestamp = timestamp;
             pipeline.set(
               key,
-              JSON.stringify(rawValue, this.getCircularReplacer()),
+              JSON.stringify(rawValue, getCircularReplacer()),
               'EX',
               NC_REDIS_TTL,
             );
@@ -665,6 +650,126 @@ export default abstract class CacheMgr {
     }
 
     return pipeline;
+  }
+
+  async setHash(
+    key: string,
+    hash: Record<string, any>,
+    options: {
+      ttl?: number;
+    } = {},
+  ) {
+    log(`${this.context}::setHash: setting hash ${key}`);
+    const { ttl } = options;
+    if (ttl) {
+      await this.client.hset(key, hash);
+      await this.client.expire(key, ttl);
+    }
+
+    return this.client.hset(key, hash);
+  }
+
+  async getHash(key: string): Promise<Record<string, string | number> | null> {
+    log(`${this.context}::getHash: getting hash ${key}`);
+    const hash = await this.client.hgetall(key);
+    if (hash && Object.keys(hash).length) {
+      return hash;
+    }
+    return null;
+  }
+
+  async getHashField(key: string, field: string): Promise<string> {
+    log(`${this.context}::getHashField: getting hash ${key} field ${field}`);
+    return await this.client.hget(key, field);
+  }
+
+  async setHashField(key: string, field: string, value: string | number) {
+    log(`${this.context}::setHashField: setting hash ${key} field ${field}`);
+    return await this.client.hset(key, field, value);
+  }
+
+  async incrHashField(
+    key: string,
+    field: string,
+    value: number,
+  ): Promise<number> {
+    log(
+      `${this.context}::incrHashField: incrementing hash ${key} field ${field}`,
+    );
+
+    return new Promise((resolve) => {
+      this.client.hincrby(key, field, value, (err, res) => {
+        if (err) {
+          resolve(0);
+        } else {
+          resolve(+Promise.resolve(res));
+        }
+      });
+    });
+  }
+
+  async delHashField(key: string, field: string): Promise<boolean> {
+    log(`${this.context}::delHashField: deleting hash ${key} field ${field}`);
+    return !!(await this.client.hdel(key, field));
+  }
+
+  async expireHash(key: string, ttl: number): Promise<boolean> {
+    log(`${this.context}::expireHash: setting TTL ${ttl}s on hash ${key}`);
+    return !!(await this.client.expire(key, ttl));
+  }
+
+  async processPattern(
+    pattern: string,
+    callback: (key: string | string[]) => Promise<void>,
+    options: {
+      count?: number;
+      type?: string;
+      batch?: boolean;
+      raw?: boolean;
+    } = {
+      batch: false,
+      raw: false,
+    },
+  ): Promise<void> {
+    log(`${this.context}::processPattern: processing pattern ${pattern}`);
+    const stream = this.client.scanStream({
+      match: pattern,
+      count: options.count || 10,
+      type: options.type,
+    });
+
+    return new Promise((resolve, reject) => {
+      stream.on('data', async (keys: string[]) => {
+        if (options.batch) {
+          await callback(
+            options.raw
+              ? keys
+              : keys.map((k) => k.replace(`${this.prefix}:`, '')),
+          );
+        } else {
+          for (const key of keys) {
+            logger.log(`Processing key: ${key}`);
+            await callback(
+              options.raw ? key : key.replace(`${this.prefix}:`, ''),
+            );
+          }
+        }
+      });
+
+      stream.on('end', () => {
+        resolve();
+      });
+
+      stream.on('error', (err) => {
+        logger.error(`Error processing pattern ${pattern}: ${err}`);
+        reject(err);
+      });
+    });
+  }
+
+  async keyExists(key: string): Promise<boolean> {
+    log(`${this.context}::keyExists: checking if key ${key} exists`);
+    return this.client.exists(key).then((r) => r === 1);
   }
 
   async destroy(): Promise<boolean> {
@@ -695,6 +800,6 @@ export default abstract class CacheMgr {
     if (Object.prototype.hasOwnProperty.call(value, 'toString')) {
       return value;
     }
-    return JSON.stringify(value, this.getCircularReplacer());
+    return JSON.stringify(value, getCircularReplacer());
   }
 }

@@ -1,4 +1,4 @@
-import jsep from 'jsep';
+import { formulaJsep } from 'nocodb-sdk';
 import type FormulaColumn from '~/models/FormulaColumn';
 import type { ButtonColumn } from '~/models';
 
@@ -28,8 +28,12 @@ export default function addFormulaErrorIfMissingColumn({
       fn(pt.right, virtualColumn);
     }
   };
-
-  fn(jsep(formula.formula), formula);
-
+  try {
+    fn(formulaJsep(formula.formula), formula);
+  } catch (e) {
+    // handle any parsing error as well
+    formula.error = e.message;
+    modified = true;
+  }
   return modified;
 }

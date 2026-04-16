@@ -13,6 +13,8 @@ const {
   isMarketVisible,
   extensionPanelSize,
   updateExtension,
+  eventBus,
+  toggleExtensionPanel,
 } = useExtensions()
 
 const { $e } = useNuxtApp()
@@ -58,6 +60,7 @@ const filteredExtensionList = computed(() =>
 )
 
 const toggleMarket = () => {
+  $e('c:extensions:marketplace:open')
   isMarketVisible.value = !isMarketVisible.value
 }
 
@@ -103,6 +106,7 @@ defineExpose({
   onReady: () => {
     isReady.value = true
   },
+  isReady,
 })
 
 watch(isPanelExpanded, (newValue) => {
@@ -119,6 +123,30 @@ onClickOutside(searchExtensionRef, () => {
   }
 
   showSearchBox.value = false
+})
+
+const handleAutoScroll = async (id: string) => {
+  await ncDelay(500)
+
+  await nextTick()
+
+  const extension = document.querySelector(`.nc-extension-list-wrapper .nc-extension-item-${id}`)
+
+  if (extension) {
+    extension.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+}
+
+const extensionEventBusEvent = (event: ExtensionsEvents, payload: any) => {
+  if ([ExtensionsEvents.DUPLICATE, ExtensionsEvents.ADD].includes(event) && payload) {
+    handleAutoScroll(payload)
+  }
+}
+
+eventBus.on(extensionEventBusEvent)
+
+onBeforeUnmount(() => {
+  eventBus.off(extensionEventBusEvent)
 })
 
 onMounted(() => {
@@ -143,19 +171,27 @@ onMounted(() => {
     "
   >
     <Transition name="layout" :duration="150">
-      <div v-if="isPanelExpanded" class="flex flex-col h-full">
+      <div v-show="isPanelExpanded" class="flex flex-col h-full">
         <div
           ref="extensionHeaderRef"
-          class="h-[var(--toolbar-height)] flex items-center gap-3 px-4 py-2 border-b-1 border-gray-200 bg-white"
+          class="h-[var(--toolbar-height)] flex items-center gap-3 px-4 py-2 border-b-1 border-nc-border-gray-medium bg-nc-bg-default"
         >
           <div
-            class="flex items-center gap-3 font-weight-700 text-gray-700 text-base"
+            class="flex"
             :class="{
               'flex-1': !isOpenSearchBox,
             }"
           >
-            <GeneralIcon icon="ncPuzzleSolid" class="h-5 w-5 text-gray-700 opacity-85" />
-            <span v-if="!isOpenSearchBox || width >= 507">{{ $t('general.extensions') }}</span>
+            <NcTooltip :title="$t('title.hideExtensions')" hide-on-click>
+              <div
+                v-e="['c:extension-toggle']"
+                class="flex items-center gap-3 font-weight-700 text-nc-content-gray-subtle text-base cursor-pointer"
+                @click="toggleExtensionPanel"
+              >
+                <GeneralIcon icon="ncPuzzleSolid" class="h-5 w-5 text-nc-content-gray-subtle opacity-85" />
+                <span v-if="!isOpenSearchBox || width >= 507">{{ $t('general.extensions') }}</span>
+              </div>
+            </NcTooltip>
           </div>
           <div
             class="flex justify-end"
@@ -164,7 +200,7 @@ onMounted(() => {
             }"
           >
             <NcButton v-if="!isOpenSearchBox" size="xs" type="text" class="!px-1" @click="handleShowSearchInput">
-              <GeneralIcon icon="search" class="flex-none !text-gray-500" />
+              <GeneralIcon icon="search" class="flex-none !text-nc-content-gray-muted" />
             </NcButton>
             <div v-else class="flex flex-grow items-center justify-end !max-w-[300px]">
               <a-input
@@ -177,7 +213,10 @@ onMounted(() => {
                 @keydown.esc="handleCloseSearchbox"
               >
                 <template #prefix>
-                  <GeneralIcon icon="search" class="mr-2 h-4 w-4 text-gray-500 group-hover:text-black" />
+                  <GeneralIcon
+                    icon="search"
+                    class="mr-2 h-4 w-4 text-nc-content-gray-muted group-hover:text-nc-content-gray-extreme"
+                  />
                 </template>
               </a-input>
             </div>
@@ -190,11 +229,12 @@ onMounted(() => {
           </NcButton>
         </div>
         <template v-if="extensionList.length === 0">
-          <div class="flex items-center flex-col gap-4 w-full nc-scrollbar-md text-center p-4">
-            <GeneralIcon icon="ncPuzzleSolid" class="h-12 w-12 flex-none mt-[120px] text-gray-500 !stroke-transparent" />
-
-            <div class="font-weight-700 text-base">No extensions added</div>
-            <div class="text-sm text-gray-700">Add Extensions from the community extensions marketplace</div>
+          <div class="flex-1 flex items-center justify-center flex-col gap-4 w-full nc-scrollbar-md text-center p-4">
+            <div class="text-base font-bold text-nc-content-gray">Supercharge Your Workflow with Extensions</div>
+            <div class="text-sm text-nc-content-gray-subtle2">
+              Unlock powerful scripts and tools to enhance how you work with your databases. Get started by exploring available
+              extensions.
+            </div>
             <NcButton size="small" @click="toggleMarket">
               <div class="flex items-center gap-1 -ml-3px">
                 <GeneralIcon icon="plus" />
@@ -208,11 +248,14 @@ onMounted(() => {
                 {{ $t('activity.goToDocs') }}
               </div>
             </NcButton>
+
+            <img src="~assets/img/placeholder/extension.png" class="!w-full min-w-[250px] max-w-[432px] flex-none" />
           </div>
         </template>
         <template v-else>
           <Draggable
             :model-value="filteredExtensionList"
+            v-bind="getDraggableAutoScrollOptions({ scrollSensitivity: 100 })"
             draggable=".nc-extension-item"
             item-key="id"
             handle=".nc-extension-drag-handler"
@@ -226,13 +269,13 @@ onMounted(() => {
             @change="onMove($event)"
           >
             <template #item="{ element: ext }">
-              <div class="nc-extension-item w-full">
+              <div class="nc-extension-item w-full" :class="`nc-extension-item-${ext.id}`">
                 <ExtensionsWrapper :extension-id="ext.id" />
               </div>
             </template>
             <template v-if="searchQuery && !filteredExtensionList.length && extensionList.length" #header>
               <div class="w-full h-full flex-1 flex items-center justify-center">
-                <div class="pb-6 text-gray-500 flex flex-col items-center gap-6 text-center">
+                <div class="pb-6 text-nc-content-gray-muted flex flex-col items-center gap-6 text-center">
                   <img
                     src="~assets/img/placeholder/no-search-result-found.png"
                     class="!w-[164px] flex-none"
@@ -265,7 +308,7 @@ onMounted(() => {
 }
 
 .nc-extension-pane {
-  @apply flex flex-col bg-gray-50 rounded-l-xl border-1 border-gray-200 z-30 -mt-1px;
+  @apply flex flex-col bg-nc-bg-gray-extralight rounded-l-xl border-1 border-nc-border-gray-medium z-30 -mt-1px;
 
   box-shadow: 0px 0px 16px 0px rgba(0, 0, 0, 0.16), 0px 8px 8px -4px rgba(0, 0, 0, 0.04);
 }

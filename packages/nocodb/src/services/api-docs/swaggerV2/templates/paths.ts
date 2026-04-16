@@ -12,7 +12,7 @@ import {
   whereParam,
 } from './params';
 import type { SwaggerColumn } from '../getSwaggerColumnMetas';
-import type { SwaggerView } from '~/services/api-docs/swaggerV2/getSwaggerJSONV2';
+import type { SwaggerView } from '~/services/api-docs/shared/swaggerUtils';
 import type { NcContext } from '~/interface/config';
 import { isRelationExist } from '~/services/api-docs/swagger/templates/paths';
 
@@ -408,7 +408,7 @@ function getPaginatedResponseType(type: string) {
           $ref: `#/components/schemas/${type}`,
         },
       },
-      PageInfo: {
+      pageInfo: {
         $ref: `#/components/schemas/Paginated`,
       },
     },

@@ -1,15 +1,25 @@
 import { Readable } from 'stream';
 import papaparse from 'papaparse';
 import debug from 'debug';
-import { isLinksOrLTAR, isVirtualCol, RelationTypes } from 'nocodb-sdk';
-import { Injectable } from '@nestjs/common';
+import {
+  AppEvents,
+  isAIPromptCol,
+  isLinksOrLTAR,
+  isVirtualCol,
+  parseProp,
+  RelationTypes,
+  UITypes,
+} from 'nocodb-sdk';
+import { Injectable, NotImplementedException } from '@nestjs/common';
 import type { Job } from 'bull';
-import type { NcContext } from '~/interface/config';
+import type { NcContext, NcRequest } from '~/interface/config';
 import type {
   DuplicateBaseJobData,
   DuplicateColumnJobData,
   DuplicateModelJobData,
 } from '~/interface/Jobs';
+import type { NocoHrTime } from '~/modules/jobs/helpers';
+import { ColumnWebhookManagerBuilder } from '~/utils/column-webhook-manager';
 import { Base, Column, Model, Source } from '~/models';
 import { BasesService } from '~/services/bases.service';
 import {
@@ -22,25 +32,297 @@ import { JobTypes } from '~/interface/Jobs';
 import { elapsedTime, initTime } from '~/modules/jobs/helpers';
 import { ExportService } from '~/modules/jobs/jobs/export-import/export.service';
 import { ImportService } from '~/modules/jobs/jobs/export-import/import.service';
+import { AppHooksService } from '~/services/app-hooks/app-hooks.service';
+import { TablesService } from '~/services/tables.service';
+import { TelemetryService } from '~/services/telemetry.service';
+import { DuplicateModelUtils } from '~/utils/duplicate-model.utils';
+import { hasTableVisibilityAccess } from '~/helpers/tableHelpers';
 
 @Injectable()
 export class DuplicateProcessor {
-  private readonly debugLog = debug('nc:jobs:duplicate');
+  protected readonly debugLog = debug('nc:jobs:duplicate');
 
   constructor(
-    private readonly exportService: ExportService,
-    private readonly importService: ImportService,
-    private readonly projectsService: BasesService,
-    private readonly bulkDataService: BulkDataAliasService,
-    private readonly columnsService: ColumnsService,
+    protected readonly exportService: ExportService,
+    protected readonly importService: ImportService,
+    protected readonly projectsService: BasesService,
+    protected readonly bulkDataService: BulkDataAliasService,
+    protected readonly columnsService: ColumnsService,
+    protected readonly appHooksService: AppHooksService,
+    protected readonly tablesService: TablesService,
+    protected readonly telemetryService: TelemetryService,
   ) {}
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected async handleDuplicateDifferentWs(params: {
+    sourceBase: Base; // Base to duplicate
+    targetBase: Base; // Base to duplicate to
+    dataSource: Source; // Data source to duplicate from
+    req: NcRequest;
+    context: NcContext; // Context of the base to duplicate
+    targetContext?: NcContext; // Context of the base to duplicate to
+    options: {
+      excludeData?: boolean;
+      excludeHooks?: boolean;
+      excludeViews?: boolean;
+      excludeComments?: boolean;
+      excludeDashboards?: boolean;
+      excludeWorkflows?: boolean;
+    };
+  }) {
+    throw new NotImplementedException();
+  }
+
+  async duplicateBaseJob({
+    sourceBase,
+    targetBase,
+    dataSource,
+    req,
+    context,
+    options,
+    operation,
+    targetContext: _targetContext,
+  }: {
+    sourceBase: Base; // Base to duplicate
+    targetBase: Base; // Base to duplicate to
+    dataSource: Source; // Data source to duplicate from
+    req: NcRequest;
+    context: NcContext; // Context of the base to duplicate
+    targetContext?: NcContext; // Context of the base to duplicate to
+    options: {
+      excludeData?: boolean;
+      excludeHooks?: boolean;
+      excludeViews?: boolean;
+      excludeComments?: boolean;
+      excludeUsers?: boolean;
+      excludeScripts?: boolean;
+      excludeDashboards?: boolean;
+      excludeWorkflows?: boolean;
+    };
+    operation: JobTypes;
+  }) {
+    const hrTime = initTime();
+
+    const targetContext = _targetContext ?? {
+      workspace_id: targetBase.fk_workspace_id,
+      base_id: targetBase.id,
+    };
+
+    try {
+      if (
+        [JobTypes.DuplicateBase, JobTypes.RestoreSnapshot].includes(
+          operation,
+        ) &&
+        targetContext.workspace_id !== sourceBase.fk_workspace_id
+      ) {
+        await this.handleDuplicateDifferentWs({
+          sourceBase,
+          targetBase,
+          dataSource,
+          req,
+          context,
+          targetContext,
+          options,
+        });
+      }
+
+      if (!sourceBase || !targetBase || !dataSource) {
+        throw new Error(`Base or source not found!`);
+      }
+
+      const user = (req as any).user;
+
+      const filteredModels = (await dataSource.getModels(context)).filter(
+        (m) => m.source_id === dataSource.id && !m.mm && m.type === 'table',
+      );
+
+      const models: Model[] = [];
+      for (const model of filteredModels) {
+        if (await hasTableVisibilityAccess(context, model.id, user)) {
+          models.push(model);
+        }
+      }
+
+      const { serializedModels: exportedModels, idMap: exportModelMap } =
+        await this.exportService.serializeModels(context, {
+          modelIds: models.map((m) => m.id),
+          ...options,
+        });
+
+      elapsedTime(
+        hrTime,
+        `serialize models schema for ${dataSource.base_id}::${dataSource.id}`,
+        operation,
+      );
+
+      let exportedScripts = null;
+      if (!options?.excludeScripts) {
+        exportedScripts = await this.exportService.serializeScripts(context);
+
+        elapsedTime(
+          hrTime,
+          `serialize scripts schema for ${dataSource.base_id}`,
+          operation,
+        );
+      }
+
+      let exportedWorkflows = null;
+
+      if (!options.excludeWorkflows) {
+        exportedWorkflows = await this.exportService.serializeWorkflows(
+          context,
+          {
+            idMap: exportModelMap,
+          },
+          req,
+        );
+
+        elapsedTime(
+          hrTime,
+          `serialize workflows schema for ${dataSource.base_id}`,
+          operation,
+        );
+      }
+
+      let exportedDashboards = null;
+
+      if (!options.excludeDashboards) {
+        exportedDashboards = await this.exportService.serializeDashboards(
+          context,
+          {
+            idMap: exportModelMap,
+          },
+          req,
+        );
+
+        elapsedTime(
+          hrTime,
+          `serialize dashboards schema for ${dataSource.base_id}`,
+          operation,
+        );
+      }
+
+      if (!exportedModels) {
+        throw new Error(`Export failed for source '${dataSource.id}'`);
+      }
+
+      await targetBase.getSources();
+
+      const targetBaseSource = targetBase.sources[0];
+
+      let idMap = await this.importService.importModels(targetContext, {
+        user,
+        baseId: targetBase.id,
+        sourceId: targetBaseSource.id,
+        data: exportedModels,
+        req: req,
+        isDuplicateOperation: true,
+      });
+
+      if (exportedScripts) {
+        await this.importService.importScripts(targetContext, {
+          user,
+          baseId: targetBase.id,
+          data: exportedScripts,
+          req: req,
+        });
+      }
+
+      if (exportedDashboards?.length) {
+        idMap = await this.importService.importDashboards(targetContext, {
+          user,
+          baseId: targetBase.id,
+          data: exportedDashboards,
+          req,
+          idMap,
+        });
+      }
+
+      if (exportedWorkflows?.length) {
+        idMap = await this.importService.importWorkflows(targetContext, {
+          user,
+          baseId: targetBase.id,
+          data: exportedWorkflows,
+          req,
+          idMap,
+        });
+      }
+
+      elapsedTime(hrTime, `import models schema`, operation);
+
+      if (!idMap) {
+        throw new Error(`Import failed for source '${dataSource.id}'`);
+      }
+
+      if (!options?.excludeData) {
+        await this.importModelsData(targetContext, context, {
+          idMap,
+          sourceProject: sourceBase,
+          sourceModels: models,
+          destProject: targetBase,
+          destBase: targetBaseSource,
+          options,
+          hrTime,
+          req,
+        });
+      }
+
+      await this.projectsService.baseUpdate(targetContext, {
+        baseId: targetBase.id,
+        base: {
+          status: null,
+        },
+        user: req.user,
+        req,
+      });
+      this.appHooksService.emit(AppEvents.BASE_DUPLICATE_COMPLETE, {
+        sourceBase,
+        destBase: targetBase,
+        user: req.user,
+        req,
+        context: targetContext,
+      });
+    } catch (err) {
+      if (targetBase?.id) {
+        await this.projectsService.baseSoftDelete(targetContext, {
+          baseId: targetBase.id,
+          user: req.user,
+          req,
+        });
+      }
+
+      this.appHooksService.emit(AppEvents.BASE_DUPLICATE_FAIL, {
+        sourceBase,
+        destBase: targetBase,
+        user: req.user,
+        req,
+        context: targetContext,
+        error: err.message,
+      });
+
+      await this.telemetryService.sendSystemEvent({
+        event_type: 'priority_error',
+        error_trigger: 'duplicateBase',
+        error_type: err?.name,
+        message: err?.message,
+        error_details: err?.stack,
+        affected_resources: [
+          req?.user?.email,
+          req?.user?.id,
+          context.base_id,
+          context.workspace_id,
+        ],
+      });
+
+      throw err;
+    }
+  }
 
   async duplicateBase(job: Job<DuplicateBaseJobData>) {
     this.debugLog(`job started for ${job.id} (${JobTypes.DuplicateBase})`);
 
-    const hrTime = initTime();
-
-    const { context, sourceId, dupProjectId, req, options } = job.data;
+    const { context, sourceId, dupWorkspaceId, dupProjectId, req, options } =
+      job.data;
 
     const baseId = context.base_id;
 
@@ -52,95 +334,40 @@ export class DuplicateProcessor {
     const excludeData = options?.excludeData || false;
     const excludeHooks = options?.excludeHooks || false;
     const excludeViews = options?.excludeViews || false;
+    const excludeComments = options?.excludeComments || excludeData || false;
+    const excludeUsers = options?.excludeUsers || false;
+    const excludeScripts = options?.excludeScripts || false;
+    const excludeDashboards = options?.excludeDashboards || false;
+    const excludeWorkflows = options?.excludeWorkflows || false;
 
     const base = await Base.get(context, baseId);
-    const dupProject = await Base.get(context, dupProjectId);
+    const dupProject = await Base.get(
+      {
+        workspace_id: dupWorkspaceId,
+        base_id: null,
+      },
+      dupProjectId,
+    );
     const source = await Source.get(context, sourceId);
 
-    const targetContext = {
-      workspace_id: dupProject.fk_workspace_id,
-      base_id: dupProject.id,
-    };
-
-    try {
-      if (!base || !dupProject || !source) {
-        throw new Error(`Base or source not found!`);
-      }
-
-      const user = (req as any).user;
-
-      const models = (await source.getModels(context)).filter(
-        // TODO revert this when issue with cache is fixed
-        (m) => m.source_id === source.id && !m.mm && m.type === 'table',
-      );
-
-      const exportedModels = await this.exportService.serializeModels(context, {
-        modelIds: models.map((m) => m.id),
-        excludeViews,
-        excludeHooks,
+    await this.duplicateBaseJob({
+      sourceBase: base,
+      targetBase: dupProject,
+      dataSource: source,
+      req,
+      context,
+      options: {
         excludeData,
-      });
-
-      elapsedTime(
-        hrTime,
-        `serialize models schema for ${source.base_id}::${source.id}`,
-        'duplicateBase',
-      );
-
-      if (!exportedModels) {
-        throw new Error(`Export failed for source '${source.id}'`);
-      }
-
-      await dupProject.getSources();
-
-      const dupBase = dupProject.sources[0];
-
-      const idMap = await this.importService.importModels(targetContext, {
-        user,
-        baseId: dupProject.id,
-        sourceId: dupBase.id,
-        data: exportedModels,
-        req: req,
-      });
-
-      elapsedTime(hrTime, `import models schema`, 'duplicateBase');
-
-      if (!idMap) {
-        throw new Error(`Import failed for source '${source.id}'`);
-      }
-
-      if (!excludeData) {
-        await this.importModelsData(targetContext, context, {
-          idMap,
-          sourceProject: base,
-          sourceModels: models,
-          destProject: dupProject,
-          destBase: dupBase,
-          hrTime,
-          req,
-        });
-      }
-
-      await this.projectsService.baseUpdate(targetContext, {
-        baseId: dupProject.id,
-        base: {
-          status: null,
-        },
-        user: req.user,
-        req,
-      });
-    } catch (e) {
-      if (dupProject?.id) {
-        await this.projectsService.baseSoftDelete(targetContext, {
-          baseId: dupProject.id,
-          user: req.user,
-          req,
-        });
-      }
-      throw e;
-    }
-
-    this.debugLog(`job completed for ${job.id} (${JobTypes.DuplicateBase})`);
+        excludeHooks,
+        excludeViews,
+        excludeComments,
+        excludeUsers,
+        excludeScripts,
+        excludeDashboards,
+        excludeWorkflows,
+      },
+      operation: JobTypes.DuplicateBase,
+    });
 
     return { id: dupProject.id };
   }
@@ -150,13 +377,24 @@ export class DuplicateProcessor {
 
     const hrTime = initTime();
 
-    const { context, sourceId, modelId, title, req, options } = job.data;
+    const {
+      context,
+      sourceId,
+      targetSourceId: _targetSourceId,
+      modelId,
+      title,
+      req,
+      options,
+    } = job.data;
+    const { context: targetContext, isDifferent: _isTargetContextDifferent } =
+      await DuplicateModelUtils._.getTargetContext(context, options);
 
     const baseId = context.base_id;
 
     const excludeData = options?.excludeData || false;
     const excludeHooks = options?.excludeHooks || false;
     const excludeViews = options?.excludeViews || false;
+    const excludeComments = options?.excludeComments || excludeData || false;
 
     const base = await Base.get(context, baseId);
     const source = await Source.get(context, sourceId);
@@ -168,97 +406,170 @@ export class DuplicateProcessor {
     );
 
     const sourceModel = models.find((m) => m.id === modelId);
+    const createdModels: string[] = [];
 
-    await sourceModel.getColumns(context);
+    // TODO: replace this with the one that's generated by table webhook manager
+    // currently this one is to prevent webhook to trigger when duplicate mode
+    // The modelId here should be of the target model, We are keeping it like this, as the event is not emitted here.
+    const columnWebhookManager = (
+      await new ColumnWebhookManagerBuilder(targetContext).withModelId(modelId)
+    ).forCreate();
+    try {
+      await sourceModel.getColumns(context);
 
-    const relatedModelIds = sourceModel.columns
-      .filter((col) => isLinksOrLTAR(col))
-      .map((col) => col.colOptions.fk_related_model_id)
-      .filter((id) => id);
+      const relatedModelIds = sourceModel.columns
+        .filter((col) => isLinksOrLTAR(col))
+        .map((col) => col.colOptions.fk_related_model_id)
+        .filter((id) => id)
+        .concat(
+          // concat with mm models where it's custom
+          sourceModel.columns
+            .filter(
+              (col) =>
+                isLinksOrLTAR(col) &&
+                col.colOptions.type === 'mm' &&
+                parseProp(col.meta).custom,
+            )
+            .map((col) => col.colOptions.fk_mm_model_id)
+            .filter((id) => id),
+        );
 
-    const relatedModels = models.filter((m) => relatedModelIds.includes(m.id));
+      const relatedModels = models.filter((m) =>
+        relatedModelIds.includes(m.id),
+      );
 
-    const exportedModel = (
-      await this.exportService.serializeModels(context, {
-        modelIds: [modelId],
-        excludeViews,
-        excludeHooks,
-        excludeData,
-      })
-    )[0];
+      const exportedModel = (
+        await this.exportService.serializeModels(context, {
+          modelIds: [modelId],
+          excludeViews,
+          excludeHooks,
+          excludeData,
+          excludeComments,
+        })
+      ).serializedModels[0];
 
-    elapsedTime(
-      hrTime,
-      `serialize model schema for ${modelId}`,
-      'duplicateModel',
-    );
+      elapsedTime(
+        hrTime,
+        `serialize model schema for ${modelId}`,
+        'duplicateModel',
+      );
 
-    if (!exportedModel) {
-      throw new Error(`Export failed for source '${source.id}'`);
-    }
+      if (!exportedModel) {
+        throw new Error(`Export failed for source '${source.id}'`);
+      }
 
-    exportedModel.model.title = title;
-    exportedModel.model.table_name = title.toLowerCase().replace(/ /g, '_');
+      exportedModel.model.title = title;
+      exportedModel.model.table_name = title.toLowerCase().replace(/ /g, '_');
 
-    const idMap = await this.importService.importModels(context, {
-      baseId,
-      sourceId,
-      data: [exportedModel],
-      user,
-      req,
-      externalModels: relatedModels,
-    });
+      const idMap = await this.importService.importModels(context, {
+        baseId,
+        targetContext,
+        sourceId,
+        data: [exportedModel],
+        user,
+        req,
+        externalModels: relatedModels,
+        columnWebhookManager,
+        isDuplicateOperation: true,
+      });
 
-    elapsedTime(hrTime, 'import model schema', 'duplicateModel');
+      elapsedTime(hrTime, 'import model schema', 'duplicateModel');
 
-    if (!idMap) {
-      throw new Error(`Import failed for model '${modelId}'`);
-    }
+      if (!idMap) {
+        throw new Error(`Import failed for model '${modelId}'`);
+      }
 
-    if (!excludeData) {
-      const fields: Record<string, string[]> = {};
+      createdModels.push(findWithIdentifier(idMap, sourceModel.id));
 
-      for (const md of relatedModels) {
-        const bts = md.columns
-          .filter(
-            (c) =>
-              isLinksOrLTAR(c) &&
-              (c.colOptions.type === RelationTypes.BELONGS_TO ||
-                (c.colOptions.type === RelationTypes.ONE_TO_ONE &&
-                  c.meta?.bt)) &&
-              c.colOptions.fk_related_model_id === sourceModel.id,
-          )
-          .map((c) => c.id);
+      if (!excludeData) {
+        const fields: Record<string, string[]> = {};
 
-        if (bts.length > 0) {
-          fields[md.id] = fields[md.id] ? fields[md.id] : [md.primaryKey.id];
-          fields[md.id].push(...bts);
+        for (const md of relatedModels) {
+          const bts = md.columns
+            .filter(
+              (c) =>
+                isLinksOrLTAR(c) &&
+                (c.colOptions.type === RelationTypes.BELONGS_TO ||
+                  (c.colOptions.type === RelationTypes.ONE_TO_ONE &&
+                    c.meta?.bt)) &&
+                c.colOptions.fk_related_model_id === sourceModel.id,
+            )
+            .map((c) => c.id);
+
+          if (bts.length > 0) {
+            fields[md.id] = fields[md.id] ? fields[md.id] : [md.primaryKey.id];
+            fields[md.id].push(...bts);
+          }
+        }
+
+        await this.importModelsData(targetContext, context, {
+          idMap,
+          sourceProject: base,
+          sourceModels: [sourceModel],
+          destProject: await Base.get(targetContext, targetContext.base_id),
+          destBase: source,
+          hrTime,
+          modelFieldIds: fields,
+          externalModels: relatedModels,
+          req,
+        });
+
+        elapsedTime(hrTime, 'import model data', 'duplicateModel');
+      }
+
+      this.debugLog(`job completed for ${job.id} (${JobTypes.DuplicateModel})`);
+
+      const res = { id: findWithIdentifier(idMap, sourceModel.id) };
+
+      this.appHooksService.emit(AppEvents.TABLE_DUPLICATE_COMPLETE, {
+        sourceTable: sourceModel,
+        destTable: await Model.get(context, res.id),
+        user: req.user,
+        req,
+        context,
+      });
+
+      return res;
+    } catch (e) {
+      this.appHooksService.emit(AppEvents.TABLE_DUPLICATE_FAIL, {
+        sourceTable: sourceModel,
+        user: req.user,
+        req,
+        context,
+        error: e.message,
+      });
+
+      if (createdModels.length > 0) {
+        for (const modelId of createdModels) {
+          await this.tablesService.tableDelete(context, {
+            tableId: modelId,
+            user: req.user,
+            forceDeleteRelations: true,
+            req,
+          });
         }
       }
 
-      await this.importModelsData(context, context, {
-        idMap,
-        sourceProject: base,
-        sourceModels: [sourceModel],
-        destProject: base,
-        destBase: source,
-        hrTime,
-        modelFieldIds: fields,
-        externalModels: relatedModels,
-        req,
+      await this.telemetryService.sendSystemEvent({
+        event_type: 'priority_error',
+        error_trigger: 'duplicateModel',
+        error_type: e?.name,
+        message: e?.message,
+        error_details: e?.stack,
+        affected_resources: [
+          req?.user?.email,
+          req?.user?.id,
+          context.base_id,
+          context.workspace_id,
+        ],
       });
 
-      elapsedTime(hrTime, 'import model data', 'duplicateModel');
+      throw e;
     }
-
-    this.debugLog(`job completed for ${job.id} (${JobTypes.DuplicateModel})`);
-
-    return { id: findWithIdentifier(idMap, sourceModel.id) };
   }
 
   async duplicateColumn(job: Job<DuplicateColumnJobData>) {
     this.debugLog(`job started for ${job.id} (${JobTypes.DuplicateColumn})`);
-
     const hrTime = initTime();
 
     const { context, sourceId, columnId, extra, req, options } = job.data;
@@ -304,8 +615,9 @@ export class DuplicateProcessor {
         excludeData,
         excludeHooks: true,
         excludeViews: true,
+        excludeRowColorConditions: true,
       })
-    )[0];
+    ).serializedModels[0];
 
     elapsedTime(
       hrTime,
@@ -321,96 +633,281 @@ export class DuplicateProcessor {
       c.id.includes(columnId),
     );
 
-    // save old default value
-    const oldCdf = replacedColumn.cdf;
+    const columnWebhookManager = (
+      await new ColumnWebhookManagerBuilder(context).withModelId(
+        sourceColumn.fk_model_id,
+      )
+    ).forCreate();
+    try {
+      // save old default value
+      const oldCdf = replacedColumn.cdf;
+      const oldRequired = replacedColumn.rqd;
+      const isUUIDColumn = replacedColumn.uidt === UITypes.UUID;
 
-    replacedColumn.title = title;
-    replacedColumn.column_name = title.toLowerCase().replace(/ /g, '_');
+      replacedColumn.title = title;
+      replacedColumn.column_name = title.toLowerCase().replace(/ /g, '_');
 
-    // remove default value to avoid filling existing empty rows
-    replacedColumn.cdf = null;
-
-    Object.assign(replacedColumn, extra);
-
-    const idMap = await this.importService.importModels(context, {
-      baseId,
-      sourceId: source.id,
-      data: [exportedModel],
-      user,
-      req,
-      externalModels: relatedModels,
-      existingModel: sourceModel,
-      importColumnIds: [columnId],
-    });
-
-    elapsedTime(hrTime, 'import model schema', 'duplicateColumn');
-
-    if (!idMap) {
-      throw new Error(`Import failed for model '${sourceModel.id}'`);
-    }
-
-    if (!excludeData) {
-      const fields: Record<string, string[]> = {};
-
-      fields[sourceModel.id] = [sourceModel.primaryKey.id];
-      fields[sourceModel.id].push(columnId);
-
-      for (const md of relatedModels) {
-        const bts = md.columns
-          .filter(
-            (c) =>
-              isLinksOrLTAR(c) &&
-              (c.colOptions.type === RelationTypes.BELONGS_TO ||
-                (c.colOptions.type === RelationTypes.ONE_TO_ONE &&
-                  c.meta?.bt)) &&
-              c.colOptions.fk_related_model_id === sourceModel.id,
-          )
-          .map((c) => c.id);
-
-        if (bts.length > 0) {
-          fields[md.id] = fields[md.id] ? fields[md.id] : [md.primaryKey.id];
-          fields[md.id].push(...bts);
-        }
+      // remove default value to avoid filling existing empty rows
+      // Exception: UUID columns need their cdf (gen_random_uuid()) to function
+      if (!isUUIDColumn) {
+        replacedColumn.cdf = null;
       }
 
-      await this.importModelsData(context, context, {
-        idMap,
-        sourceProject: base,
-        sourceModels: [],
-        destProject: base,
-        destBase: source,
-        hrTime,
-        modelFieldIds: fields,
-        externalModels: [
-          sourceModel,
-          ...relatedModels.filter((m) => m.id !== sourceModel.id),
-        ],
+      // remove required to avoid filling existing empty rows
+      if (oldRequired) {
+        replacedColumn.rqd = false;
+      }
+
+      Object.assign(replacedColumn, extra);
+
+      const idMap = await this.importService.importModels(context, {
+        baseId,
+        sourceId: source.id,
+        data: [exportedModel],
+        user,
+        req,
+        externalModels: relatedModels,
+        existingModel: sourceModel,
+        importColumnIds: [columnId],
+        columnWebhookManager,
+      });
+
+      elapsedTime(hrTime, 'import model schema', 'duplicateColumn');
+
+      if (!idMap) {
+        throw new Error(`Import failed for model '${sourceModel.id}'`);
+      }
+
+      if (
+        !excludeData &&
+        // ignore data if replaced column is derivative types or auto-generated types like UUID
+        ![
+          UITypes.Button,
+          UITypes.Formula,
+          UITypes.Barcode,
+          UITypes.QrCode,
+          UITypes.Rollup,
+          UITypes.Lookup,
+          UITypes.UUID,
+        ].includes(replacedColumn.uidt)
+      ) {
+        const fields: Record<string, string[]> = {};
+
+        fields[sourceModel.id] = [sourceModel.primaryKey.id];
+        fields[sourceModel.id].push(columnId);
+
+        for (const md of relatedModels) {
+          const bts = md.columns
+            .filter(
+              (c) =>
+                isLinksOrLTAR(c) &&
+                (c.colOptions.type === RelationTypes.BELONGS_TO ||
+                  (c.colOptions.type === RelationTypes.ONE_TO_ONE &&
+                    c.meta?.bt)) &&
+                c.colOptions.fk_related_model_id === sourceModel.id,
+            )
+            .map((c) => c.id);
+
+          if (bts.length > 0) {
+            fields[md.id] = fields[md.id] ? fields[md.id] : [md.primaryKey.id];
+            fields[md.id].push(...bts);
+          }
+        }
+        await this.importModelsData(context, context, {
+          idMap,
+          sourceProject: base,
+          sourceModels: [],
+          destProject: base,
+          destBase: source,
+          hrTime,
+          modelFieldIds: fields,
+          externalModels: [
+            sourceModel,
+            ...relatedModels.filter((m) => m.id !== sourceModel.id),
+          ],
+          req,
+        });
+
+        elapsedTime(hrTime, 'import model data', 'duplicateColumn');
+      }
+
+      const destColumn = await Column.get(context, {
+        source_id: base.id,
+        colId: findWithIdentifier(idMap, sourceColumn.id),
+      });
+
+      // update cdf and rqd
+      // Skip for UUID columns since their cdf was preserved during import
+      if (
+        !isVirtualCol(destColumn) &&
+        !isAIPromptCol(destColumn) &&
+        destColumn.uidt !== UITypes.UUID
+      ) {
+        await this.columnsService.columnUpdate(context, {
+          columnId: findWithIdentifier(idMap, sourceColumn.id),
+          column: {
+            ...destColumn,
+            cdf: oldCdf,
+            ...(oldRequired ? { rqd: oldRequired } : {}),
+          },
+          user: req.user,
+          req,
+          columnWebhookManager,
+        });
+      }
+
+      this.debugLog(
+        `job completed for ${job.id} (${JobTypes.DuplicateColumn})`,
+      );
+
+      const res = { id: findWithIdentifier(idMap, sourceColumn.id) };
+      this.appHooksService.emit(AppEvents.COLUMN_DUPLICATE_COMPLETE, {
+        table: sourceModel,
+        sourceColumn,
+        destColumn: await Column.get(context, {
+          colId: res.id,
+        }),
+        user: req.user,
+        req,
+        context,
+      });
+
+      await columnWebhookManager.emit();
+      return res;
+    } catch (e) {
+      this.appHooksService.emit(AppEvents.COLUMN_DUPLICATE_FAIL, {
+        table: sourceModel,
+        sourceColumn,
+        user: req.user,
+        req,
+        context,
+        error: e.message,
+      });
+      throw e;
+    }
+  }
+
+  async importModelsDataWithSameId(
+    targetContext: NcContext,
+    sourceContext: NcContext,
+    param: {
+      sourceProject: Base;
+      sourceModels: Model[];
+      destProject: Base;
+      destBase: Source;
+      hrTime: NocoHrTime;
+      options?: {
+        excludeData?: boolean;
+        excludeViews?: boolean;
+        excludeHooks?: boolean;
+        excludeComments?: boolean;
+        excludeUsers?: boolean;
+      };
+      req: any;
+    },
+  ) {
+    const {
+      sourceProject,
+      sourceModels,
+      destProject,
+      destBase,
+      hrTime,
+      options,
+      req,
+    } = param;
+
+    let handledLinks = [];
+    let error = null;
+
+    // For same-ID duplication, we need to handle the :: notation properly
+    // CSV headers use format: ${base_id}::${source_id}::${model_id}::${column_id}
+    // We need to map these hierarchical IDs to the target column IDs (which are the same)
+    const identityIdMap = new Map<string, string>();
+
+    // Get the source from the source project to build correct hierarchical IDs
+    const sourceBase = await sourceProject.getSources();
+    const sourceSource = sourceBase?.[0];
+
+    if (!sourceSource) {
+      throw new Error('Source not found in source project');
+    }
+
+    // Build identity map for all models and columns with hierarchical notation
+    for (const sourceModel of sourceModels) {
+      await sourceModel.getColumns(sourceContext);
+
+      // Map model ID with hierarchical notation
+      const sourceModelHierarchicalId = `${sourceProject.id}::${sourceSource.id}::${sourceModel.id}`;
+      identityIdMap.set(sourceModelHierarchicalId, sourceModel.id);
+      identityIdMap.set(sourceModel.id, sourceModel.id);
+
+      for (const col of sourceModel.columns) {
+        // Map column ID with hierarchical notation from source to target
+        const sourceColHierarchicalId = `${sourceProject.id}::${sourceSource.id}::${sourceModel.id}::${col.id}`;
+        identityIdMap.set(sourceColHierarchicalId, col.id);
+        identityIdMap.set(col.id, col.id);
+      }
+    }
+
+    // Import data for each source model
+    for (const sourceModel of sourceModels) {
+      if (error) break;
+
+      const dataStream = new Readable({
+        read() {},
+      });
+
+      const linkStream = new Readable({
+        read() {},
+      });
+
+      this.exportService
+        .streamModelDataAsCsv(sourceContext, {
+          dataStream,
+          linkStream,
+          baseId: sourceProject.id,
+          modelId: sourceModel.id,
+          handledMmList: handledLinks,
+          excludeUsers: options?.excludeUsers,
+        })
+        .catch((e) => {
+          this.debugLog(e);
+          dataStream.push(null);
+          linkStream.push(null);
+          error = e;
+        });
+
+      // For same-ID duplication, the target model has the same ID as source model
+      const model = await Model.get(targetContext, sourceModel.id);
+
+      await this.importService.importDataFromCsvStream(targetContext, {
+        idMap: identityIdMap,
+        dataStream,
+        destProject,
+        destBase,
+        destModel: model,
         req,
       });
 
-      elapsedTime(hrTime, 'import model data', 'duplicateColumn');
-    }
-
-    const destColumn = await Column.get(context, {
-      source_id: base.id,
-      colId: findWithIdentifier(idMap, sourceColumn.id),
-    });
-
-    // update cdf
-    if (!isVirtualCol(destColumn)) {
-      await this.columnsService.columnUpdate(context, {
-        columnId: findWithIdentifier(idMap, sourceColumn.id),
-        column: {
-          ...destColumn,
-          cdf: oldCdf,
+      handledLinks = await this.importService.importLinkFromCsvStream(
+        targetContext,
+        {
+          idMap: identityIdMap,
+          linkStream,
+          destProject,
+          destBase,
+          handledLinks,
         },
-        user: req.user,
-      });
+      );
+
+      elapsedTime(
+        hrTime,
+        `import data and links for ${model.title}`,
+        'importModelsDataWithSameId',
+      );
     }
 
-    this.debugLog(`job completed for ${job.id} (${JobTypes.DuplicateColumn})`);
-
-    return { id: findWithIdentifier(idMap, sourceColumn.id) };
+    if (error) throw error;
   }
 
   async importModelsData(
@@ -422,9 +919,16 @@ export class DuplicateProcessor {
       sourceModels: Model[];
       destProject: Base;
       destBase: Source;
-      hrTime: { hrTime: [number, number] };
+      hrTime: NocoHrTime;
       modelFieldIds?: Record<string, string[]>;
       externalModels?: Model[];
+      options?: {
+        excludeData?: boolean;
+        excludeViews?: boolean;
+        excludeHooks?: boolean;
+        excludeComments?: boolean;
+        excludeUsers?: boolean;
+      };
       req: any;
     },
   ) {
@@ -437,8 +941,11 @@ export class DuplicateProcessor {
       hrTime,
       modelFieldIds,
       externalModels,
+      options,
       req,
     } = param;
+
+    // TODO: [duplicate column optimization] - maybe can only get data related with duplicated column id
 
     let handledLinks = [];
 
@@ -462,6 +969,7 @@ export class DuplicateProcessor {
           baseId: sourceProject.id,
           modelId: sourceModel.id,
           handledMmList: handledLinks,
+          excludeUsers: options?.excludeUsers,
         })
         .catch((e) => {
           this.debugLog(e);
@@ -522,14 +1030,17 @@ export class DuplicateProcessor {
         let error = null;
 
         this.exportService
-          .streamModelDataAsCsv(targetContext, {
-            dataStream,
-            linkStream,
-            baseId: sourceProject.id,
-            modelId: sourceModel.id,
-            handledMmList: handledLinks,
-            _fieldIds: fields,
-          })
+          .streamModelDataAsCsv(
+            { ...sourceContext, base_id: sourceModel.base_id },
+            {
+              dataStream,
+              linkStream,
+              baseId: sourceProject.id,
+              modelId: sourceModel.id,
+              handledMmList: handledLinks,
+              _fieldIds: fields,
+            },
+          )
           .catch((e) => {
             this.debugLog(e);
             dataStream.push(null);
@@ -590,7 +1101,11 @@ export class DuplicateProcessor {
                   for (let i = 0; i < headers.length; i++) {
                     if (headers[i]) {
                       if (results.data[i] !== '') {
-                        row[headers[i]] = results.data[i];
+                        if (results.data[i] === '__nc_empty_string__') {
+                          row[headers[i]] = '';
+                        } else {
+                          row[headers[i]] = results.data[i];
+                        }
                       }
                     }
                   }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { UITypes } from 'nocodb-sdk'
+import { ColumnHelper, UITypes } from 'nocodb-sdk'
 
 const props = defineProps<{
   value: any
@@ -24,7 +24,7 @@ setAdditionalValidations({
 
 // set default value
 vModel.value.meta = {
-  ...columnDefaultMeta[UITypes.User],
+  ...ColumnHelper.getColumnDefaultMeta(UITypes.User),
   ...(vModel.value.meta || {}),
 }
 
@@ -46,14 +46,14 @@ const updateIsMulti = (isChecked: boolean) => {
     <a-form-item>
       <div v-if="vModel.meta" class="flex items-center gap-1">
         <NcSwitch :checked="vModel.meta.is_multi" data-testid="user-column-allow-multiple" @change="updateIsMulti">
-          <div class="text-sm text-gray-800 select-none">Allow adding multiple users</div>
+          <div class="text-sm text-nc-content-gray select-none">Allow adding multiple users</div>
         </NcSwitch>
       </div>
     </a-form-item>
     <a-form-item v-if="future">
       <div v-if="vModel.meta" class="flex items-center gap-1">
         <NcSwitch v-model:checked="vModel.meta.notify" data-testid="user-column-notify-user">
-          <div class="text-sm text-gray-800 select-none">Notify users with base access when they're added</div>
+          <div class="text-sm text-nc-content-gray select-none">Notify users with base access when they're added</div>
         </NcSwitch>
       </div>
     </a-form-item>

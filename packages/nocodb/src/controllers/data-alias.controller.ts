@@ -40,7 +40,11 @@ export class DataAliasController {
     @Param('tableName') tableName: string,
     @Param('viewName') viewName: string,
     @Query('opt') opt: string,
+    @Query('getHiddenColumns') getHiddenColumns: string,
+    @Query('includeSortAndFilterColumns')
+    includeSortAndFilterColumns: string,
   ) {
+    context.cache = true;
     const startTime = process.hrtime();
     const responseData = await this.datasService.dataList(context, {
       query: req.query,
@@ -48,6 +52,11 @@ export class DataAliasController {
       tableName: tableName,
       viewName: viewName,
       disableOptimization: opt === 'false',
+      getHiddenColumns: getHiddenColumns === 'true',
+      includeSortAndFilterColumns: includeSortAndFilterColumns === 'true',
+      includeRowColorColumns: req.query.include_row_color === 'true',
+      includeButtonFilterColumns:
+        req.query.include_button_filter_columns === 'true',
     });
     const elapsedMilliSeconds = parseHrtimeToMilliSeconds(
       process.hrtime(startTime),
@@ -92,7 +101,29 @@ export class DataAliasController {
     @Param('tableName') tableName: string,
     @Param('viewName') viewName: string,
   ) {
+    context.cache = true;
     return await this.datasService.dataGroupBy(context, {
+      query: req.query,
+      baseName: baseName,
+      tableName: tableName,
+      viewName: viewName,
+    });
+  }
+
+  @Get([
+    '/api/v1/db/data/:orgs/:baseName/:tableName/groupby/count',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/views/:viewName/groupby/count',
+  ])
+  @Acl('dataGroupBy')
+  async dataGroupByCount(
+    @TenantContext() context: NcContext,
+    @Req() req: NcRequest,
+    @Param('baseName') baseName: string,
+    @Param('tableName') tableName: string,
+    @Param('viewName') viewName: string,
+  ) {
+    context.cache = true;
+    return await this.datasService.dataGroupByCount(context, {
       query: req.query,
       baseName: baseName,
       tableName: tableName,
@@ -113,6 +144,7 @@ export class DataAliasController {
     @Param('tableName') tableName: string,
     @Param('viewName') viewName: string,
   ) {
+    context.cache = true;
     const countResult = await this.datasService.dataCount(context, {
       query: req.query,
       baseName: baseName,
@@ -137,6 +169,8 @@ export class DataAliasController {
     @Param('viewName') viewName: string,
     @Body() body: any,
     @Query('opt') opt: string,
+    @Query('before') before: string,
+    @Query('undo') undo: string,
   ) {
     return await this.datasService.dataInsert(context, {
       baseName: baseName,
@@ -145,6 +179,10 @@ export class DataAliasController {
       body: body,
       cookie: req,
       disableOptimization: opt === 'false',
+      query: {
+        before,
+        undo: undo === 'true',
+      },
     });
   }
 
@@ -208,8 +246,9 @@ export class DataAliasController {
     @Param('viewName') viewName: string,
     @Param('rowId') rowId: string,
     @Query('opt') opt: string,
-    @Query('getHiddenColumn') getHiddenColumn: boolean,
+    @Query('getHiddenColumn') getHiddenColumn: string,
   ) {
+    context.cache = true;
     return await this.datasService.dataRead(context, {
       baseName: baseName,
       tableName: tableName,
@@ -217,7 +256,7 @@ export class DataAliasController {
       rowId: rowId,
       query: req.query,
       disableOptimization: opt === 'false',
-      getHiddenColumn: getHiddenColumn,
+      getHiddenColumn: getHiddenColumn === 'true',
     });
   }
 
@@ -235,6 +274,7 @@ export class DataAliasController {
     @Param('viewName') viewName: string,
     @Param('rowId') rowId: string,
   ) {
+    context.cache = true;
     const exists = await this.datasService.dataExist(context, {
       baseName: baseName,
       tableName: tableName,
@@ -262,6 +302,7 @@ export class DataAliasController {
     @Param('viewName') viewName: string,
     @Param('columnId') columnId: string,
   ) {
+    context.cache = true;
     const startTime = process.hrtime();
     const groupedData = await this.datasService.groupedDataList(context, {
       baseName: baseName,

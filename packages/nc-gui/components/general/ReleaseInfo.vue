@@ -49,7 +49,7 @@ onMounted(async () => await fetchReleaseInfo())
       </NcButton>
 
       <template #overlay>
-        <div class="mt-1 bg-white shadow-lg !border">
+        <div class="mt-1 bg-nc-bg-default shadow-lg !border">
           <nuxt-link
             no-prefetch
             no-rel
@@ -67,7 +67,7 @@ onMounted(async () => await fetchReleaseInfo())
             no-prefetch
             rel="noopener"
             class="!text-primary !no-underline"
-            to="https://docs.nocodb.com/getting-started/upgrading"
+            to="https://nocodb.com/docs/self-hosting/upgrading"
             target="_blank"
           >
             <div class="nc-menu-item">

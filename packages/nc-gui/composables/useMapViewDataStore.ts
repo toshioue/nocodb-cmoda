@@ -54,7 +54,7 @@ const [useProvideMapViewStore, useMapViewStore] = useInjectionState(
     async function syncCount() {
       const { count } = await $api.dbViewRow.count(
         NOCO,
-        base?.value?.title as string,
+        meta.value?.base_id ?? (base?.value?.title as string),
         meta?.value?.id as string,
         viewMeta?.value?.id as string,
       )
@@ -63,7 +63,12 @@ const [useProvideMapViewStore, useMapViewStore] = useInjectionState(
 
     async function loadMapMeta() {
       if (!viewMeta?.value?.id || !meta?.value?.columns) return
-      mapMetaData.value = isPublic.value ? (sharedView.value?.view as MapType) : await $api.dbView.mapRead(viewMeta.value.id)
+      mapMetaData.value = isPublic.value
+        ? (sharedView.value?.view as MapType)
+        : await $api.internal.getOperation(viewMeta.value.fk_workspace_id!, viewMeta.value.base_id!, {
+            operation: 'mapViewGet',
+            mapViewId: viewMeta.value.id,
+          })
 
       geoDataFieldColumn.value =
         (meta.value.columns as ColumnType[]).filter((f) => f.id === mapMetaData.value.fk_geo_data_col_id)[0] || {}
@@ -85,7 +90,15 @@ const [useProvideMapViewStore, useMapViewStore] = useInjectionState(
 
     async function updateMapMeta(updateObj: Partial<MapType>) {
       if (!viewMeta?.value?.id || !isUIAllowed('dataEdit', { skipSourceCheck: true })) return
-      await $api.dbView.mapUpdate(viewMeta.value.id, updateObj)
+      await $api.internal.postOperation(
+        viewMeta.value.fk_workspace_id!,
+        viewMeta.value.base_id!,
+        {
+          operation: 'mapViewUpdate',
+          viewId: viewMeta.value.id,
+        },
+        updateObj,
+      )
     }
 
     const { getMeta } = useMetas()
@@ -112,7 +125,7 @@ const [useProvideMapViewStore, useMapViewStore] = useInjectionState(
 
         const insertedData = await $api.dbViewRow.create(
           NOCO,
-          base?.value.id as string,
+          metaValue?.base_id ?? (base?.value.id as string),
           metaValue?.id as string,
           viewMetaValue?.id as string,
           insertObj,

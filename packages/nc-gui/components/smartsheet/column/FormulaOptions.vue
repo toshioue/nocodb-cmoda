@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import {
+  ColumnHelper,
   FormulaDataTypes,
   FormulaError,
   UITypes,
   getUITypesForFormulaDataType,
   isHiddenCol,
-  isVirtualCol,
   substituteColumnIdWithAliasInFormula,
   validateFormulaAndExtractTreeWithType,
 } from 'nocodb-sdk'
-import type { ColumnType, FormulaType } from 'nocodb-sdk'
+import type { ColumnType, FormulaType, UnifiedMetaType } from 'nocodb-sdk'
 
 const props = defineProps<{
   value: any
@@ -20,11 +20,28 @@ const uiTypesNotSupportedInFormulas = [UITypes.QrCode, UITypes.Barcode, UITypes.
 
 const vModel = useVModel(props, 'value', emit)
 
-const { setAdditionalValidations, sqlUi, column, validateInfos } = useColumnCreateStoreOrThrow()
+// set default value
+vModel.value.meta = {
+  ...ColumnHelper.getColumnDefaultMeta(UITypes.Formula),
+  ...(vModel.value.meta || {}),
+}
+
+const { setAdditionalValidations, setAvoidShowingToastMsgForValidations, sqlUi, column, validateInfos, disableSubmitBtn } =
+  useColumnCreateStoreOrThrow()
 
 const { t } = useI18n()
 
 const meta = inject(MetaInj, ref())
+
+const defaultEditorError = {
+  isError: false,
+  message: '',
+  position: {
+    column: -1,
+    row: -1,
+  },
+}
+const editorError = ref(defaultEditorError)
 
 const { base: activeBase } = storeToRefs(useBase())
 
@@ -51,21 +68,28 @@ const validators = {
       validator: (_: any, formula: any) => {
         return (async () => {
           if (!formula?.trim()) throw new Error('Required')
-
           try {
             await validateFormulaAndExtractTreeWithType({
-              column: column.value,
+              column: column.value as UnifiedMetaType.IColumn,
               formula,
-              columns: supportedColumns.value,
+              columns: supportedColumns.value as UnifiedMetaType.IColumn[],
               clientOrSqlUi: sqlUi.value,
-              getMeta,
+              getMeta: validateFormulaGetMeta(getMeta),
+              trackPosition: true,
             })
+            editorError.value = { ...defaultEditorError }
           } catch (e: any) {
-            if (e instanceof FormulaError && e.extra?.key) {
-              throw new Error(t(e.extra.key, e.extra))
+            const errorMessage = e instanceof FormulaError && e.extra?.key ? t(e.extra.key, e.extra) : e.message
+            if (e instanceof FormulaError && e.extra?.position) {
+              editorError.value = {
+                isError: true,
+                message: errorMessage,
+                position: e.extra.position,
+              }
+            } else {
+              editorError.value = { ...defaultEditorError }
             }
-
-            throw new Error(e.message)
+            throw new Error(errorMessage)
           }
         })()
       },
@@ -89,6 +113,12 @@ const parsedTree = ref<any>({
   dataType: FormulaDataTypes.UNKNOWN,
 })
 
+const previousDisplayType = ref()
+
+const savedDisplayType = ref(vModel.value.meta.display_type)
+
+const hadError = ref(false)
+
 // Initialize a counter to track watcher invocations
 let watcherCounter = 0
 
@@ -101,22 +131,36 @@ const debouncedValidate = useDebounceFn(async () => {
   try {
     const parsed = await validateFormulaAndExtractTreeWithType({
       formula: vModel.value.formula || vModel.value.formula_raw,
-      columns: meta.value?.columns || [],
-      column: column.value ?? undefined,
+      columns: (meta.value?.columns || []) as UnifiedMetaType.IColumn[],
+      column: (column.value ?? undefined) as UnifiedMetaType.IColumn,
       clientOrSqlUi: source.value?.type as any,
-      getMeta: async (modelId) => await getMeta(modelId),
+      getMeta: validateFormulaGetMeta(getMeta),
+      trackPosition: true,
     })
 
     // Update parsedTree only if this is the latest invocation
     if (currentCounter === watcherCounter) {
       parsedTree.value = parsed
     }
+    if (hadError.value && previousDisplayType.value) {
+      vModel.value.meta.display_type = previousDisplayType.value
+    }
+    previousDisplayType.value = undefined
+    hadError.value = false
   } catch (e) {
     // Update parsedTree only if this is the latest invocation
     if (currentCounter === watcherCounter) {
       parsedTree.value = {
         dataType: FormulaDataTypes.UNKNOWN,
       }
+    }
+    previousDisplayType.value = vModel.value.meta.display_type
+    hadError.value = true
+  } finally {
+    if (vModel.value?.colOptions?.parsed_tree?.dataType !== parsedTree.value?.dataType) {
+      vModel.value.meta.display_type = null
+    } else {
+      vModel.value.meta.display_type = savedDisplayType.value
     }
   }
 }, 300)
@@ -127,12 +171,28 @@ watch(
   () => {
     debouncedValidate()
   },
+  {
+    immediate: true,
+  },
 )
 
 // set additional validations
 setAdditionalValidations({
   ...validators,
 })
+
+setAvoidShowingToastMsgForValidations({
+  formula_raw: true,
+})
+
+// Disable submit button when formula has validation error or is empty
+watch(
+  () => validateInfos.formula_raw?.validateStatus,
+  (status) => {
+    disableSubmitBtn.value = status === 'error'
+  },
+  { immediate: true },
+)
 
 const activeKey = ref('formula')
 
@@ -143,14 +203,11 @@ const supportedFormulaAlias = computed(() => {
       return {
         value: uidt,
         label: t(`datatype.${uidt}`),
-        icon: h(
-          isVirtualCol(uidt) ? resolveComponent('SmartsheetHeaderVirtualCellIcon') : resolveComponent('SmartsheetHeaderCellIcon'),
-          {
-            columnMeta: {
-              uidt,
-            },
+        icon: h(resolveComponent('SmartsheetHeaderIcon'), {
+          column: {
+            uidt,
           },
-        ),
+        }),
       }
     })
   } catch (e) {
@@ -172,20 +229,11 @@ watch(
     immediate: true,
   },
 )
-
-watch(parsedTree, (value, oldValue) => {
-  if (oldValue === undefined && value) {
-    return
-  }
-  if (value?.dataType !== oldValue?.dataType) {
-    vModel.value.meta.display_type = null
-  }
-})
 </script>
 
 <template>
   <div class="formula-wrapper relative">
-    <NcTabs v-model:activeKey="activeKey">
+    <NcTabs v-model:active-key="activeKey">
       <a-tab-pane key="formula">
         <template #tab>
           <div class="tab">
@@ -196,6 +244,7 @@ watch(parsedTree, (value, oldValue) => {
           <SmartsheetColumnFormulaInputHelper
             v-model:value="vModel.formula_raw"
             :error="validateInfos.formula_raw?.validateStatus === 'error'"
+            :editor-error="editorError"
           />
         </div>
       </a-tab-pane>
@@ -206,13 +255,23 @@ watch(parsedTree, (value, oldValue) => {
             <div>{{ $t('labels.formatting') }}</div>
           </div>
         </template>
-        <div class="flex flex-col px-0.5 gap-4">
+        <div class="flex flex-col px-0.5 gap-4 pb-0.5">
           <a-form-item class="mt-4" :label="$t('general.format')">
-            <a-select v-model:value="vModel.meta.display_type" class="w-full" :placeholder="$t('labels.selectAFormatType')">
+            <NcSelect
+              v-model:value="vModel.meta.display_type"
+              class="w-full nc-select-shadow"
+              :placeholder="$t('labels.selectAFormatType')"
+              allow-clear
+              @change="
+                (v) => {
+                  savedDisplayType = v
+                }
+              "
+            >
               <a-select-option v-for="option in supportedFormulaAlias" :key="option.value" :value="option.value">
                 <div class="flex w-full items-center gap-2 justify-between">
                   <div class="w-full">
-                    <component :is="option.icon" class="w-4 h-4 !text-gray-600" />
+                    <component :is="option.icon" class="w-4 h-4" color="text-nc-content-gray-subtle2" />
                     {{ option.label }}
                   </div>
                   <component
@@ -223,7 +282,7 @@ watch(parsedTree, (value, oldValue) => {
                   />
                 </div>
               </a-select-option>
-            </a-select>
+            </NcSelect>
           </a-form-item>
 
           <template

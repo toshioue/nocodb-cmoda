@@ -25,6 +25,16 @@ class SqliteClient extends KnexClient {
     this._version = {};
   }
 
+  async schemaCreateWithCredentials(_args): Promise<any> {}
+
+  async sequenceList(_args: any = {}): Promise<any> {}
+
+  async sequenceCreate(_args: any = {}): Promise<any> {}
+
+  async sequenceUpdate(_args: any = {}): Promise<any> {}
+
+  async sequenceDelete(_args: any = {}): Promise<any> {}
+
   getKnexDataTypes() {
     const result = new Result();
 
@@ -1701,7 +1711,7 @@ class SqliteClient extends KnexClient {
         await this.sqlClient.raw('PRAGMA legacy_alter_table = OFF;');
       }
 
-      console.log(upQuery);
+      // console.log(upQuery);
 
       const afterUpdate = await this.afterTableUpdate(args);
 

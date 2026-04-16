@@ -41,6 +41,7 @@ export class SyncService {
     this.appHooksService.emit(AppEvents.SYNC_SOURCE_CREATE, {
       syncSource: sync,
       req: param.req,
+      context,
     });
 
     return sync;
@@ -53,7 +54,7 @@ export class SyncService {
     const syncSource = await SyncSource.get(context, param.syncId);
 
     if (!syncSource) {
-      NcError.badRequest('Sync source not found');
+      NcError.get(context).badRequest('Sync source not found');
     }
 
     const res = await SyncSource.delete(context, param.syncId);
@@ -61,6 +62,7 @@ export class SyncService {
     this.appHooksService.emit(AppEvents.SYNC_SOURCE_DELETE, {
       syncSource,
       req: param.req,
+      context,
     });
     return res;
   }
@@ -76,7 +78,7 @@ export class SyncService {
     const syncSource = await SyncSource.get(context, param.syncId);
 
     if (!syncSource) {
-      NcError.badRequest('Sync source not found');
+      NcError.get(context).badRequest('Sync source not found');
     }
 
     const res = await SyncSource.update(
@@ -87,8 +89,8 @@ export class SyncService {
 
     this.appHooksService.emit(AppEvents.SYNC_SOURCE_UPDATE, {
       syncSource,
-
       req: param.req,
+      context,
     });
 
     return res;

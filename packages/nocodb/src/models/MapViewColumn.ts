@@ -26,25 +26,29 @@ export default class MapViewColumn {
     mapViewColumnId: string,
     ncMeta = Noco.ncMeta,
   ) {
-    let view =
+    let viewColumn =
       mapViewColumnId &&
       (await NocoCache.get(
+        context,
         `${CacheScope.MAP_VIEW_COLUMN}:${mapViewColumnId}`,
         CacheGetType.TYPE_OBJECT,
       ));
-    if (!view) {
-      view = await ncMeta.metaGet2(
+    if (!viewColumn) {
+      viewColumn = await ncMeta.metaGet2(
         context.workspace_id,
         context.base_id,
         MetaTable.MAP_VIEW_COLUMNS,
         mapViewColumnId,
       );
-      await NocoCache.set(
-        `${CacheScope.MAP_VIEW_COLUMN}:${mapViewColumnId}`,
-        view,
-      );
+      if (viewColumn) {
+        await NocoCache.set(
+          context,
+          `${CacheScope.MAP_VIEW_COLUMN}:${mapViewColumnId}`,
+          viewColumn,
+        );
+      }
     }
-    return view && new MapViewColumn(view);
+    return viewColumn && new MapViewColumn(viewColumn);
   }
   static async insert(
     context: NcContext,
@@ -62,9 +66,8 @@ export default class MapViewColumn {
       source_id: column.source_id,
     };
 
-    const viewRef = await View.get(context, insertObj.fk_view_id, ncMeta);
-
     if (!insertObj.source_id) {
+      const viewRef = await View.get(context, insertObj.fk_view_id, ncMeta);
       insertObj.source_id = viewRef.source_id;
     }
 
@@ -77,6 +80,7 @@ export default class MapViewColumn {
 
     return this.get(context, id, ncMeta).then(async (viewCol) => {
       await NocoCache.appendToList(
+        context,
         CacheScope.MAP_VIEW_COLUMN,
         [column.fk_view_id],
         `${CacheScope.MAP_VIEW_COLUMN}:${id}`,
@@ -90,9 +94,11 @@ export default class MapViewColumn {
     viewId: string,
     ncMeta = Noco.ncMeta,
   ): Promise<MapViewColumn[]> {
-    const cachedList = await NocoCache.getList(CacheScope.MAP_VIEW_COLUMN, [
-      viewId,
-    ]);
+    const cachedList = await NocoCache.getList(
+      context,
+      CacheScope.MAP_VIEW_COLUMN,
+      [viewId],
+    );
     let { list: views } = cachedList;
     const { isNoneList } = cachedList;
     if (!isNoneList && !views.length) {
@@ -109,7 +115,12 @@ export default class MapViewColumn {
           },
         },
       );
-      await NocoCache.setList(CacheScope.MAP_VIEW_COLUMN, [viewId], views);
+      await NocoCache.setList(
+        context,
+        CacheScope.MAP_VIEW_COLUMN,
+        [viewId],
+        views,
+      );
     }
     views.sort(
       (a, b) =>
@@ -146,7 +157,7 @@ export default class MapViewColumn {
 
     // get existing cache
     const key = `${CacheScope.MAP_VIEW_COLUMN}:${columnId}`;
-    await NocoCache.update(key, updateObj);
+    await NocoCache.update(context, key, updateObj);
 
     // on view column update, delete any optimised single query cache
     {

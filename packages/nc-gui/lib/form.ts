@@ -14,7 +14,8 @@ export class FormFilters {
   value: any
   isSharedForm: boolean
   isMysql?: (sourceId?: string) => boolean
-  getMeta?: (tableIdOrTitle: string) => Promise<TableType | null>
+  getMeta?: (baseId: string, tableIdOrTitle: string) => Promise<TableType | null>
+  baseId?: string
 
   constructor({
     data = [],
@@ -25,6 +26,7 @@ export class FormFilters {
     isMysql = undefined,
     isSharedForm = false,
     getMeta = undefined,
+    baseId = undefined,
   }: {
     data?: FilterType[]
     nestedGroupedFilters?: Record<string, FilterType[]>
@@ -33,7 +35,8 @@ export class FormFilters {
     formState?: Record<string, any>
     isMysql?: (sourceId?: string) => boolean
     isSharedForm?: boolean
-    getMeta?: (tableIdOrTitle: string) => Promise<TableType | null>
+    getMeta?: (baseId: string, tableIdOrTitle: string) => Promise<TableType | null>
+    baseId?: string
   } = {}) {
     this.allViewFilters = data
     this.groupedFilters = {}
@@ -44,6 +47,7 @@ export class FormFilters {
     this.isSharedForm = isSharedForm
     this.isMysql = isMysql
     this.getMeta = getMeta
+    this.baseId = baseId
   }
 
   setFilters(filters: FilterType[]) {
@@ -108,15 +112,17 @@ export class FormFilters {
   }
 
   isFieldAboveParentColumn(column: FormViewColumn, parentColumn: FormViewColumn) {
+    if (column?.order == null || parentColumn?.order == null) return false
+
     return column.order < parentColumn.order
   }
 
   async getOoOrBtColVal(column: FormViewColumn) {
     const fk_related_model_id = (column?.colOptions as LinkToAnotherRecordType)?.fk_related_model_id
 
-    if (!fk_related_model_id || typeof this.getMeta !== 'function') return null
+    if (!fk_related_model_id || typeof this.getMeta !== 'function' || !this.baseId) return null
 
-    const relatedTableMeta = await this.getMeta(fk_related_model_id)
+    const relatedTableMeta = await this.getMeta(this.baseId, fk_related_model_id)
 
     if (!relatedTableMeta || !Array.isArray(relatedTableMeta?.columns)) return null
 
@@ -164,6 +170,14 @@ export class FormFilters {
 
         if (!column.show) {
           errors[column.fk_column_id] = `Condition references a field (${column.title}) that was removed from the form.`
+
+          res = true
+        }
+
+        if (!column.permissions?.isAllowedToEdit) {
+          errors[
+            column.fk_column_id
+          ] = `Condition references a field (${column.title}) that is not editable and will be hidden in shared form.`
 
           res = true
         }
@@ -440,7 +454,6 @@ export class FormFilters {
 
       if (this.isSharedForm) {
         if (!column.meta?.preFilledHiddenField) {
-          column.show = !!isValid
           column.visible = !!isValid
         }
       } else {

@@ -1,4 +1,37 @@
+import { ColumnType, FilterType } from './Api';
 import { OrgUserRoles, ProjectRoles, WorkspaceUserRoles } from './enums';
+import { OnPremPlanTitles, PlanTitles } from './payment';
+
+export const enumColors = {
+  light: [
+    '#cfdffe',
+    '#d0f1fd',
+    '#c2f5e8',
+    '#ffdaf6',
+    '#ffdce5',
+    '#fee2d5',
+    '#ffeab6',
+    '#d1f7c4',
+    '#ede2fe',
+    '#eeeeee',
+  ],
+  dark: [
+    '#2d7ff999',
+    '#18bfff99',
+    '#20d9d299',
+    '#ff08c299',
+    '#f82b6099',
+    '#ff6f2c99',
+    '#fcb40099',
+    '#20c93399',
+    '#8b46ff99',
+    '#666',
+  ],
+  get: (theme: 'light' | 'dark', index: number) => {
+    index = Math.abs(index) % enumColors[theme].length;
+    return enumColors[theme][index];
+  },
+};
 
 export enum ViewTypes {
   FORM = 1,
@@ -7,7 +40,34 @@ export enum ViewTypes {
   KANBAN = 4,
   MAP = 5,
   CALENDAR = 6,
+  LIST = 7,
+  TIMELINE = 8,
 }
+
+export const viewTypeAlias: Record<ViewTypes, string> = {
+  [ViewTypes.FORM]: 'form',
+  [ViewTypes.GALLERY]: 'gallery',
+  [ViewTypes.GRID]: 'grid',
+  [ViewTypes.KANBAN]: 'kanban',
+  [ViewTypes.MAP]: 'map',
+  [ViewTypes.CALENDAR]: 'calendar',
+  [ViewTypes.LIST]: 'list',
+  [ViewTypes.TIMELINE]: 'timeline',
+};
+
+export const viewTypeToStringMap: Record<ViewTypes, string> = {
+  ...viewTypeAlias,
+};
+
+// Generate reverse mapping from the original viewTypeAlias
+export const stringToViewTypeMap: Record<string, ViewTypes> = Object.entries(
+  viewTypeAlias
+).reduce((acc, [key, value]) => {
+  acc[value] = Number(key);
+  return acc;
+}, {});
+
+export const VIEW_GRID_DEFAULT_WIDTH = 200;
 
 export enum ProjectTypes {
   DATABASE = 'database',
@@ -21,94 +81,29 @@ export enum RelationTypes {
   BELONGS_TO = 'bt',
   MANY_TO_MANY = 'mm',
   ONE_TO_ONE = 'oo',
+  ONE_TO_MANY = 'om',
+  MANY_TO_ONE = 'mo',
 }
+
+export enum LinksVersion {
+  V1 = 1,
+  V2 = 2,
+}
+
+export const ExpandedFormMode = {
+  FIELD: 'field',
+  ATTACHMENT: 'attachment',
+  DISCUSSION: 'discussion',
+} as const;
+
+export type ExpandedFormModeType =
+  (typeof ExpandedFormMode)[keyof typeof ExpandedFormMode];
 
 export enum ExportTypes {
   EXCEL = 'excel',
   CSV = 'csv',
+  JSON = 'json',
 }
-
-export enum AuditOperationTypes {
-  COMMENT = 'COMMENT',
-  DATA = 'DATA',
-  PROJECT = 'PROJECT',
-  VIRTUAL_RELATION = 'VIRTUAL_RELATION',
-  RELATION = 'RELATION',
-  TABLE_VIEW = 'TABLE_VIEW',
-  TABLE = 'TABLE',
-  VIEW = 'VIEW',
-  META = 'META',
-  TABLE_COLUMN = 'TABLE_COLUMN',
-  WEBHOOKS = 'WEBHOOKS',
-  AUTHENTICATION = 'AUTHENTICATION',
-  ORG_USER = 'ORG_USER',
-}
-
-export const auditOperationTypeLabels = {
-  [AuditOperationTypes.COMMENT]: 'Comment',
-  [AuditOperationTypes.DATA]: 'Data',
-  [AuditOperationTypes.PROJECT]: 'Project',
-  [AuditOperationTypes.VIRTUAL_RELATION]: 'Virtual Relation',
-  [AuditOperationTypes.RELATION]: 'Relation',
-  [AuditOperationTypes.TABLE_VIEW]: 'Table View',
-  [AuditOperationTypes.TABLE]: 'Table',
-  [AuditOperationTypes.VIEW]: 'View',
-  [AuditOperationTypes.META]: 'Meta',
-  [AuditOperationTypes.WEBHOOKS]: 'Webhooks',
-  [AuditOperationTypes.AUTHENTICATION]: 'Authentication',
-  [AuditOperationTypes.TABLE_COLUMN]: 'Table Column',
-  [AuditOperationTypes.ORG_USER]: 'Org User',
-};
-
-export enum AuditOperationSubTypes {
-  INSERT = 'INSERT',
-  CREATE = 'CREATE',
-  UPDATE = 'UPDATE',
-  DELETE = 'DELETE',
-  BULK_INSERT = 'BULK_INSERT',
-  BULK_UPDATE = 'BULK_UPDATE',
-  BULK_DELETE = 'BULK_DELETE',
-  LINK_RECORD = 'LINK_RECORD',
-  UNLINK_RECORD = 'UNLINK_RECORD',
-  RENAME = 'RENAME',
-  IMPORT_FROM_ZIP = 'IMPORT_FROM_ZIP',
-  EXPORT_TO_FS = 'EXPORT_TO_FS',
-  EXPORT_TO_ZIP = 'EXPORT_TO_ZIP',
-  SIGNIN = 'SIGNIN',
-  SIGNUP = 'SIGNUP',
-  PASSWORD_RESET = 'PASSWORD_RESET',
-  PASSWORD_FORGOT = 'PASSWORD_FORGOT',
-  PASSWORD_CHANGE = 'PASSWORD_CHANGE',
-  EMAIL_VERIFICATION = 'EMAIL_VERIFICATION',
-  ROLES_MANAGEMENT = 'ROLES_MANAGEMENT',
-  INVITE = 'INVITE',
-  RESEND_INVITE = 'RESEND_INVITE',
-}
-
-export const auditOperationSubTypeLabels = {
-  [AuditOperationSubTypes.UPDATE]: 'Update',
-  [AuditOperationSubTypes.INSERT]: 'Insert',
-  [AuditOperationSubTypes.DELETE]: 'Delete',
-  [AuditOperationSubTypes.BULK_INSERT]: 'Bulk Insert',
-  [AuditOperationSubTypes.BULK_UPDATE]: 'Bulk Update',
-  [AuditOperationSubTypes.BULK_DELETE]: 'Bulk Delete',
-  [AuditOperationSubTypes.LINK_RECORD]: 'Link Record',
-  [AuditOperationSubTypes.UNLINK_RECORD]: 'Unlink Record',
-  [AuditOperationSubTypes.CREATE]: 'Create',
-  [AuditOperationSubTypes.RENAME]: 'Rename',
-  [AuditOperationSubTypes.IMPORT_FROM_ZIP]: 'Import From Zip',
-  [AuditOperationSubTypes.EXPORT_TO_FS]: 'Export To FS',
-  [AuditOperationSubTypes.EXPORT_TO_ZIP]: 'Export To Zip',
-  [AuditOperationSubTypes.SIGNIN]: 'Signin',
-  [AuditOperationSubTypes.SIGNUP]: 'Signup',
-  [AuditOperationSubTypes.PASSWORD_RESET]: 'Password Reset',
-  [AuditOperationSubTypes.PASSWORD_FORGOT]: 'Password Forgot',
-  [AuditOperationSubTypes.PASSWORD_CHANGE]: 'Password Change',
-  [AuditOperationSubTypes.EMAIL_VERIFICATION]: 'Email Verification',
-  [AuditOperationSubTypes.ROLES_MANAGEMENT]: 'Roles Management',
-  [AuditOperationSubTypes.INVITE]: 'Invite',
-  [AuditOperationSubTypes.RESEND_INVITE]: 'Resend Invite',
-};
 
 export enum PluginCategory {
   STORAGE = 'Storage',
@@ -118,6 +113,12 @@ export enum PluginCategory {
 export enum ModelTypes {
   TABLE = 'table',
   VIEW = 'view',
+  DASHBOARD = 'dashboard',
+}
+
+export enum AutomationTypes {
+  SCRIPT = 'script',
+  WORKFLOW = 'workflow',
 }
 
 export enum ProjectStatus {
@@ -166,38 +167,191 @@ export enum NcDataErrorCodes {
 }
 
 export enum NcErrorType {
-  AUTHENTICATION_REQUIRED = 'AUTHENTICATION_REQUIRED',
-  API_TOKEN_NOT_ALLOWED = 'API_TOKEN_NOT_ALLOWED',
-  WORKSPACE_NOT_FOUND = 'WORKSPACE_NOT_FOUND',
-  BASE_NOT_FOUND = 'BASE_NOT_FOUND',
-  SOURCE_NOT_FOUND = 'SOURCE_NOT_FOUND',
-  TABLE_NOT_FOUND = 'TABLE_NOT_FOUND',
-  VIEW_NOT_FOUND = 'VIEW_NOT_FOUND',
-  FIELD_NOT_FOUND = 'FIELD_NOT_FOUND',
-  RECORD_NOT_FOUND = 'RECORD_NOT_FOUND',
-  GENERIC_NOT_FOUND = 'GENERIC_NOT_FOUND',
-  HOOK_NOT_FOUND = 'HOOK_NOT_FOUND',
-  REQUIRED_FIELD_MISSING = 'REQUIRED_FIELD_MISSING',
-  ERROR_DUPLICATE_RECORD = 'ERROR_DUPLICATE_RECORD',
-  USER_NOT_FOUND = 'USER_NOT_FOUND',
-  INVALID_OFFSET_VALUE = 'INVALID_OFFSET_VALUE',
-  INVALID_LIMIT_VALUE = 'INVALID_LIMIT_VALUE',
-  INVALID_FILTER = 'INVALID_FILTER',
-  INVALID_SHARED_VIEW_PASSWORD = 'INVALID_SHARED_VIEW_PASSWORD',
-  INVALID_ATTACHMENT_JSON = 'INVALID_ATTACHMENT_JSON',
-  NOT_IMPLEMENTED = 'NOT_IMPLEMENTED',
-  INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR',
-  DATABASE_ERROR = 'DATABASE_ERROR',
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
-  BAD_JSON = 'BAD_JSON',
-  INVALID_PK_VALUE = 'INVALID_PK_VALUE',
-  COLUMN_ASSOCIATED_WITH_LINK = 'COLUMN_ASSOCIATED_WITH_LINK',
-  TABLE_ASSOCIATED_WITH_LINK = 'TABLE_ASSOCIATED_WITH_LINK',
-  INTEGRATION_NOT_FOUND = 'INTEGRATION_NOT_FOUND',
-  INTEGRATION_LINKED_WITH_BASES = 'INTEGRATION_LINKED_WITH_BASES',
-  FORMULA_ERROR = 'FORMULA_ERROR',
-  PERMISSION_DENIED = 'PERMISSION_DENIED',
+  ERR_AUTHENTICATION_REQUIRED = 'ERR_AUTHENTICATION_REQUIRED',
+  ERR_FORBIDDEN = 'ERR_FORBIDDEN',
+  ERR_API_TOKEN_NOT_ALLOWED = 'ERR_API_TOKEN_NOT_ALLOWED',
+  ERR_WORKSPACE_NOT_FOUND = 'ERR_WORKSPACE_NOT_FOUND',
+  ERR_BASE_NOT_FOUND = 'ERR_BASE_NOT_FOUND',
+  ERR_SOURCE_NOT_FOUND = 'ERR_SOURCE_NOT_FOUND',
+  ERR_TABLE_NOT_FOUND = 'ERR_TABLE_NOT_FOUND',
+  ERR_VIEW_NOT_FOUND = 'ERR_VIEW_NOT_FOUND',
+  ERR_FIELD_NOT_FOUND = 'ERR_FIELD_NOT_FOUND',
+  ERR_RECORD_NOT_FOUND = 'ERR_RECORD_NOT_FOUND',
+  ERR_GENERIC_NOT_FOUND = 'ERR_GENERIC_NOT_FOUND',
+  ERR_HOOK_NOT_FOUND = 'ERR_HOOK_NOT_FOUND',
+  ERR_REQUIRED_FIELD_MISSING = 'ERR_REQUIRED_FIELD_MISSING',
+  ERR_DUPLICATE_RECORD = 'ERR_DUPLICATE_RECORD',
+  ERR_USER_NOT_FOUND = 'ERR_USER_NOT_FOUND',
+  ERR_TEAM_NOT_FOUND = 'ERR_TEAM_NOT_FOUND',
+  ERR_INVALID_OFFSET_VALUE = 'ERR_INVALID_OFFSET_VALUE',
+  ERR_INVALID_PAGE_VALUE = 'ERR_INVALID_PAGE_VALUE',
+  ERR_INVALID_LIMIT_VALUE = 'ERR_INVALID_LIMIT_VALUE',
+  ERR_INVALID_FILTER = 'ERR_INVALID_FILTER',
+  ERR_INVALID_SHARED_VIEW_PASSWORD = 'ERR_INVALID_SHARED_VIEW_PASSWORD',
+  ERR_INVALID_ATTACHMENT_JSON = 'ERR_INVALID_ATTACHMENT_JSON',
+  ERR_NOT_IMPLEMENTED = 'ERR_NOT_IMPLEMENTED',
+  ERR_INTERNAL_SERVER = 'ERR_INTERNAL_SERVER',
+  ERR_DATABASE_OP_FAILED = 'ERR_DATABASE_OP_FAILED',
+  ERR_UNKNOWN = 'ERR_UNKNOWN',
+  ERR_INVALID_JSON = 'ERR_INVALID_JSON',
+  ERR_INVALID_PK_VALUE = 'ERR_INVALID_PK_VALUE',
+  ERR_COLUMN_ASSOCIATED_WITH_LINK = 'ERR_COLUMN_ASSOCIATED_WITH_LINK',
+  ERR_TABLE_ASSOCIATED_WITH_LINK = 'ERR_TABLE_ASSOCIATED_WITH_LINK',
+  ERR_INTEGRATION_NOT_FOUND = 'ERR_INTEGRATION_NOT_FOUND',
+  ERR_INTEGRATION_LINKED_WITH_BASES = 'ERR_INTEGRATION_LINKED_WITH_BASES',
+  ERR_FORMULA = 'ERR_FORMULA',
+  ERR_CIRCULAR_REF_IN_FORMULA = 'ERR_CIRCULAR_REF_IN_FORMULA',
+  ERR_PERMISSION_DENIED = 'ERR_PERMISSION_DENIED',
+  ERR_INVALID_ATTACHMENT_UPLOAD_SCOPE = 'ERR_INVALID_ATTACHMENT_UPLOAD_SCOPE',
+  ERR_CANNOT_CALCULATE_INTERMEDIATE_ORDER = 'ERR_CANNOT_CALCULATE_INTERMEDIATE_ORDER',
+  ERR_REORDER_FAILED = 'ERR_REORDER_FAILED',
+  ERR_PLAN_LIMIT_EXCEEDED = 'ERR_PLAN_LIMIT_EXCEEDED',
+  ERR_FEATURE_NOT_SUPPORTED = 'ERR_FEATURE_NOT_SUPPORTED',
+  ERR_SSO_LOGIN_REQUIRED = 'ERR_SSO_LOGIN_REQUIRED',
+  ERR_SSO_GENERATED_TOKEN_REQUIRED = 'ERR_SSO_GENERATED_TOKEN_REQUIRED',
+  ERR_MAX_PAYLOAD_LIMIT_EXCEEDED = 'ERR_MAX_PAYLOAD_LIMIT_EXCEEDED',
+  ERR_INVALID_VALUE_FOR_FIELD = 'ERR_INVALID_VALUE_FOR_FIELD',
+  ERR_MAX_WORKSPACE_LIMIT_REACHED = 'ERR_MAX_WORKSPACE_LIMIT_REACHED',
+  ERR_BASE_COLLABORATION = 'ERR_BASE_COLLABORATION',
+  ERR_ORG_USER = 'ERR_ORG_USER',
+  ERR_SYNC_TABLE_OPERATION_PROHIBITED = 'ERR_SYNC_TABLE_OPERATION_PROHIBITED',
+  ERR_INVALID_REQUEST_BODY = 'ERR_INVALID_REQUEST_BODY',
+  ERR_DASHBOARD_NOT_FOUND = 'ERR_DASHBOARD_NOT_FOUND',
+  ERR_WORKFLOW_NOT_FOUND = 'ERR_WORKFLOW_NOT_FOUND',
+  ERR_WIDGET_NOT_FOUND = 'ERR_WIDGET_NOT_FOUND',
+  ERR_CHAT_SESSION_NOT_FOUND = 'ERR_CHAT_SESSION_NOT_FOUND',
+  ERR_CHAT_MESSAGE_NOT_FOUND = 'ERR_CHAT_MESSAGE_NOT_FOUND',
+  ERR_VIEW_SECTION_NOT_FOUND = 'ERR_VIEW_SECTION_NOT_FOUND',
+  ERR_SHARED_DASHBOARD_PASSWORD_INVALID = 'ERR_SHARED_DASHBOARD_PASSWORD_INVALID',
+  ERR_DUPLICATE_IN_ALIAS = 'ERR_DUPLICATE_IN_ALIAS',
+  ERR_OUT_OF_SYNC = 'ERR_OUT_OF_SYNC',
+  ERR_FILTER_VERIFICATION_FAILED = 'ERR_FILTER_VERIFICATION_FAILED',
+  ERR_VIEW_COLUMN_NOT_FOUND = 'ERR_VIEW_COLUMN_NOT_FOUND',
+  ERR_WEBHOOK_ERROR = 'ERR_WEBHOOK_ERROR',
+  ERR_WEBHOOK_URL_INVALID = 'ERR_WEBHOOK_URL_INVALID',
+  ERR_BASE_OP_FAILED = 'ERR_BASE_OP_FAILED',
+  ERR_TABLE_OP_FAILED = 'ERR_TABLE_OP_FAILED',
+  ERR_COLUMN_OP_FAILED = 'ERR_COLUMN_OP_FAILED',
+  ERR_DATA_SOURCES_NOT_FOUND = 'ERR_DATA_SOURCES_NOT_FOUND',
+  ERR_TEST_PLUGIN_FAILED = 'ERR_TEST_PLUGIN_FAILED',
+  ERR_UNSUPPORTED_RELATION = 'ERR_UNSUPPORTED_RELATION',
+  ERR_IN_EXTERNAL_DATA_SOURCE = 'ERR_IN_EXTERNAL_DATA_SOURCE',
+  ERR_EXTERNAL_DATA_SOURCE_TIMEOUT = 'ERR_EXTERNAL_DATA_SOURCE_TIMEOUT',
+  ERR_RELATION_FIELD_NOT_FOUND = 'ERR_RELATION_FIELD_NOT_FOUND',
+  ERR_UNSUPPORTED_FILTER_OPERATION = 'ERR_UNSUPPORTED_FILTER_OPERATION',
+  ERR_STORAGE_FILE_CREATE = 'ERR_STORAGE_FILE_CREATE',
+  ERR_STORAGE_FILE_READ = 'ERR_STORAGE_FILE_READ',
+  ERR_STORAGE_FILE_DELETE = 'ERR_STORAGE_FILE_DELETE',
+  ERR_STORAGE_FILE_STREAM = 'ERR_STORAGE_FILE_STREAM',
+  ERR_PLAN_ALREADY_EXISTS = 'ERR_PLAN_ALREADY_EXISTS',
+  ERR_SUBSCRIPTION_ALREADY_EXISTS = 'ERR_SUBSCRIPTION_ALREADY_EXISTS',
+  ERR_SUBSCRIPTION_NOT_FOUND = 'ERR_SUBSCRIPTION_NOT_FOUND',
+  ERR_PLAN_NOT_AVAILABLE = 'ERR_PLAN_NOT_AVAILABLE',
+  ERR_SEAT_COUNT_MISMATCH = 'ERR_SEAT_COUNT_MISMATCH',
+  ERR_INVALID_PAYMENT_PAYLOAD = 'ERR_INVALID_PAYMENT_PAYLOAD',
+  ERR_STRIPE_CUSTOMER_NOT_FOUND = 'ERR_STRIPE_CUSTOMER_NOT_FOUND',
+  ERR_STRIPE_SUBSCRIPTION_NOT_FOUND = 'ERR_STRIPE_SUBSCRIPTION_NOT_FOUND',
+  ERR_SUBSCRIPTION_OWNERSHIP_MISMATCH = 'ERR_SUBSCRIPTION_OWNERSHIP_MISMATCH',
+  ERR_INTERNAL_CUSTOMER_NOT_SUPPORTED = 'ERR_INTERNAL_CUSTOMER_NOT_SUPPORTED',
+  ERR_SUBSCRIPTION_CREATE_FAILED = 'ERR_SUBSCRIPTION_CREATE_FAILED',
+  ERR_STRIPE_WEBHOOK_VERIFICATION_FAILED = 'ERR_STRIPE_WEBHOOK_VERIFICATION_FAILED',
+  ERR_API_CLIENT_NOT_FOUND = 'ERR_API_CLIENT_NOT_FOUND',
+  ERR_EXTENSION_NOT_FOUND = 'ERR_EXTENSION_NOT_FOUND',
+  ERR_SCRIPT_NOT_FOUND = 'ERR_SCRIPT_NOT_FOUND',
+  ERR_RLS_POLICY_NOT_FOUND = 'ERR_RLS_POLICY_NOT_FOUND',
+  FIELD_UNIQUE_CONSTRAINT_VIOLATION = 'FIELD_UNIQUE_CONSTRAINT_VIOLATION',
+  ERR_METHOD_NOT_ALLOWED = 'ERR_METHOD_NOT_ALLOWED',
+
+  ERR_INSUFFICIENT_PRIVILEGE = 'ERR_INSUFFICIENT_PRIVILEGE',
+
+  // Workflow Errors
+  ERR_WORKFLOW_EMPTY_NODE = 'ERR_WORKFLOW_EMPTY_NODE',
+  ERR_WORKFLOW_TRIGGER_NODE_NOT_FOUND = 'ERR_WORKFLOW_TRIGGER_NODE_NOT_FOUND',
+  ERR_WORKFLOW_NODE_EXECUTION_FAILED = 'ERR_WORKFLOW_NODE_EXECUTION_FAILED',
+  ERR_WORKFLOW_MAX_ITERATIONS_EXCEEDED = 'ERR_WORKFLOW_MAX_ITERATIONS_EXCEEDED',
+  ERR_WORKFLOW_NODE_NOT_FOUND = 'ERR_WORKFLOW_NODE_NOT_FOUND',
+  ERR_WORKFLOW_WAITING_EXECUTIONS = 'ERR_WORKFLOW_WAITING_EXECUTIONS',
+
+  // License Errors
+  ERR_LICENSE_REQUIRED = 'ERR_LICENSE_REQUIRED',
+  ERR_LICENSE_SUSPENDED = 'ERR_LICENSE_SUSPENDED',
+
+  ERR_SYSTEM_FIELD_NON_MODIFIABLE = 'ERR_SYSTEM_FIELD_NON_MODIFIABLE',
 }
+
+export enum ROW_COLORING_MODE {
+  FILTER = 'filter',
+  SELECT = 'select',
+}
+
+export enum COLORING_TYPE {
+  ROW = 'row',
+  CELL = 'cell',
+}
+
+export const LongTextAiMetaProp = 'ai';
+
+export const NO_SCOPE = 'nc';
+
+export const NON_SEAT_ROLES = [
+  WorkspaceUserRoles.NO_ACCESS,
+  WorkspaceUserRoles.VIEWER,
+  WorkspaceUserRoles.INHERIT,
+  WorkspaceUserRoles.COMMENTER,
+  ProjectRoles.NO_ACCESS,
+  ProjectRoles.VIEWER,
+  ProjectRoles.INHERIT,
+  ProjectRoles.COMMENTER,
+];
+
+export const DURATION_TYPE_MAP = {
+  0: 'h:mm',
+  1: 'h:mm:ss',
+  2: 'h:mm:ss.s',
+  3: 'h:mm:ss.ss',
+  4: 'h:mm:ss.sss',
+  'h:mm': 0,
+  'h:mm:ss': 1,
+  'h:mm:ss.s': 2,
+  'h:mm:ss.ss': 3,
+  'h:mm:ss.sss': 4,
+};
+
+export const CURRENT_USER_TOKEN = '@me';
+
+// this type makes every parameter inside an object be optional
+// useful for where / insert / update query
+export type DeepPartial<T> = T extends object
+  ? { [P in keyof T]?: DeepPartial<T[P]> }
+  : T;
+
+export type RowColoringInfoFilterRow = {
+  id: string;
+  is_set_as_background: boolean;
+  nc_order: number;
+  color: string;
+  type?: string;
+  fk_target_column_id?: string;
+  conditions: FilterType[];
+  nestedConditions: FilterType[];
+};
+
+export type RowColoringInfoSelect = {
+  mode: ROW_COLORING_MODE.SELECT;
+  fk_column_id: string;
+  options: { title: string; color: string }[];
+  selectColumn: ColumnType;
+  is_set_as_background: boolean;
+};
+export type RowColoringInfoFilter = {
+  mode: ROW_COLORING_MODE.FILTER;
+  conditions: RowColoringInfoFilterRow[];
+};
+
+export type RowColoringInfo = {
+  fk_model_id: string;
+  fk_view_id: string;
+} & (RowColoringInfoSelect | RowColoringInfoFilter);
 
 type Roles = OrgUserRoles | ProjectRoles | WorkspaceUserRoles;
 
@@ -205,4 +359,68 @@ type RolesObj = Partial<Record<Roles, boolean>>;
 
 type RolesType = RolesObj | string[] | string;
 
-export { Roles, RolesObj, RolesType };
+interface PlanLimitExceededDetailsType {
+  plan?: PlanTitles | OnPremPlanTitles;
+  limit?: number;
+  current?: number;
+  higherPlan?: PlanTitles | OnPremPlanTitles;
+}
+
+export { Roles, RolesObj, RolesType, PlanLimitExceededDetailsType };
+
+export type RowColoringMode = null | 'SELECT' | 'FILTER';
+
+export enum RowHeight {
+  SHORT = 0,
+  MEDIUM = 1,
+  TALL = 2,
+  EXTRA = 3,
+}
+
+export const RowHeightMap = {
+  short: RowHeight.SHORT,
+  medium: RowHeight.MEDIUM,
+  tall: RowHeight.TALL,
+  extra: RowHeight.EXTRA,
+  [RowHeight.SHORT]: 'short',
+  [RowHeight.MEDIUM]: 'medium',
+  [RowHeight.TALL]: 'tall',
+  [RowHeight.EXTRA]: 'extra',
+};
+
+export enum DependencyTableType {
+  Column = 'column',
+  Model = 'table',
+  View = 'view',
+  Widget = 'widget',
+  Workflow = 'workflow',
+  DateDependency = 'date_dependency',
+}
+
+export enum BaseVersion {
+  V2 = 2,
+  V3 = 3,
+}
+
+export enum ManagedAppVersionStatus {
+  DRAFT = 'draft',
+  PUBLISHED = 'published',
+}
+
+export enum ManagedAppVisibility {
+  PUBLIC = 'public',
+  PRIVATE = 'private',
+  UNLISTED = 'unlisted',
+}
+
+export enum DeploymentStatus {
+  PENDING = 'pending',
+  IN_PROGRESS = 'in_progress',
+  SUCCESS = 'success',
+  FAILED = 'failed',
+}
+
+export enum DeploymentType {
+  INSTALL = 'install',
+  UPDATE = 'update',
+}

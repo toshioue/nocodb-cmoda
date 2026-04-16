@@ -1,7 +1,6 @@
-import { ViewTypes } from 'nocodb-sdk'
-import type { FilterType, KanbanType, SortType, TableType, ViewType } from 'nocodb-sdk'
+import type { ColumnType, FilterType, KanbanType, SortType, TableType, ViewType } from 'nocodb-sdk'
+import { NcApiVersion, ViewLockType, ViewTypes, extractFilterFromXwhere, getFirstNonPersonalView } from 'nocodb-sdk'
 import type { Ref } from 'vue'
-import type { SmartsheetStoreEvents } from '#imports'
 
 const [useProvideSmartsheetStore, useSmartsheetStore] = useInjectionState(
   (
@@ -12,49 +11,162 @@ const [useProvideSmartsheetStore, useSmartsheetStore] = useInjectionState(
     initialSorts?: Ref<SortType[]>,
     initialFilters?: Ref<FilterType[]>,
   ) => {
-    const { $api } = useNuxtApp()
+    /**
+     * In shared view mode, `isPublic` will still be false because both
+     * `useProvideSmartsheetStore` and `provide(IsPublicInj)` are called at the same
+     * component level, so the inject doesn't see the provided value.
+     */
+    const isPublic = shared ? ref(shared) : inject(IsPublicInj, ref(false))
 
-    const { activeView: view, activeNestedFilters, activeSorts } = storeToRefs(useViewsStore())
+    const { $api, $eventBus } = useNuxtApp()
+
+    const router = useRouter()
+    const route = router.currentRoute
+
+    const { user, isMobileMode } = useGlobal()
+
+    const { isUIAllowed } = useRoles()
+
+    const { activeView: view, activeNestedFilters, activeSorts, views } = storeToRefs(useViewsStore())
 
     const baseStore = useBase()
 
-    const { sqlUis } = storeToRefs(baseStore)
+    const { sqlUis, base, isSharedBase } = storeToRefs(baseStore)
 
     const sqlUi = computed(() =>
       (meta.value as TableType)?.source_id ? sqlUis.value[(meta.value as TableType).source_id!] : Object.values(sqlUis.value)[0],
     )
 
-    const { search } = useFieldQuery()
+    const { search, getValidSearchQueryForColumn } = useFieldQuery()
 
-    const eventBus = useEventBus<SmartsheetStoreEvents>(Symbol('SmartsheetStore'))
+    const eventBus = $eventBus.smartsheetStoreEventBus
 
-    const isLocked = computed(() => view.value?.lock_type === 'locked')
+    const isLocked = computed(
+      () =>
+        (view.value?.lock_type === ViewLockType.Personal && user.value?.id !== view.value?.owned_by) ||
+        view.value?.lock_type === ViewLockType.Locked,
+    )
     const isPkAvail = computed(() => (meta.value as TableType)?.columns?.some((c) => c.pk))
     const isGrid = computed(() => view.value?.type === ViewTypes.GRID)
     const isForm = computed(() => view.value?.type === ViewTypes.FORM)
     const isGallery = computed(() => view.value?.type === ViewTypes.GALLERY)
     const isCalendar = computed(() => view.value?.type === ViewTypes.CALENDAR)
+    const isTimeline = computed(() => view.value?.type === ViewTypes.TIMELINE)
     const isKanban = computed(() => view.value?.type === ViewTypes.KANBAN)
     const isMap = computed(() => view.value?.type === ViewTypes.MAP)
+    const isList = computed(() => view.value?.type === ViewTypes.LIST)
     const isSharedForm = computed(() => isForm.value && shared)
-    const isDefaultView = computed(() => view.value?.is_default)
+    const isDefaultView = computed(() => {
+      const getFirstGridView = getFirstNonPersonalView(views.value, {
+        includeViewType: ViewTypes.GRID,
+      })
+
+      return getFirstGridView?.id === view.value?.id
+    })
+    const gridEditEnabled = ref(true)
+
+    const isExternalSource = computed(
+      () => !!base.value?.sources?.some((s) => s.id === (meta.value as TableType)?.source_id && !s.is_meta && !s.is_local),
+    )
+
+    /**
+     * View operations (toolbar, aggregation footer, column reorder, column resize, etc.)
+     */
+    const isViewOperationsAllowed = computed(() => {
+      // Allow view operations in shared base and view
+      if (isPublic.value || isSharedBase.value) return true
+
+      // Allow view operations only for editor and above roles
+      return isUIAllowed('viewOperations')
+    })
+
+    const isAlreadyShownUpgradeModal = ref(false)
+
+    const aliasColObjMap = computed(() => {
+      const colObj = ((meta.value as TableType)?.columns || [])?.reduce((acc, col) => {
+        acc[col.title] = col
+
+        return acc
+      }, {} as Record<string, ColumnType>)
+      return colObj
+    })
+
+    const filtersFromUrlParams = computed(() => {
+      if (route.value.query.where && !ncIsEmptyObject(aliasColObjMap.value)) {
+        return extractFilterFromXwhere(
+          { api_version: NcApiVersion.V1, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+          route.value.query.where as string,
+          aliasColObjMap.value,
+          false,
+        )
+      }
+    })
+
+    const filtersFromUrlParamsReadableErrors = computed(() => {
+      return filtersFromUrlParams.value?.errors
+        ?.map((e: any) => e?.message)
+        .filter(Boolean)
+        .join(',')
+    })
+
+    const validFiltersFromUrlParams = computed(() => {
+      return !filtersFromUrlParams.value?.errors?.length ? filtersFromUrlParams.value?.filters || [] : []
+    })
+
+    const whereQueryFromUrl = computed(() => {
+      if (filtersFromUrlParams.value?.errors?.length) {
+        return
+      }
+
+      return route.value.query.where as string
+    })
+
+    const totalRowsWithSearchQuery = ref(0)
+
+    const totalRowsWithoutSearchQuery = ref(0)
+
+    const fetchTotalRowsWithSearchQuery = computed(() => {
+      return search.value.query?.trim() && !isMobileMode.value && (isGrid.value || isGallery.value)
+    })
+
     const xWhere = computed(() => {
       let where
+
+      // if where is already present in the query, use that
+      if (whereQueryFromUrl.value) {
+        where = whereQueryFromUrl.value
+      }
+
       const col =
         (meta.value as TableType)?.columns?.find(({ id }) => id === search.value.field) ||
         (meta.value as TableType)?.columns?.find((v) => v.pv)
-      if (!col) return
 
-      if (!search.value.query.trim()) return
-      if (sqlUi.value && ['text', 'string'].includes(sqlUi.value.getAbstractType(col)) && col.dt !== 'bigint') {
-        where = `(${col.title},like,%${search.value.query.trim()}%)`
-      } else {
-        where = `(${col.title},eq,${search.value.query.trim()})`
+      const searchQuery = search.value.query.trim()
+
+      if (!col || !searchQuery) {
+        search.value.isValidFieldQuery = true
+
+        return where
       }
-      return where
+
+      const colWhereQuery = getValidSearchQueryForColumn(col, searchQuery, meta.value as TableType, {
+        getWhereQueryAs: 'string',
+      }) as string
+
+      if (!colWhereQuery) {
+        search.value.isValidFieldQuery = false
+        return where
+      }
+
+      search.value.isValidFieldQuery = true
+
+      return `${where ? `${where}~and` : ''}${colWhereQuery}`
     })
 
     const isSqlView = computed(() => (meta.value as TableType)?.type === 'view')
+
+    const isSyncedTable = computed(() => !!(meta.value as TableType)?.synced)
+
     const sorts = ref<SortType[]>(unref(initialSorts) ?? [])
     const nestedFilters = ref<FilterType[]>(unref(initialFilters) ?? [])
 
@@ -80,6 +192,47 @@ const [useProvideSmartsheetStore, useSmartsheetStore] = useInjectionState(
       },
     )
 
+    const viewColumnsMap = reactive<Record<string, Record<string, any>[]>>({})
+    const pendingRequests = new Map()
+
+    const getViewColumnsKey = (baseId: string, viewId: string) => `${baseId}:${viewId}`
+
+    const getViewColumns = async (baseId: string, viewId: string) => {
+      if (isPublic.value) return []
+
+      const key = getViewColumnsKey(baseId, viewId)
+
+      if (viewColumnsMap[key]) return viewColumnsMap[key]
+
+      if (pendingRequests.has(key)) {
+        return pendingRequests.get(key)
+      }
+
+      const promise = (async () => {
+        try {
+          const workspaceId = base.value?.fk_workspace_id
+          if (!workspaceId) {
+            throw new Error('Workspace ID not found')
+          }
+          // Always use internal API for consistency and cross-base support
+          const result = await $api.internal.getOperation(workspaceId, baseId, {
+            operation: 'viewColumnList',
+            viewId,
+          })
+          viewColumnsMap[key] = result?.list ?? []
+          pendingRequests.delete(key)
+          return result?.list ?? []
+        } catch (error) {
+          pendingRequests.delete(key)
+          throw error
+        }
+      })()
+
+      pendingRequests.set(key, promise)
+
+      return promise
+    }
+
     return {
       view,
       meta,
@@ -92,7 +245,9 @@ const [useProvideSmartsheetStore, useSmartsheetStore] = useInjectionState(
       isGallery,
       isKanban,
       isMap,
+      isList,
       isCalendar,
+      isTimeline,
       isSharedForm,
       sorts,
       nestedFilters,
@@ -101,12 +256,27 @@ const [useProvideSmartsheetStore, useSmartsheetStore] = useInjectionState(
       sqlUi,
       allFilters,
       isDefaultView,
+      viewColumnsMap,
+      getViewColumns,
+      isExternalSource,
+      isAlreadyShownUpgradeModal,
+      filtersFromUrlParams,
+      filtersFromUrlParamsReadableErrors,
+      whereQueryFromUrl,
+      validFiltersFromUrlParams,
+      isSyncedTable,
+      totalRowsWithSearchQuery,
+      totalRowsWithoutSearchQuery,
+      fetchTotalRowsWithSearchQuery,
+      gridEditEnabled,
+      getValidSearchQueryForColumn,
+      isViewOperationsAllowed,
     }
   },
   'smartsheet-store',
 )
 
-export { useProvideSmartsheetStore }
+export { useProvideSmartsheetStore, useSmartsheetStore }
 
 export function useSmartsheetStoreOrThrow() {
   const state = useSmartsheetStore()

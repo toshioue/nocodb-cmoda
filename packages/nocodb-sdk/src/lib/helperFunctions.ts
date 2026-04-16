@@ -1,10 +1,17 @@
-import UITypes, { isNumericCol } from './UITypes';
-import { RolesObj, RolesType } from './globals';
+import UITypes, { isLinksOrLTAR, isNumericCol } from './UITypes';
+import { RelationTypes, RolesObj, RolesType } from './globals';
 import { ClientType } from './enums';
+import {
+  ColumnType,
+  FormulaType,
+  IntegrationsType,
+  LinkToAnotherRecordType,
+} from './Api';
+import { FormulaDataTypes } from './formula/enums';
+import { ncIsNull, ncIsUndefined } from '~/lib/is';
 
 // import {RelationTypes} from "./globals";
 
-// const systemCols = ['created_at', 'updated_at']
 const filterOutSystemColumns = (columns) => {
   return (columns && columns.filter((c) => !isSystemColumn(c))) || [];
 };
@@ -18,8 +25,6 @@ const isSystemColumn = (col): boolean =>
   !!(
     col &&
     (col.uidt === UITypes.ForeignKey ||
-      ((col.column_name === 'created_at' || col.column_name === 'updated_at') &&
-        col.uidt === UITypes.DateTime) ||
       (col.pk && (col.ai || col.cdf)) ||
       (col.pk && col.meta && col.meta.ag) ||
       col.system)
@@ -28,7 +33,7 @@ const isSystemColumn = (col): boolean =>
 const isSelfReferencingTableColumn = (col): boolean => {
   return (
     col &&
-    (col.uidt === UITypes.Links || col.uidt === UITypes.LinkToAnotherRecord) &&
+    isLinksOrLTAR(col) &&
     (col?.fk_model_id || col?.colOptions?.fk_model_id) &&
     col?.colOptions?.fk_related_model_id &&
     (col?.fk_model_id || col?.colOptions?.fk_model_id) ===
@@ -58,7 +63,16 @@ const stringifyRolesObj = (roles?: RolesObj | null): string => {
   const rolesArr = Object.keys(roles).filter((r) => roles[r]);
   return rolesArr.join(',');
 };
-
+const getAvailableRollupForColumn = (column: ColumnType) => {
+  if ([UITypes.Formula].includes(column.uidt as UITypes)) {
+    return getAvailableRollupForFormulaType(
+      (column.colOptions as FormulaType as any).parsed_tree?.dataType ??
+        FormulaDataTypes.UNKNOWN
+    );
+  } else {
+    return getAvailableRollupForUiType(column.uidt);
+  }
+};
 const getAvailableRollupForUiType = (type: string) => {
   if (
     [
@@ -120,6 +134,37 @@ const getAvailableRollupForUiType = (type: string) => {
   ];
 };
 
+const getAvailableRollupForFormulaType = (type: FormulaDataTypes) => {
+  switch (type) {
+    case FormulaDataTypes.DATE:
+    case FormulaDataTypes.INTERVAL: {
+      return ['count', 'min', 'max', 'countDistinct'];
+    }
+    case FormulaDataTypes.NUMERIC: {
+      return [
+        'sum',
+        'count',
+        'min',
+        'max',
+        'avg',
+        'countDistinct',
+        'sumDistinct',
+        'avgDistinct',
+      ];
+    }
+    case FormulaDataTypes.BOOLEAN: {
+      return ['count', 'sum'];
+    }
+    case FormulaDataTypes.STRING: {
+      return ['count', 'countDistinct'];
+    }
+    case FormulaDataTypes.UNKNOWN:
+    default: {
+      return ['count'];
+    }
+  }
+};
+
 const getRenderAsTextFunForUiType = (type: UITypes) => {
   if (
     [
@@ -129,7 +174,6 @@ const getRenderAsTextFunForUiType = (type: UITypes) => {
       UITypes.DateTime,
       UITypes.CreatedTime,
       UITypes.LastModifiedTime,
-      UITypes.Decimal,
       UITypes.Currency,
       UITypes.Duration,
     ].includes(type)
@@ -199,7 +243,9 @@ export {
   isSelfReferencingTableColumn,
   extractRolesObj,
   stringifyRolesObj,
+  getAvailableRollupForColumn,
   getAvailableRollupForUiType,
+  getAvailableRollupForFormulaType,
   getRenderAsTextFunForUiType,
   populateUniqueFileName,
   roundUpToPrecision,
@@ -209,8 +255,6 @@ const testDataBaseNames = {
   [ClientType.MYSQL]: null,
   mysql: null,
   [ClientType.PG]: 'postgres',
-  oracledb: 'xe',
-  [ClientType.MSSQL]: undefined,
   [ClientType.SQLITE]: 'a.sqlite',
 };
 
@@ -222,3 +266,84 @@ export const getTestDatabaseName = (db: {
     return db.connection?.database;
   return testDataBaseNames[db.client as keyof typeof testDataBaseNames];
 };
+
+export const integrationCategoryNeedDefault = (category: IntegrationsType) => {
+  return [IntegrationsType.Ai].includes(category);
+};
+
+export function parseProp(v: any, fallbackVal = {}): any {
+  if (ncIsUndefined(v) || ncIsNull(v)) return {};
+  try {
+    return typeof v === 'string' ? JSON.parse(v) ?? fallbackVal : v;
+  } catch {
+    return fallbackVal;
+  }
+}
+
+export function stringifyProp(v: any, fallbackVal = '{}'): string {
+  if (ncIsUndefined(v) || ncIsNull(v)) return '{}';
+  try {
+    return typeof v === 'string' ? v : JSON.stringify(v) ?? fallbackVal;
+  } catch {
+    return fallbackVal;
+  }
+}
+
+export function parseHelper(v: any): any {
+  try {
+    return typeof v === 'string' ? JSON.parse(v) : v;
+  } catch {
+    return v;
+  }
+}
+
+export function stringifyHelper(v: any): string {
+  try {
+    return typeof v === 'string' ? v : JSON.stringify(v);
+  } catch {
+    return v;
+  }
+}
+
+export function toSafeInteger(value: number) {
+  return Math.max(
+    Number.MIN_SAFE_INTEGER,
+    Math.min(value, Number.MAX_SAFE_INTEGER)
+  );
+}
+
+export function isCrossBaseLink(col: ColumnType) {
+  return (
+    col &&
+    isLinksOrLTAR(col) &&
+    (col.colOptions as LinkToAnotherRecordType)?.fk_related_base_id &&
+    (col.colOptions as LinkToAnotherRecordType)?.fk_related_base_id !==
+      (col.colOptions as LinkToAnotherRecordType)?.base_id
+  );
+}
+
+export function lookupCanHaveRecursiveEvaluation(param: {
+  isEeUI: boolean;
+  relationCol: ColumnType;
+  relationType: RelationTypes;
+  dbClientType: ClientType;
+}) {
+  const { isEeUI, dbClientType, relationType, relationCol } = param;
+  return (
+    isEeUI &&
+    dbClientType === ClientType.PG &&
+    isSelfReferencingTableColumn(relationCol) &&
+    [RelationTypes.HAS_MANY, RelationTypes.BELONGS_TO].includes(relationType)
+  );
+}
+
+export function formatBytes(bytes, decimals = 2, base = 1000) {
+  if (bytes === 0) return '0 Bytes';
+
+  const k = base;
+  const dm = Math.max(0, decimals);
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return `${(bytes / k ** i).toFixed(dm)} ${sizes[i]}`;
+}

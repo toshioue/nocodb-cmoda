@@ -1,9 +1,13 @@
 import type { ColumnType, LinkToAnotherRecordType, TableType } from 'nocodb-sdk'
-import { UITypes, isSystemColumn } from 'nocodb-sdk'
+import { UITypes, getFirstNonPersonalView, isSystemColumn } from 'nocodb-sdk'
 import type { SidebarTableNode } from '~/lib/types'
 import { generateUniqueTitle as generateTitle } from '#imports'
 
-export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => void; baseId: string; sourceId?: string }) {
+export function useTableNew(param: {
+  onTableCreate?: (tableMeta: TableType) => void
+  baseId: string
+  sourceId?: Ref<string | undefined>
+}) {
   const table = reactive<{ title: string; table_name: string; description?: string; columns: string[]; is_hybrid: boolean }>({
     title: '',
     table_name: '',
@@ -17,8 +21,6 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
   const { $e, $api } = useNuxtApp()
 
   const { getMeta, removeMeta } = useMetas()
-
-  const { closeTab } = useTabs()
 
   const { refreshCommandPalette } = useCommandPalette()
 
@@ -35,7 +37,7 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
 
   const { loadTables, baseUrl, isXcdbBase } = useBase()
 
-  const { loadViews } = useViewsStore()
+  const { loadViews, getViewReadableUrlSlug } = useViewsStore()
 
   const { openedViewsTab, viewsByTable } = storeToRefs(useViewsStore())
 
@@ -44,7 +46,7 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
   const tables = computed(() => baseTables.value.get(param.baseId) || [])
   const base = computed(() => bases.value.get(param.baseId))
 
-  const openTable = async (table: SidebarTableNode, cmdOrCtrl: boolean = false, navigate: boolean = true) => {
+  const openTable = async (table: SidebarTableNode, cmdOrCtrl = false, navigate = true) => {
     if (!table.base_id) return
 
     let base = bases.value.get(table.base_id)
@@ -70,8 +72,21 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
 
     const navigateToTable = async () => {
       if (navigate && openedViewsTab.value === 'view') {
+        let defaultView = table?.views?.[0]
+
+        if (!defaultView && table.base_id) {
+          const key = `${table.base_id}:${table.id}`
+          const views = viewsByTable.value.get(key) ?? []
+
+          defaultView = getFirstNonPersonalView(views)
+        }
+
+        const slug = defaultView ? getViewReadableUrlSlug({ tableTitle: table.title, viewOrViewTitle: defaultView }) : ''
+
         await navigateTo(
-          `${cmdOrCtrl ? '#' : ''}/${workspaceIdOrType}/${baseIdOrBaseId}/${table?.id}`,
+          `${cmdOrCtrl ? '#' : ''}/${workspaceIdOrType}/${baseIdOrBaseId}/${table?.id}${
+            slug ? `/${defaultView!.id}/${slug}` : ''
+          }`,
           cmdOrCtrl
             ? {
                 open: navigateToBlankTargetOpenOption,
@@ -83,23 +98,26 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
       table.isViewsLoading = true
 
       try {
-        await loadViews({ tableId: table.id as string })
+        await loadViews({ tableId: table.id as string, baseId: table.base_id as string })
 
-        const views = viewsByTable.value.get(table.id as string) ?? []
-        if (navigate && openedViewsTab.value !== 'view' && views.length && views[0].id) {
-          // find the default view and navigate to it, if not found navigate to the first one
-          const defaultView = views.find((v) => v.is_default) || views[0]
+        if (table.base_id) {
+          const key = `${table.base_id}:${table.id}`
+          const views = viewsByTable.value.get(key) ?? []
+          if (navigate && openedViewsTab.value !== 'view' && views.length && views[0].id) {
+            // find the default view and navigate to it, if not found navigate to the first one
+            const defaultView = getFirstNonPersonalView(views)
 
-          await navigateTo(
-            `${cmdOrCtrl ? '#' : ''}/${workspaceIdOrType}/${baseIdOrBaseId}/${table?.id}/${defaultView.id}/${
-              openedViewsTab.value
-            }`,
-            cmdOrCtrl
-              ? {
-                  open: navigateToBlankTargetOpenOption,
-                }
-              : undefined,
-          )
+            await navigateTo(
+              `${cmdOrCtrl ? '#' : ''}/${workspaceIdOrType}/${baseIdOrBaseId}/${table?.id}/${
+                defaultView.id
+              }/${getViewReadableUrlSlug({ tableTitle: table.title, viewOrViewTitle: defaultView })}}/${openedViewsTab.value}`,
+              cmdOrCtrl
+                ? {
+                    open: navigateToBlankTargetOpenOption,
+                  }
+                : undefined,
+            )
+          }
         }
       } catch (e) {
         console.error(e)
@@ -112,7 +130,7 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
       table.isMetaLoading = true
 
       try {
-        await getMeta(table.id as string)
+        await getMeta(table.base_id as string, table.id as string)
       } catch (e) {
         console.error(e)
       } finally {
@@ -133,7 +151,7 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
       table.title = table.title.trim()
     }
 
-    let { sourceId } = param
+    let sourceId = unref(param.sourceId)
 
     if (!(baseId in bases.value)) {
       await basesStore.loadProject(baseId)
@@ -192,7 +210,7 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
   )
 
   const generateUniqueTitle = () => {
-    table.title = generateTitle('Table', tables.value, 'title')
+    table.title = generateTitle(t('objects.table'), tables.value, 'title')
   }
 
   const deleteTable = (table: TableType) => {
@@ -207,13 +225,14 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
       width: 450,
       async onOk() {
         try {
-          const meta = (await getMeta(table.id as string, true)) as TableType
+          const meta = (await getMeta(table.base_id as string, table.id as string, true)) as TableType
           const relationColumns = meta?.columns?.filter((c) => c.uidt === UITypes.LinkToAnotherRecord && !isSystemColumn(c))
 
           if (relationColumns?.length && !isXcdbBase(table.source_id)) {
             const refColMsgs = await Promise.all(
               relationColumns.map(async (c, i) => {
                 const refMeta = (await getMeta(
+                  table.base_id as string,
                   (c?.colOptions as LinkToAnotherRecordType)?.fk_related_model_id as string,
                 )) as TableType
                 return `${i + 1}. ${c.title} is a LinkToAnotherRecord of ${(refMeta && refMeta.title) || c.title}`
@@ -229,17 +248,19 @@ export function useTableNew(param: { onTableCreate?: (tableMeta: TableType) => v
             return
           }
 
-          await $api.dbTable.delete(table?.id as string)
-
-          await closeTab({
-            type: TabType.TABLE,
-            id: table.id,
-            title: table.title,
-          })
+          await $api.internal.postOperation(
+            table.fk_workspace_id!,
+            table.base_id!,
+            {
+              operation: 'tableDelete',
+              tableId: table.id as string,
+            },
+            {},
+          )
 
           await loadTables()
 
-          removeMeta(table.id as string)
+          removeMeta(table.base_id as string, table.id as string, true)
           refreshCommandPalette()
           // Deleted table successfully
           message.info(t('msg.info.tableDeleted'))

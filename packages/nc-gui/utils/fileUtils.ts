@@ -15,11 +15,12 @@ const imageExt = [
   'heic-sequence',
 ]
 
+const audioExt = ['mp3', 'flac', 'wav', 'm4a']
+
 const videoExt = [
   'webm',
   'mpg',
   'mp2',
-  'mp3',
   'mpeg',
   'ogg',
   'mp4',
@@ -34,10 +35,22 @@ const videoExt = [
   '3g2',
   'vob',
   'ts',
+  'mp4a',
 ]
 
+const wordExt = ['txt', 'doc', 'docx']
+
+const excelExt = ['xls', 'xlsx', 'csv']
+
+const presentationExt = ['ppt', 'pptx']
+
+const zipExt = ['zip', 'rar']
+
 const officeExt = [
-  'txt',
+  ...wordExt,
+  ...excelExt,
+  ...presentationExt,
+  ...zipExt,
   'css',
   'html',
   'php',
@@ -46,30 +59,21 @@ const officeExt = [
   'h',
   'hpp',
   'js',
-  'doc',
-  'docx',
-  'xls',
-  'xlsx',
-  'ppt',
-  'pptx',
   'pdf',
   'pages',
   'ai',
   'psd',
-  'tiff',
+  // 'tiff',
   'dxf',
-  'svg',
+  // 'svg',
   'eps',
   'ps',
   'ttf',
   'xps',
-  'zip',
-  'rar',
-  'csv',
 ]
 
 const isAudio = (name: string, mimetype?: string) => {
-  return name?.toLowerCase().endsWith('.mp3') || mimetype?.startsWith('audio/')
+  return audioExt.some((e) => name?.toLowerCase().endsWith(`.${e}`)) || mimetype?.startsWith('audio/')
 }
 
 const isVideo = (name: string, mimetype?: string) => {
@@ -77,6 +81,9 @@ const isVideo = (name: string, mimetype?: string) => {
 }
 
 const isImage = (name: string, mimetype?: string) => {
+  if (mimetype && (mimetype?.startsWith('image/vnd.') || ['image/svg+xml'].includes(mimetype))) {
+    return false
+  }
   return imageExt.some((e) => name?.toLowerCase().endsWith(`.${e}`)) || mimetype?.startsWith('image/')
 }
 
@@ -84,11 +91,31 @@ const isPdf = (name: string, mimetype?: string) => {
   return name?.toLowerCase().endsWith('.pdf') || mimetype?.startsWith('application/pdf')
 }
 
+const isWord = (name: string, _mimetype?: string) => {
+  return wordExt.some((e) => name?.toLowerCase().endsWith(`.${e}`))
+}
+
+const isExcel = (name: string, _mimetype?: string) => {
+  return excelExt.some((e) => name?.toLowerCase().endsWith(`.${e}`))
+}
+
+const isPresentation = (name: string, _mimetype?: string) => {
+  return presentationExt.some((e) => name?.toLowerCase().endsWith(`.${e}`))
+}
+
 const isOffice = (name: string, _mimetype?: string) => {
   return officeExt.some((e) => name?.toLowerCase().endsWith(`.${e}`))
 }
 
-export { isImage, imageExt, isVideo, isPdf, isOffice, isAudio }
+const isZip = (name: string, _mimetype?: string) => {
+  return zipExt.some((e) => name?.toLowerCase().endsWith(`.${e}`))
+}
+
+const isPreviewSupportedFile = (name: string, mimetype?: string) => {
+  return isImage(name, mimetype) || isVideo(name, mimetype) || isAudio(name, mimetype) || isPdf(name, mimetype)
+}
+
+export { isImage, imageExt, isVideo, isPdf, isOffice, isAudio, isZip, isWord, isExcel, isPresentation, isPreviewSupportedFile }
 // Ref : https://stackoverflow.com/a/12002275
 
 // Tested in Mozilla Firefox browser, Chrome
@@ -145,4 +172,64 @@ export function extractImageSrcFromRawHtml(rawText: string) {
     // Extract the src attribute
     return imgElement.getAttribute('src')
   }
+}
+
+export const getReadableFileSize = (sizeInBytes: number) => {
+  const i = Math.min(Math.floor(Math.log(sizeInBytes) / Math.log(1024)), 4)
+  return `${(sizeInBytes / 1024 ** i).toFixed(2) * 1} ${['B', 'KB', 'MB', 'GB', 'TB'][i]}`
+}
+
+export const getAttachmentIcon = (
+  title: MaybeRefOrGetter<string | undefined>,
+  mimetype: MaybeRefOrGetter<string | undefined>,
+) => {
+  if (isImage(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypeImage'
+  }
+
+  if (isPdf(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypePdf'
+  }
+
+  if (isVideo(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypeVideo'
+  }
+
+  if (isAudio(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypeAudio'
+  }
+
+  if (isWord(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypeWord'
+  }
+
+  if (isExcel(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypeCsv'
+  }
+
+  if (isPresentation(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypePresentation'
+  }
+
+  if (isZip(toValue(title) || '', toValue(mimetype))) {
+    return 'ncFileTypeZip'
+  }
+
+  return 'ncFileTypeUnknown'
+}
+
+export const getFileTypeLabel = (fileName: string, mimeType?: string): string => {
+  if (isPdf(fileName, mimeType)) return 'PDF'
+  if (isExcel(fileName, mimeType)) return 'Excel'
+  if (isWord(fileName, mimeType)) return 'Word'
+  if (isPresentation(fileName, mimeType)) return 'Presentation'
+  if (isImage(fileName, mimeType)) return 'Image'
+  if (isVideo(fileName, mimeType)) return 'Video'
+  if (isAudio(fileName, mimeType)) return 'Audio'
+  if (isZip(fileName, mimeType)) return 'Archive'
+  if (mimeType === 'text/csv' || fileName.endsWith('.csv')) return 'CSV'
+  if (mimeType === 'application/json' || fileName.endsWith('.json')) return 'JSON'
+  if (mimeType === 'text/markdown' || fileName.endsWith('.md')) return 'Markdown'
+  if (mimeType === 'text/plain' || fileName.endsWith('.txt')) return 'Text'
+  return 'File'
 }

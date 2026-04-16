@@ -9,8 +9,8 @@ import {
   UITypes,
 } from 'nocodb-sdk';
 import type { Column } from '~/models';
-import type { BaseModelSqlv2 } from '~/db/BaseModelSqlv2';
 import type { Knex } from 'knex';
+import type { IBaseModelSqlV2 } from '~/db/IBaseModelSqlV2';
 
 export function genMysql2AggregatedQuery({
   column,
@@ -22,9 +22,9 @@ export function genMysql2AggregatedQuery({
   alias,
 }: {
   column: Column;
-  baseModelSqlv2: BaseModelSqlv2;
+  baseModelSqlv2: IBaseModelSqlV2;
   aggregation: string;
-  column_query: string;
+  column_query: string | Knex.QueryBuilder;
   parsedFormulaType?: FormulaDataTypes;
   aggType:
     | 'common'
@@ -395,7 +395,7 @@ export function genMysql2AggregatedQuery({
     }
   }
 
-  if (alias && aggregationSql) {
+  if (aggregationSql) {
     if (
       ![AllAggregations.EarliestDate, AllAggregations.LatestDate].includes(
         aggregation as any,
@@ -403,8 +403,9 @@ export function genMysql2AggregatedQuery({
     ) {
       aggregationSql = knex.raw(`COALESCE(??, 0)`, [aggregationSql]);
     }
-
-    aggregationSql = knex.raw(`?? AS ??`, [aggregationSql, alias]);
+    if (alias) {
+      aggregationSql = knex.raw(`?? AS ??`, [aggregationSql, alias]);
+    }
   }
 
   return aggregationSql?.toQuery();

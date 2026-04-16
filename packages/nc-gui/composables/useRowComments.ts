@@ -1,26 +1,54 @@
-import type { ColumnType, CommentType, TableType } from 'nocodb-sdk'
+import type { ColumnType, CommentType, MetaType, TableType } from 'nocodb-sdk'
+import { NcMarkdownParser } from '~/helpers/tiptap'
+
+export interface CommentTypeExtended extends CommentType {
+  created_display_name?: string | null
+  created_display_name_short?: string
+  resolved_display_name?: string | null
+  resolved_display_name_short?: string
+  created_by_meta?: MetaType
+  resolved_by_meta?: MetaType
+}
 
 const [useProvideRowComments, useRowComments] = useInjectionState((meta: Ref<TableType>, row: Ref<Row>) => {
   const isCommentsLoading = ref(false)
 
+  const { user } = useGlobal()
+
   const { isUIAllowed } = useRoles()
 
   const { $e, $state, $api } = useNuxtApp()
-
-  const comments = ref<
-    Array<
-      CommentType & {
-        created_display_name: string
-        resolved_display_name?: string
-      }
-    >
-  >([])
 
   const basesStore = useBases()
 
   const { basesUser } = storeToRefs(basesStore)
 
   const baseUsers = computed(() => (meta.value.base_id ? basesUser.value.get(meta.value.base_id) || [] : []))
+
+  const comments = ref<Array<CommentTypeExtended>>([])
+
+  const parsedHtmlComments = computed(() => {
+    return comments.value.reduce((acc, comment) => {
+      if (comment.id) {
+        let commentValue = unref(comment.comment)
+        if (comment.updated_at !== comment.created_at && comment.updated_at) {
+          const str = timeAgo(comment.updated_at).replace(' ', '_')
+          commentValue += ` [(edited)](a~~~###~~~Edited_${str}) `
+        }
+        acc[comment.id] =
+          NcMarkdownParser.parse(
+            commentValue,
+            {
+              enableMention: !!isEeUI,
+              users: unref(baseUsers.value),
+              currentUser: unref(user.value),
+            },
+            true,
+          ) ?? ''
+      }
+      return acc
+    }, {} as Record<string, any>)
+  })
 
   const loadComments = async (_rowId?: string, ignoreLoadingIndicator = true) => {
     if (!isUIAllowed('commentList') || (!row.value && !_rowId)) return
@@ -33,23 +61,24 @@ const [useProvideRowComments, useRowComments] = useInjectionState((meta: Ref<Tab
       if (!ignoreLoadingIndicator) isCommentsLoading.value = true
 
       const res = ((
-        await $api.utils.commentList({
+        await $api.internal.getOperation(meta.value!.fk_workspace_id!, meta.value!.base_id!, {
+          operation: 'commentList',
           row_id: rowId,
           fk_model_id: meta.value.id as string,
         })
-      ).list || []) as Array<
-        CommentType & {
-          created_display_name: string
-        }
-      >
+      ).list || []) as Array<CommentTypeExtended>
 
       comments.value = res.map((comment) => {
         const user = baseUsers.value.find((u) => u.id === comment.created_by)
         const resolvedUser = comment.resolved_by ? baseUsers.value.find((u) => u.id === comment.resolved_by) : null
         return {
           ...comment,
-          created_display_name: user?.display_name ?? (user?.email ?? '').split('@')[0],
-          resolved_display_name: resolvedUser ? resolvedUser.display_name ?? resolvedUser.email.split('@')[0] : undefined,
+          created_display_name: user?.display_name,
+          created_display_name_short: user?.display_name ?? extractNameFromEmail(user?.email),
+          resolved_display_name: resolvedUser?.display_name,
+          resolved_display_name_short: resolvedUser?.display_name ?? extractNameFromEmail(resolvedUser?.email),
+          created_by_meta: user?.meta,
+          resolved_by_meta: resolvedUser?.meta,
         }
       })
     } catch (e: unknown) {
@@ -74,7 +103,16 @@ const [useProvideRowComments, useRowComments] = useInjectionState((meta: Ref<Tab
     try {
       comments.value = comments.value.filter((c) => c.id !== commentId)
 
-      await $api.utils.commentDelete(commentId)
+      await $api.internal.postOperation(
+        (meta.value as any).fk_workspace_id!,
+        meta.value!.base_id!,
+        {
+          operation: 'commentDelete',
+        },
+        {
+          commentId,
+        },
+      )
 
       // update comment count in rowMeta
       Object.assign(row.value, {
@@ -109,14 +147,25 @@ const [useProvideRowComments, useRowComments] = useInjectionState((meta: Ref<Tab
             ...c,
             resolved_by: tempC.resolved_by ? undefined : $state.user?.value?.id,
             resolved_by_email: tempC.resolved_by ? undefined : $state.user?.value?.email,
-            resolved_display_name: tempC.resolved_by
+            resolved_display_name: tempC.resolved_by ? undefined : $state.user?.value?.display_name,
+            resolved_display_name_short: tempC.resolved_by
               ? undefined
-              : $state.user?.value?.display_name ?? $state.user?.value?.email.split('@')[0],
+              : $state.user?.value?.display_name ?? extractNameFromEmail($state.user?.value?.email),
+            resolved_by_meta: tempC.resolved_by ? undefined : $state.user?.value?.meta,
           }
         }
         return c
       })
-      await $api.utils.commentResolve(commentId, {})
+      await $api.internal.postOperation(
+        (meta.value as any).fk_workspace_id!,
+        meta.value!.base_id!,
+        {
+          operation: 'commentResolve',
+        },
+        {
+          commentId,
+        },
+      )
     } catch (e: unknown) {
       comments.value = comments.value.map((c) => {
         if (c.id === commentId) {
@@ -145,11 +194,18 @@ const [useProvideRowComments, useRowComments] = useInjectionState((meta: Ref<Tab
 
       if (!rowId) return
 
-      await $api.utils.commentRow({
-        fk_model_id: meta.value?.id as string,
-        row_id: rowId,
-        comment: `${comment}`.replace(/(<br \/>)+$/g, ''),
-      })
+      await $api.internal.postOperation(
+        (meta.value as any).fk_workspace_id!,
+        meta.value!.base_id!,
+        {
+          operation: 'commentRow',
+        },
+        {
+          fk_model_id: meta.value?.id as string,
+          row_id: rowId,
+          comment: `${comment}`.replace(/(<br \/>)+$/g, ''),
+        },
+      )
 
       // Increase Comment Count in rowMeta
       Object.assign(row.value, {
@@ -190,7 +246,17 @@ const [useProvideRowComments, useRowComments] = useInjectionState((meta: Ref<Tab
         }
         return c
       })
-      await $api.utils.commentUpdate(commentId, comment)
+      await $api.internal.postOperation(
+        (meta.value as any).fk_workspace_id!,
+        meta.value!.base_id!,
+        {
+          operation: 'commentUpdate',
+        },
+        {
+          commentId,
+          ...comment,
+        },
+      )
     } catch (e: any) {
       comments.value = comments.value.map((c) => {
         if (c.id === commentId) {
@@ -221,6 +287,7 @@ const [useProvideRowComments, useRowComments] = useInjectionState((meta: Ref<Tab
     deleteComment,
     isCommentsLoading,
     primaryKey,
+    parsedHtmlComments,
   }
 })
 

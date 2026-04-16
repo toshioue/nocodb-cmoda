@@ -3,35 +3,48 @@ import { Pane, Splitpanes } from 'splitpanes'
 import 'splitpanes/dist/splitpanes.css'
 import type { ColumnType, LinkToAnotherRecordType, TableType } from 'nocodb-sdk'
 import { UITypes, isLinksOrLTAR } from 'nocodb-sdk'
+import { UseDetachedLongTextProvider } from '../smartsheet/grid/canvas/composables/useDetachedLongText'
+import DetachedExpandedText from '../smartsheet/grid/canvas/components/DetachedExpandedText.vue'
 
 const props = defineProps<{
   activeTab: TabItem
 }>()
 
-const { isUIAllowed } = useRoles()
-
-const { metas, getMeta } = useMetas()
+const activeTab = toRef(props, 'activeTab')
 
 useSidebar('nc-right-sidebar')
 
-const { isMobileMode } = useGlobal()
+const { isUIAllowed } = useRoles()
 
-const activeTab = toRef(props, 'activeTab')
+const { isRtl } = useRtl()
+
+const { getMeta, getMetaByKey } = useMetas()
+
+const { ncNavigateTo } = useGlobal()
 
 const route = useRoute()
 
+const { activeProjectId } = storeToRefs(useBases())
+
+const { activeWorkspaceId } = storeToRefs(useWorkspace())
+
+const viewStore = useViewsStore()
+
+const webhooksStore = useWebhooksStore()
+
+const { pendingDeepLinkHookId, pendingDeepLinkHookTab } = storeToRefs(webhooksStore)
+
+const { activeView, openedViewsTab, activeViewTitleOrId, isViewsLoading } = storeToRefs(viewStore)
+
 const meta = computed<TableType | undefined>(() => {
   const viewId = route.params.viewId as string
-  return viewId && metas.value[viewId]
+  return viewId && getMetaByKey(activeProjectId.value, viewId)
 })
 
-const { handleSidebarOpenOnMobileForNonViews } = useConfigStore()
-const { activeTableId } = storeToRefs(useTablesStore())
+const { isGallery, isGrid, isForm, isKanban, isLocked, isMap, isCalendar, isList, isTimeline, xWhere, eventBus } =
+  useProvideSmartsheetStore(activeView, meta)
 
-const { activeView, openedViewsTab, activeViewTitleOrId } = storeToRefs(useViewsStore())
-const { isGallery, isGrid, isForm, isKanban, isLocked, isMap, isCalendar, xWhere } = useProvideSmartsheetStore(activeView, meta)
-
-useSqlEditor()
+useViewRowColorProvider({ view: activeView, eventBus })
 
 const reloadViewDataEventHook = createEventHook()
 
@@ -39,7 +52,7 @@ const reloadViewMetaEventHook = createEventHook<void | boolean>()
 
 const openNewRecordFormHook = createEventHook<void>()
 
-const { base } = storeToRefs(useBase())
+const { base, showBaseAccessRequestOverlay } = storeToRefs(useBase())
 
 const activeSource = computed(() => {
   return meta.value?.source_id && base.value && base.value.sources?.find((source) => source.id === meta.value?.source_id)
@@ -47,7 +60,9 @@ const activeSource = computed(() => {
 
 useProvideKanbanViewStore(meta, activeView)
 useProvideMapViewStore(meta, activeView)
-useProvideCalendarViewStore(meta, activeView)
+useProvideCalendarViewStore(meta, activeView, false, xWhere)
+useProvideListViewStore(meta, activeView)
+useProvideTimelineViewStore(meta, activeView, false, xWhere)
 
 // todo: move to store
 provide(MetaInj, meta)
@@ -57,6 +72,7 @@ provide(ReloadViewDataHookInj, reloadViewDataEventHook)
 provide(ReloadViewMetaHookInj, reloadViewMetaEventHook)
 provide(OpenNewRecordFormHookInj, openNewRecordFormHook)
 provide(IsFormInj, isForm)
+provide(IsTimelineInj, isTimeline)
 provide(TabMetaInj, activeTab)
 provide(ActiveSourceInj, activeSource)
 provide(ReloadAggregateHookInj, createEventHook())
@@ -71,6 +87,7 @@ provide(
   ),
 )
 useExpandedFormDetachedProvider()
+UseDetachedLongTextProvider()
 
 useProvideViewColumns(activeView, meta, () => reloadViewDataEventHook?.trigger())
 
@@ -81,6 +98,20 @@ useProvideSmartsheetLtarHelpers(meta)
 const grid = ref()
 
 const extensionPaneRef = ref()
+
+const actionPaneRef = ref()
+
+/*
+ * NOTE:
+ * Splitpanes internally schedules async resize/redo logic.
+ * If the component is mounted/unmounted quickly (route change, fullscreen toggle),
+ * those callbacks can run after unmount and crash with:
+ * "Cannot read properties of null (reading 'children')".
+ *
+ * We delay rendering Splitpanes until the parent component is fully mounted
+ * and show a loader meanwhile to ensure DOM stability.
+ */
+const { isMounted } = useIsMounted()
 
 const onDrop = async (event: DragEvent) => {
   event.preventDefault()
@@ -95,8 +126,8 @@ const onDrop = async (event: DragEvent) => {
     // if dragged item or opened view is not a table, return
     if (data.type !== 'table' || meta.value?.type !== 'table') return
 
-    const childMeta = await getMeta(data.id)
-    const parentMeta = metas.value[meta.value.id!]
+    const childMeta = await getMeta(meta.value.base_id!, data.id)
+    const parentMeta = getMetaByKey(activeProjectId.value, meta.value.id!)
 
     if (!childMeta || !parentMeta) return
 
@@ -157,34 +188,44 @@ const onDrop = async (event: DragEvent) => {
   }
 }
 
-watch([activeViewTitleOrId, activeTableId], () => {
-  handleSidebarOpenOnMobileForNonViews()
-})
-
-const { leftSidebarWidth, windowSize } = storeToRefs(useSidebarStore())
+const { leftSidebarWidth, windowSize, isFullScreen } = storeToRefs(useSidebarStore())
 
 const { isPanelExpanded, extensionPanelSize } = useExtensions()
+
+const { isPanelExpanded: isActionPanelExpanded, actionPanelSize } = useActionPane()
 
 const contentSize = computed(() => {
   if (isPanelExpanded.value && extensionPanelSize.value) {
     return 100 - extensionPanelSize.value
+  } else if (isActionPanelExpanded.value && actionPanelSize.value) {
+    return 100 - actionPanelSize.value
   } else {
     return 100
   }
 })
 
 const contentMaxSize = computed(() => {
-  if (!isPanelExpanded.value) {
+  if (!isPanelExpanded.value && !isActionPanelExpanded.value) {
     return 100
   } else {
     return ((windowSize.value - leftSidebarWidth.value - 300) / (windowSize.value - leftSidebarWidth.value)) * 100
   }
 })
 
-const onResize = (sizes: { min: number; max: number; size: number }[]) => {
+const onResize = () => {
+  if (isPanelExpanded.value && !extensionPaneRef.value?.isReady) {
+    extensionPaneRef.value?.onReady()
+  }
+  if (isActionPanelExpanded.value && !actionPaneRef.value?.isReady) {
+    actionPaneRef.value?.onReady()
+  }
+}
+
+const onResized = (sizes: { min: number; max: number; size: number }[]) => {
   if (sizes.length === 2) {
-    if (!sizes[1].size) return
-    extensionPanelSize.value = sizes[1].size
+    if (!sizes[1]?.size) return
+    if (isPanelExpanded.value) extensionPanelSize.value = sizes[1]!.size
+    if (isActionPanelExpanded.value) actionPanelSize.value = sizes[1]!.size
   }
 }
 
@@ -195,51 +236,118 @@ const onReady = () => {
       extensionPaneRef.value?.onReady()
     }, 300)
   }
+  if (isActionPanelExpanded.value && actionPaneRef.value) {
+    // wait until action pane animation complete
+    setTimeout(() => {
+      actionPaneRef.value?.onReady()
+    }, 300)
+  }
 }
+
+const checkIfViewExists = async () => {
+  await until(() => isViewsLoading.value).toBe(false)
+  const views = await viewStore.loadViews({
+    baseId: activeProjectId.value,
+    ignoreLoading: true,
+  })
+
+  // If no views exist or the current view is not found, navigate to workspace/base
+  if (
+    !views?.length ||
+    !views.find((view) => view.id === activeViewTitleOrId.value || view.title === activeViewTitleOrId.value)
+  ) {
+    ncNavigateTo({
+      workspaceId: activeWorkspaceId.value,
+      baseId: activeProjectId.value,
+    })
+  }
+}
+
+onMounted(async () => {
+  await checkIfViewExists()
+
+  const hookId = route.query.hookId as string
+  if (hookId) {
+    pendingDeepLinkHookId.value = hookId
+    pendingDeepLinkHookTab.value = (route.query.hookTab as string) || 'log'
+    if (openedViewsTab.value !== 'webhook') {
+      viewStore.onViewsTabChange('webhook')
+    }
+  }
+})
+
+watch(isViewsLoading, async () => {
+  await checkIfViewExists()
+})
 </script>
 
 <template>
-  <div class="nc-container flex flex-col h-full" @drop="onDrop" @dragover.prevent>
-    <LazySmartsheetTopbar />
+  <div
+    class="nc-container relative flex flex-col h-full"
+    :class="{ 'children:pointer-events-none': isEeUI && showBaseAccessRequestOverlay }"
+    @drop="onDrop"
+    @dragover.prevent
+  >
+    <SmartsheetTopbar v-if="!isFullScreen" />
     <div style="height: calc(100% - var(--topbar-height))">
-      <Splitpanes
-        v-if="openedViewsTab === 'view'"
-        class="nc-extensions-content-resizable-wrapper"
-        @ready="() => onReady()"
-        @resized="onResize"
-      >
-        <Pane class="flex flex-col h-full min-w-0" :max-size="contentMaxSize" :size="contentSize">
-          <LazySmartsheetToolbar v-if="!isForm" />
-          <div
-            :style="{ height: isForm || isMobileMode ? '100%' : 'calc(100% - var(--toolbar-height))' }"
-            class="flex flex-row w-full"
-          >
-            <Transition name="layout" mode="out-in">
-              <div v-if="openedViewsTab === 'view'" class="flex flex-1 min-h-0 w-3/4">
-                <div class="h-full flex-1 min-w-0 min-h-0 bg-white">
-                  <LazySmartsheetGrid v-if="isGrid || !meta || !activeView" ref="grid" />
+      <NcFullScreen v-if="openedViewsTab === 'view'" v-model="isFullScreen" class="h-full" :page-only="true">
+        <!-- Splitpanes is conditionally rendered only after mount to avoid race conditions with its internal async resize logic. -->
+        <Splitpanes
+          v-if="isMounted"
+          :rtl="isRtl"
+          class="nc-extensions-content-resizable-wrapper"
+          :class="{
+            'nc-is-open-extensions': isPanelExpanded,
+            'nc-is-open-actions': isActionPanelExpanded,
+          }"
+          @ready="() => onReady()"
+          @resize="onResize"
+          @resized="onResized"
+        >
+          <Pane class="flex flex-col h-full min-w-0" :max-size="contentMaxSize" :size="contentSize">
+            <SmartsheetToolbar v-if="!isForm" show-full-screen-toggle />
+            <div
+              :style="{ height: isForm || isTimeline ? '100%' : 'calc(100% - var(--toolbar-height))' }"
+              class="flex flex-row w-full"
+            >
+              <Transition name="layout" mode="out-in">
+                <div v-if="openedViewsTab === 'view'" class="flex flex-1 min-h-0 w-3/4">
+                  <div class="h-full flex-1 min-w-0 min-h-0 bg-nc-bg-default">
+                    <SmartsheetGrid v-if="isGrid || !meta || !activeView" ref="grid" />
 
-                  <template v-if="activeView && meta">
-                    <LazySmartsheetGallery v-if="isGallery" />
+                    <template v-if="activeView && meta">
+                      <SmartsheetGallery v-if="isGallery" />
 
-                    <LazySmartsheetForm v-else-if="isForm && !$route.query.reload" />
+                      <SmartsheetForm v-else-if="isForm && !$route.query.reload" />
 
-                    <LazySmartsheetKanban v-else-if="isKanban" />
+                      <SmartsheetKanbanWrapper v-else-if="isKanban" />
 
-                    <LazySmartsheetCalendar v-else-if="isCalendar" />
+                      <SmartsheetCalendar v-else-if="isCalendar" />
 
-                    <LazySmartsheetMap v-else-if="isMap" />
-                  </template>
+                      <SmartsheetTimeline v-else-if="isTimeline" />
+
+                      <SmartsheetMap v-else-if="isMap" />
+
+                      <SmartsheetList v-else-if="isList" />
+                    </template>
+                  </div>
                 </div>
-              </div>
-            </Transition>
-          </div>
-        </Pane>
-        <ExtensionsPane ref="extensionPaneRef" />
-      </Splitpanes>
-      <SmartsheetDetails v-else />
+              </Transition>
+            </div>
+          </Pane>
+          <LazyExtensionsPane v-if="isPanelExpanded" ref="extensionPaneRef" />
+          <LazyActionsPane v-if="isActionPanelExpanded" ref="actionPaneRef" />
+        </Splitpanes>
+        <div v-else class="flex items-center justify-center h-full w-full">
+          <a-spin size="large" />
+        </div>
+      </NcFullScreen>
+
+      <LazySmartsheetDetails v-else />
     </div>
     <LazySmartsheetExpandedFormDetached />
+    <DetachedExpandedText />
+    <TabsSmartsheetBaseAccessOverlay />
   </div>
 </template>
 
@@ -248,41 +356,66 @@ const onReady = () => {
   @apply !w-0 !max-w-0 !min-w-0 overflow-x-hidden;
 }
 
-.nc-extensions-content-resizable-wrapper > {
-  .splitpanes__splitter {
+.nc-extensions-content-resizable-wrapper {
+  &:not(.nc-is-open-extensions):not(.nc-is-open-actions) > .splitpanes__splitter {
+    @apply hidden;
+  }
+
+  > .splitpanes__splitter {
     @apply !w-0 relative overflow-visible z-40 -ml-1px;
   }
-  .splitpanes__splitter:before {
-    @apply bg-gray-200 absolute left-0 top-[12px] h-[calc(100%_-_24px)] rounded-full z-40;
+
+  > .splitpanes__splitter:before {
+    @apply bg-nc-bg-gray-medium absolute left-0 top-[12px] h-[calc(100%_-_24px)] rounded-full z-40;
     content: '';
   }
 
-  .splitpanes__splitter:hover:before {
-    @apply bg-scrollbar;
+  > .splitpanes__splitter:hover:before {
+    @apply bg-nc-border-gray-medium;
     width: 3px !important;
     left: 0px;
   }
 
-  .splitpanes--dragging .splitpanes__splitter:before {
-    @apply bg-scrollbar;
+  &.splitpanes--dragging > .splitpanes__splitter:before {
+    @apply bg-nc-border-gray-medium;
     width: 3px !important;
     left: 0px;
   }
 
-  .splitpanes--dragging .splitpanes__splitter {
+  &.splitpanes--dragging > .splitpanes__splitter {
     @apply w-1 mr-0;
   }
-}
-
-.splitpanes__pane {
-  transition: width 0.15s ease-in-out !important;
-}
-
-.splitpanes--dragging {
-  cursor: col-resize;
 
   > .splitpanes__pane {
+    transition: width 0.15s ease-in-out !important;
+  }
+
+  &.splitpanes--dragging > .splitpanes__pane {
     transition: none !important;
+  }
+}
+
+.rtl .nc-extensions-content-resizable-wrapper {
+  > .splitpanes__splitter {
+    @apply -ml-0 -mr-1px;
+  }
+
+  > .splitpanes__splitter:before {
+    @apply left-auto right-0;
+  }
+
+  > .splitpanes__splitter:hover:before {
+    left: auto;
+    right: 0px;
+  }
+
+  &.splitpanes--dragging > .splitpanes__splitter:before {
+    left: auto;
+    right: 0px;
+  }
+
+  &.splitpanes--dragging > .splitpanes__splitter {
+    @apply mr-auto ml-0;
   }
 }
 </style>

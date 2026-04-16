@@ -1,12 +1,14 @@
 import type { ComputedRef, Ref, ToRefs } from 'vue'
 import type { WritableComputedRef } from '@vue/reactivity'
 import type { JwtPayload } from 'jwt-decode'
-import type { ProjectRoles } from 'nocodb-sdk'
-import type { NcProjectType } from '#imports'
+import type { AxiosInstance } from 'axios'
+import type { MapProvider } from 'nocodb-sdk'
+import type { NcBreakpoint } from '~/lib/constants'
 
 export interface AppInfo {
   ncSiteUrl: string
   authType: 'jwt' | 'none'
+  allowLocalUrl: boolean
   connectToExternalDB: boolean
   defaultLimit: number
   defaultGroupByLimit: {
@@ -14,6 +16,7 @@ export interface AppInfo {
     limitRecord: number
   }
   firstUser: boolean
+  env: string
   githubAuthEnabled: boolean
   googleAuthEnabled: boolean
   oidcAuthEnabled: boolean
@@ -29,6 +32,7 @@ export interface AppInfo {
   ee?: boolean
   ncAttachmentFieldSize: number
   ncMaxAttachmentsAllowed: number
+  ncMaxTextLength: number
   isCloud: boolean
   automationLogLevel: 'OFF' | 'ERROR' | 'ALL'
   baseHostName?: string
@@ -36,11 +40,32 @@ export interface AppInfo {
   mainSubDomain?: string
   dashboardPath: string
   inviteOnlySignup: boolean
+  restrictWorkspaceCreation: boolean
   samlAuthEnabled: boolean
   samlProviderName: string | null
   giftUrl: string
   feedEnabled: boolean
   sentryDSN: string
+  isOnPrem: boolean
+  isPostgres: boolean
+  isAirgapped: boolean
+  onPremPlan: Record<string, any> | null
+  seatLimit: number | null
+  isTrial: boolean
+  isTrialExpired: boolean
+  licenseExpiryTime: number
+  defaultWorkspaceId: string | null
+  stripePublishableKey?: string
+  marketingRootUrl?: string
+  templatesRootUrl?: string
+  openReplayKey?: string | null
+  disableSupportChat: boolean
+  disableOnboardingFlow: boolean
+  iframeWhitelistDomains?: Array<string>
+  disableGroupByAggregation?: boolean
+  sendRecordMaxRecipients?: number
+  mapProvider?: MapProvider
+  defaultOrgId?: string
 }
 
 export interface StoredState {
@@ -48,13 +73,13 @@ export interface StoredState {
   lang: keyof typeof Language
   darkMode: boolean
   filterAutoSave: boolean
-  previewAs: ProjectRoles | null
   includeM2M: boolean
   showNull: boolean
   currentVersion: string | null
   latestRelease: string | null
   hiddenRelease: string | null
   isMobileMode: boolean | null
+  activeBreakpoint: NcBreakpoint | null
   lastOpenedWorkspaceId: string | null
   gridViewPageSize: number
   leftSidebarSize: {
@@ -64,6 +89,8 @@ export interface StoredState {
   isAddNewRecordGridMode: boolean
   syncDataUpvotes: string[]
   giftBannerDismissedCount: number
+  isLeftSidebarOpen: boolean
+  lastUsedAuthMethod: 'google' | 'oidc' | 'sso' | 'email' | null
 }
 
 export type State = ToRefs<Omit<StoredState, 'token'>> & {
@@ -75,11 +102,14 @@ export type State = ToRefs<Omit<StoredState, 'token'>> & {
   runningRequests: ReturnType<typeof useCounter>
   error: Ref<any>
   appInfo: Ref<AppInfo>
+  appInfoStatus: Ref<'idle' | 'loading' | 'loaded' | 'error'>
 }
 
 export interface Getters {
   signedIn: ComputedRef<boolean>
+  isSsoUser: ComputedRef<boolean>
   isLoading: WritableComputedRef<boolean>
+  getResponsiveValue: <T>(mobile: T, desktop: T) => T
 }
 
 export interface SignOutParams {
@@ -91,18 +121,35 @@ export interface SignOutParams {
 
 export interface Actions {
   signOut: (signOutParams?: SignOutParams) => Promise<void>
-  signIn: (token: string, keepProps?: boolean) => Promise<void>
-  refreshToken: () => void
+  signIn: (token: string, keepProps?: boolean) => void
+  refreshToken: (params: {
+    axiosInstance?: AxiosInstance
+    skipLogout?: boolean
+    cognitoOnly?: boolean
+  }) => Promise<string | null | void>
   loadAppInfo: () => void
   setIsMobileMode: (isMobileMode: boolean) => void
-  navigateToProject: (params: { workspaceId?: string; baseId?: string; type?: NcProjectType; query?: any }) => void
+  setActiveBreakpoint: (breakpoint: NcBreakpoint) => void
+  navigateToProject: (params: { workspaceId?: string; baseId?: string; query?: any }) => void
+  /**
+   * params `tableTitle, viewTitle, scriptTitle ,dashboardTitle,workflowTitle` will be used for readable url slug
+   */
   ncNavigateTo: (params: {
     workspaceId?: string
     baseId?: string
-    type?: NcProjectType
     query?: any
     tableId?: string
+    tableTitle?: string
     viewId?: string
+    viewTitle?: string
+    scriptId?: string
+    scriptTitle?: string
+    dashboardId?: string
+    dashboardTitle?: string
+    workflowId?: string
+    workflowTitle?: string
+    replace?: boolean
+    newTab?: boolean
   }) => void
   getBaseUrl: (workspaceId: string) => string | undefined
   getMainUrl: (workspaceId: string) => string | undefined

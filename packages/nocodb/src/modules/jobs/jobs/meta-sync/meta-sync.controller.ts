@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   HttpCode,
   Inject,
   Param,
@@ -28,7 +29,10 @@ export class MetaSyncController {
     '/api/v2/meta/bases/:baseId/meta-diff',
   ])
   @HttpCode(200)
-  @Acl('metaDiffSync')
+  @Acl('metaDiffSync', {
+    blockApiTokenAccess: true,
+    blockOAuthTokenAccess: true,
+  })
   async metaDiffSync(
     @TenantContext() context: NcContext,
     @Param('baseId') baseId: string,
@@ -48,11 +52,7 @@ export class MetaSyncController {
       baseId,
       sourceId: 'all',
       user: req.user,
-      req: {
-        user: req.user,
-        clientIp: req.clientIp,
-        headers: req.headers,
-      },
+      req,
     });
 
     return { id: job.id };
@@ -63,7 +63,10 @@ export class MetaSyncController {
     '/api/v2/meta/bases/:baseId/meta-diff/:sourceId',
   ])
   @HttpCode(200)
-  @Acl('baseMetaDiffSync')
+  @Acl('baseMetaDiffSync', {
+    blockApiTokenAccess: true,
+    blockOAuthTokenAccess: true,
+  })
   async baseMetaDiffSync(
     @TenantContext() context: NcContext,
     @Param('baseId') baseId: string,
@@ -87,11 +90,77 @@ export class MetaSyncController {
       baseId,
       sourceId,
       user: req.user,
-      req: {
-        user: req.user,
-        clientIp: req.clientIp,
-        headers: req.headers,
-      },
+      req,
+    });
+
+    return { id: job.id };
+  }
+
+  @Get([
+    '/api/v1/db/meta/projects/:baseId/meta-diff',
+    '/api/v2/meta/bases/:baseId/meta-diff',
+  ])
+  @Acl('metaDiff', {
+    blockApiTokenAccess: true,
+    blockOAuthTokenAccess: true,
+  })
+  async metaDiff(
+    @TenantContext() context: NcContext,
+    @Param('baseId') baseId: string,
+    @Req() req: NcRequest,
+  ) {
+    const jobs = await this.jobsService.jobList();
+    const fnd = jobs.find(
+      (j) => j.name === JobTypes.MetaDiff && j.data.baseId === baseId,
+    );
+
+    if (fnd) {
+      return { id: fnd.id };
+    }
+
+    const job = await this.jobsService.add(JobTypes.MetaDiff, {
+      context,
+      baseId,
+      sourceId: 'all',
+      user: req.user,
+      req,
+    });
+
+    return { id: job.id };
+  }
+
+  @Get([
+    '/api/v1/db/meta/projects/:baseId/meta-diff/:sourceId',
+    '/api/v2/meta/bases/:baseId/meta-diff/:sourceId',
+  ])
+  @Acl('metaDiff', {
+    blockApiTokenAccess: true,
+    blockOAuthTokenAccess: true,
+  })
+  async baseMetaDiff(
+    @TenantContext() context: NcContext,
+    @Param('baseId') baseId: string,
+    @Param('sourceId') sourceId: string,
+    @Req() req: NcRequest,
+  ) {
+    const jobs = await this.jobsService.jobList();
+    const fnd = jobs.find(
+      (j) =>
+        j.name === JobTypes.MetaDiff &&
+        j.data.baseId === baseId &&
+        (j.data.sourceId === sourceId || j.data.sourceId === 'all'),
+    );
+
+    if (fnd) {
+      return { id: fnd.id };
+    }
+
+    const job = await this.jobsService.add(JobTypes.MetaDiff, {
+      context,
+      baseId,
+      sourceId,
+      user: req.user,
+      req,
     });
 
     return { id: job.id };

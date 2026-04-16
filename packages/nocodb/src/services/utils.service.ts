@@ -2,22 +2,22 @@ import process from 'process';
 import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { compareVersions, validate } from 'compare-versions';
-import { ViewTypes } from 'nocodb-sdk';
+import { getCircularReplacer, ViewTypes } from 'nocodb-sdk';
 import { ConfigService } from '@nestjs/config';
 import { useAgent } from 'request-filtering-agent';
 import dayjs from 'dayjs';
 import type { ErrorReportReqType } from 'nocodb-sdk';
 import type { AppConfig, NcRequest } from '~/interface/config';
 import {
-  NC_APP_SETTINGS,
   NC_ATTACHMENT_FIELD_SIZE,
   NC_MAX_ATTACHMENTS_ALLOWED,
+  NC_MAX_TEXT_LENGTH,
 } from '~/constants';
 import SqlMgrv2 from '~/db/sql-mgr/v2/SqlMgrv2';
 import { NcError } from '~/helpers/catchError';
-import { Base, Store, User } from '~/models';
+import { Base, User } from '~/models';
 import Noco from '~/Noco';
-import { T } from '~/utils';
+import { isCloud, isEE, isOnPrem, T } from '~/utils';
 import NcConnectionMgrv2 from '~/utils/common/NcConnectionMgrv2';
 import getInstance from '~/utils/getInstance';
 import { CacheScope, MetaTable, RootScopes } from '~/utils/globals';
@@ -27,9 +27,12 @@ import {
   defaultGroupByLimitConfig,
   defaultLimitConfig,
 } from '~/helpers/extractLimitAndOffset';
-import { DriverClient } from '~/utils/nc-config';
+import {
+  DriverClient,
+  NC_DISABLE_GROUP_BY_AGG,
+  NC_DISABLE_SUPPORT_CHAT,
+} from '~/utils/nc-config';
 import NocoCache from '~/cache/NocoCache';
-import { getCircularReplacer } from '~/utils';
 
 const versionCache = {
   releaseVersion: null,
@@ -100,7 +103,10 @@ export class UtilsService {
           return response.data
             .map((x) => x.name)
             .filter(
-              (v) => validate(v) && !v.includes('finn') && !v.includes('beta'),
+              (v) =>
+                validate(v) &&
+                // also filter only XXX.XXX.XXX version. ex: 0.263.8
+                v.match(/^\d+\.\d+\.\d+$/),
             )
             .sort((x, y) => compareVersions(y, x));
         })
@@ -173,12 +179,8 @@ export class UtilsService {
         : {},
       responseType: apiMeta.responseType || 'json',
       withCredentials: true,
-      httpAgent: useAgent(apiMeta.url, {
-        stopPortScanningByUrlRedirection: true,
-      }),
-      httpsAgent: useAgent(apiMeta.url, {
-        stopPortScanningByUrlRedirection: true,
-      }),
+      httpAgent: useAgent(apiMeta.url),
+      httpsAgent: useAgent(apiMeta.url),
     };
     const data = await axios(_req);
     return data?.data;
@@ -410,10 +412,7 @@ export class UtilsService {
     const baseHasAdmin = !(await User.isFirst());
     const instance = await getInstance();
 
-    let settings: { invite_only_signup?: boolean } = {};
-    try {
-      settings = JSON.parse((await Store.get(NC_APP_SETTINGS, true))?.value);
-    } catch {}
+    const settings = await Noco.getAppSettings();
 
     const oidcAuthEnabled = ['openid', 'oidc'].includes(
       process.env.NC_SSO?.toLowerCase(),
@@ -470,7 +469,8 @@ export class UtilsService {
       ee: Noco.isEE(),
       ncAttachmentFieldSize: NC_ATTACHMENT_FIELD_SIZE,
       ncMaxAttachmentsAllowed: NC_MAX_ATTACHMENTS_ALLOWED,
-      isCloud: process.env.NC_CLOUD === 'true',
+      ncMaxTextLength: NC_MAX_TEXT_LENGTH,
+      isCloud: isCloud,
       automationLogLevel: process.env.NC_AUTOMATION_LOG_LEVEL || 'OFF',
       baseHostName: process.env.NC_BASE_HOST_NAME,
       disableEmailAuth: this.configService.get('auth.disableEmailAuth', {
@@ -480,10 +480,31 @@ export class UtilsService {
       mainSubDomain: this.configService.get('mainSubDomain', { infer: true }),
       dashboardPath: this.configService.get('dashboardPath', { infer: true }),
       inviteOnlySignup: settings.invite_only_signup,
+      restrictWorkspaceCreation: settings.restrict_workspace_creation,
       samlProviderName,
       samlAuthEnabled,
       giftUrl,
       prodReady: Noco.getConfig()?.meta?.db?.client !== DriverClient.SQLITE,
+      allowLocalUrl:
+        process.env.NC_WEBHOOK_ALLOW_PRIVATE_NETWORK === 'true' ||
+        process.env.NC_ALLOW_LOCAL_HOOKS === 'true',
+      isOnPrem,
+      disableSupportChat: NC_DISABLE_SUPPORT_CHAT,
+      disableGroupByAggregation: NC_DISABLE_GROUP_BY_AGG,
+      /**
+       * Allow disabling onboarding flow based on env variable or development mode
+       *
+       * TODO: @rameshmane7218 remove test env once we enable onboarding flow in playwright
+       */
+      disableOnboardingFlow:
+        process.env.NC_DISABLE_ONBOARDING_FLOW === 'true' ||
+        process.env.NODE_ENV === 'development' ||
+        process.env.NODE_ENV === 'test',
+      ...(isEE === false
+        ? {
+            defaultWorkspaceId: Noco.ncDefaultWorkspaceId || null,
+          }
+        : {}),
     };
 
     return result;
@@ -518,14 +539,14 @@ export class UtilsService {
 
     const cacheKey = `${CacheScope.PRODUCT_FEED}:${type}:${pageNum}:${perPage}`;
 
-    const cachedData = await NocoCache.get(cacheKey, 'json');
+    const cachedData = await NocoCache.get('root', cacheKey, 'json');
 
     if (cachedData) {
       try {
         return JSON.parse(cachedData);
       } catch (e) {
         this.logger.error(e?.message, e);
-        await NocoCache.del(cacheKey);
+        await NocoCache.del('root', cacheKey);
       }
     }
 
@@ -560,11 +581,57 @@ export class UtilsService {
     // The feed includes the attachments, which has the presigned URL
     // So the cache should match the presigned URL cache
     await NocoCache.setExpiring(
+      'root',
       cacheKey,
       JSON.stringify(response.data, getCircularReplacer),
       Number.isNaN(parseInt(process.env.NC_ATTACHMENT_EXPIRE_SECONDS))
         ? 2 * 60 * 60
         : parseInt(process.env.NC_ATTACHMENT_EXPIRE_SECONDS),
+    );
+
+    return response.data;
+  }
+
+  async cloudFeatures(_req: NcRequest) {
+    const cacheKey = `${CacheScope.CLOUD_FEATURES}`;
+
+    const cachedData = await NocoCache.get('root', cacheKey, 'json');
+
+    if (cachedData) {
+      try {
+        return JSON.parse(cachedData);
+      } catch (e) {
+        this.logger.error(e?.message, e);
+        await NocoCache.del('root', cacheKey);
+      }
+    }
+
+    let payload = null;
+    if (
+      !this.lastSyncTime ||
+      dayjs().isAfter(this.lastSyncTime.add(3, 'hours'))
+    ) {
+      payload = await T.payload();
+      this.lastSyncTime = dayjs();
+    }
+
+    let response;
+
+    try {
+      response = await axios.post(
+        'https://product-feed.nocodb.com/api/v1/cloud/features',
+        payload,
+      );
+    } catch (e) {
+      this.logger.error(e?.message, e);
+      return [];
+    }
+
+    await NocoCache.setExpiring(
+      'root',
+      cacheKey,
+      JSON.stringify(response.data, getCircularReplacer),
+      3 * 60 * 60,
     );
 
     return response.data;

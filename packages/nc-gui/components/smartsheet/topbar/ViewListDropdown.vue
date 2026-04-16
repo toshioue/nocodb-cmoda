@@ -1,9 +1,5 @@
 <script lang="ts" setup>
-import { type ViewType, ViewTypes } from 'nocodb-sdk'
-
-const { isMobileMode } = useGlobal()
-
-const { t } = useI18n()
+import { PlanFeatureTypes, PlanTitles, type TableType, type ViewType, ViewTypes, viewTypeAlias } from 'nocodb-sdk'
 
 const { $e } = useNuxtApp()
 
@@ -15,17 +11,25 @@ const { activeTable } = storeToRefs(useTablesStore())
 
 const viewsStore = useViewsStore()
 
-const { activeView, views } = storeToRefs(viewsStore)
+const { activeView, views, isListViewEnabled } = storeToRefs(viewsStore)
 
-const { loadViews, navigateToView } = viewsStore
+const { navigateToView, onOpenViewCreateModal, showUpgradeToUseListView } = viewsStore
 
-const { refreshCommandPalette } = useCommandPalette()
+const { isAiFeaturesEnabled } = useNocoAi()
+
+const { showEEFeatures, showUpgradeToUseTimelineView, blockListView, blockTimelineView } = useEeConfig()
 
 const isOpen = ref<boolean>(false)
 
 const activeSource = computed(() => {
   return base.value.sources?.find((s) => s.id === activeView.value?.source_id)
 })
+
+const isSqlView = computed(() => (activeTable.value as TableType)?.type === 'view')
+
+const isSyncedTable = computed(() => (activeTable.value as TableType)?.synced)
+
+const isPgSource = computed(() => activeSource.value?.type === 'pg')
 
 /**
  * Handles navigation to a selected view.
@@ -44,6 +48,7 @@ const handleNavigateToView = async (view: ViewType) => {
   await navigateToView({
     view,
     tableId: activeTable.value.id!,
+    tableTitle: activeTable.value?.title,
     baseId: base.value.id!,
     hardReload: view.type === ViewTypes.FORM && activeView.value?.id === view.id,
     doNotSwitchTab: true,
@@ -62,11 +67,7 @@ const handleNavigateToView = async (view: ViewType) => {
  * It checks if the input string matches either the default view title (translated) or the view's title.
  * The matching is case-insensitive.
  */
-const filterOption = (input: string = '', view: ViewType) => {
-  if (view.is_default && t('title.defaultView').toLowerCase().includes(input)) {
-    return true
-  }
-
+const filterOption = (input = '', view: ViewType) => {
   return view.title?.toLowerCase()?.includes(input.toLowerCase())
 }
 
@@ -100,7 +101,7 @@ async function onOpenModal({
   coverImageColumnId,
 }: {
   title?: string
-  type: ViewTypes
+  type: ViewTypes | 'AI'
   copyViewId?: string
   groupingFieldColumnId?: string
   calendarRange?: Array<{
@@ -111,55 +112,24 @@ async function onOpenModal({
 }) {
   isOpen.value = false
 
-  const isDlgOpen = ref(true)
+  $e('c:view:create:topbar', { view: type === 'AI' ? type : viewTypeAlias[type] })
 
-  const { close } = useDialog(resolveComponent('DlgViewCreate'), {
-    'modelValue': isDlgOpen,
+  onOpenViewCreateModal({
     title,
     type,
-    'tableId': activeTable.value.id,
-    'selectedViewId': copyViewId,
-    calendarRange,
+    copyViewId,
     groupingFieldColumnId,
+    calendarRange,
     coverImageColumnId,
-    'onUpdate:modelValue': closeDialog,
-    'onCreated': async (view: ViewType) => {
-      closeDialog()
-
-      refreshCommandPalette()
-
-      await loadViews({
-        tableId: activeTable.value.id!,
-        force: true,
-      })
-
-      activeTable.value.meta = {
-        ...(activeTable.value.meta as object),
-        hasNonDefaultViews: true,
-      }
-
-      navigateToView({
-        view,
-        tableId: activeTable.value.id!,
-        baseId: base.value.id!,
-        doNotSwitchTab: true,
-      })
-
-      $e('a:view:create', { view: view.type })
-    },
+    baseId: base.value.id!,
+    tableId: activeTable.value.id!,
+    sourceId: activeTable.value?.source_id,
   })
-
-  function closeDialog() {
-    isOpen.value = false
-    isDlgOpen.value = false
-
-    close(1000)
-  }
 }
 </script>
 
 <template>
-  <NcDropdown v-if="activeView" v-model:visible="isOpen">
+  <NcDropdown v-if="activeView" v-model:visible="isOpen" overlay-class-name="max-w-64">
     <slot name="default" :is-open="isOpen"></slot>
     <template #overlay>
       <LazyNcList
@@ -169,7 +139,9 @@ async function onOpenModal({
         option-value-key="id"
         option-label-key="title"
         search-input-placeholder="Search views"
+        class="min-w-63.5 !w-auto"
         :filter-option="filterOption"
+        variant="medium"
         @change="handleNavigateToView"
       >
         <template #listItem="{ option }">
@@ -182,9 +154,9 @@ async function onOpenModal({
           </div>
           <NcTooltip class="truncate flex-1" show-on-truncate-only>
             <template #title>
-              {{ option?.is_default ? $t('title.defaultView') : option?.title }}
+              {{ option?.title }}
             </template>
-            {{ option?.is_default ? $t('title.defaultView') : option?.title }}
+            {{ option?.title }}
           </NcTooltip>
           <GeneralIcon
             v-if="option.id === activeView.id"
@@ -194,13 +166,13 @@ async function onOpenModal({
           />
         </template>
 
-        <template v-if="!isMobileMode && isUIAllowed('viewCreateOrEdit')" #listFooter>
+        <template v-if="isUIAllowed('viewCreateOrEdit')" #listFooter>
           <NcDivider class="!mt-0 !mb-2" />
           <div class="overflow-hidden mb-2">
             <a-menu class="nc-viewlist-menu">
-              <a-sub-menu popup-class-name="nc-viewlist-submenu-popup ">
+              <a-sub-menu popup-class-name="nc-viewlist-submenu-popup" :popup-offset="[8, -2]">
                 <template #title>
-                  <div class="flex items-center justify-between gap-2 text-sm font-weight-500 !text-brand-500">
+                  <div class="flex items-center justify-between gap-2 text-sm font-weight-500 !text-nc-content-brand">
                     <div class="flex items-center gap-2">
                       <GeneralIcon icon="plus" />
                       <div>
@@ -211,7 +183,10 @@ async function onOpenModal({
                         }}
                       </div>
                     </div>
-                    <GeneralIcon icon="arrowRight" class="text-base text-gray-600 group-hover:text-gray-800" />
+                    <GeneralIcon
+                      icon="arrowRight"
+                      class="text-base text-nc-content-gray-subtle2 group-hover:text-nc-content-gray"
+                    />
                   </div>
                 </template>
 
@@ -220,26 +195,43 @@ async function onOpenModal({
                 <a-menu-item @click.stop="onOpenModal({ type: ViewTypes.GRID })">
                   <div class="nc-viewlist-submenu-popup-item" data-testid="topbar-view-create-grid">
                     <GeneralViewIcon :meta="{ type: ViewTypes.GRID }" />
-                    Grid
+                    {{ $t('objects.viewType.grid') }}
                   </div>
                 </a-menu-item>
 
-                <a-menu-item v-if="!activeSource?.is_schema_readonly" @click="onOpenModal({ type: ViewTypes.FORM })">
-                  <div class="nc-viewlist-submenu-popup-item" data-testid="topbar-view-create-form">
-                    <GeneralViewIcon :meta="{ type: ViewTypes.FORM }" />
-                    Form
-                  </div>
-                </a-menu-item>
+                <NcTooltip
+                  :title="
+                    isSyncedTable ? $t('tooltip.formViewCreationNotSupportedForSyncedTable') : $t('tooltip.sourceDataIsReadonly')
+                  "
+                  :disabled="!activeSource?.is_data_readonly && !isSqlView && !isSyncedTable"
+                  placement="right"
+                >
+                  <a-menu-item
+                    :disabled="!!activeSource?.is_data_readonly || isSqlView || isSyncedTable"
+                    @click="onOpenModal({ type: ViewTypes.FORM })"
+                  >
+                    <div
+                      class="nc-viewlist-submenu-popup-item"
+                      data-testid="topbar-view-create-form"
+                      :class="{
+                        'opacity-50': !!activeSource?.is_data_readonly || isSqlView || isSyncedTable,
+                      }"
+                    >
+                      <GeneralViewIcon :meta="{ type: ViewTypes.FORM }" />
+                      {{ $t('objects.viewType.form') }}
+                    </div>
+                  </a-menu-item>
+                </NcTooltip>
                 <a-menu-item @click="onOpenModal({ type: ViewTypes.GALLERY })">
                   <div class="nc-viewlist-submenu-popup-item" data-testid="topbar-view-create-gallery">
                     <GeneralViewIcon :meta="{ type: ViewTypes.GALLERY }" />
-                    Gallery
+                    {{ $t('objects.viewType.gallery') }}
                   </div>
                 </a-menu-item>
                 <a-menu-item data-testid="topbar-view-create-kanban" @click="onOpenModal({ type: ViewTypes.KANBAN })">
                   <div class="nc-viewlist-submenu-popup-item">
                     <GeneralViewIcon :meta="{ type: ViewTypes.KANBAN }" />
-                    Kanban
+                    {{ $t('objects.viewType.kanban') }}
                   </div>
                 </a-menu-item>
                 <a-menu-item data-testid="topbar-view-create-calendar" @click="onOpenModal({ type: ViewTypes.CALENDAR })">
@@ -248,6 +240,78 @@ async function onOpenModal({
                     {{ $t('objects.viewType.calendar') }}
                   </div>
                 </a-menu-item>
+                <a-menu-item
+                  v-if="isEeUI && showEEFeatures"
+                  data-testid="topbar-view-create-map"
+                  @click="onOpenModal({ type: ViewTypes.MAP })"
+                >
+                  <div class="nc-viewlist-submenu-popup-item">
+                    <GeneralViewIcon :meta="{ type: ViewTypes.MAP }" />
+                    {{ $t('objects.viewType.map') }}
+                  </div>
+                </a-menu-item>
+                <NcTooltip
+                  v-if="isListViewEnabled"
+                  :title="$t('tooltip.listViewOnlyPg')"
+                  :disabled="isPgSource"
+                  placement="right"
+                >
+                  <a-menu-item
+                    :disabled="!isPgSource"
+                    data-testid="topbar-view-create-list"
+                    @click="
+                      isPgSource &&
+                        showUpgradeToUseListView({
+                          successCallback: () => onOpenModal({ type: ViewTypes.LIST }),
+                        })
+                    "
+                  >
+                    <div class="nc-viewlist-submenu-popup-item justify-between" :class="{ 'opacity-50': !isPgSource }">
+                      <div class="flex items-center gap-2">
+                        <GeneralViewIcon :meta="{ type: ViewTypes.LIST }" />
+                        {{ $t('objects.viewType.list') }}
+                      </div>
+                      <PaymentUpgradeBadge
+                        v-if="blockListView"
+                        :feature="PlanFeatureTypes.FEATURE_LIST_VIEW"
+                        :plan-title="PlanTitles.BUSINESS"
+                        remove-click
+                        show-as-lock
+                      />
+                    </div>
+                  </a-menu-item>
+                </NcTooltip>
+                <a-menu-item
+                  v-if="isEeUI && showEEFeatures"
+                  data-testid="topbar-view-create-timeline"
+                  @click="showUpgradeToUseTimelineView({ successCallback: () => onOpenModal({ type: ViewTypes.TIMELINE }) })"
+                >
+                  <div class="nc-viewlist-submenu-popup-item justify-between">
+                    <div class="flex items-center gap-2">
+                      <GeneralViewIcon :meta="{ type: ViewTypes.TIMELINE }" class="!w-4 !h-4" />
+                      {{ $t('objects.viewType.timeline') }}
+                    </div>
+                    <PaymentUpgradeBadge
+                      v-if="blockTimelineView"
+                      :feature="PlanFeatureTypes.FEATURE_TIMELINE_VIEW"
+                      :plan-title="PlanTitles.BUSINESS"
+                      remove-click
+                      show-as-lock
+                    />
+                  </div>
+                </a-menu-item>
+
+                <template v-if="isAiFeaturesEnabled">
+                  <NcDivider />
+                  <NcTooltip :title="`Auto suggest views for ${activeTable?.title || 'the current table'}`" placement="right">
+                    <a-menu-item data-testid="sidebar-view-create-ai" @click="onOpenModal({ type: 'AI' })">
+                      <div class="nc-viewlist-submenu-popup-item">
+                        <GeneralIcon icon="ncAutoAwesome" class="!w-4 !h-4 text-nc-fill-purple-dark" />
+                        <div>{{ $t('labels.useNocoAI') }}</div>
+                      </div>
+                    </a-menu-item>
+                  </NcTooltip>
+                </template>
               </a-sub-menu>
             </a-menu>
           </div>
@@ -265,7 +329,7 @@ async function onOpenModal({
     @apply !mx-2;
 
     .ant-menu-submenu-title {
-      @apply flex items-center gap-2 py-1.5 px-2 my-0 h-auto hover:bg-gray-100 cursor-pointer rounded-md;
+      @apply flex items-center gap-2 py-1.5 px-2 my-0 h-auto hover:bg-nc-bg-gray-light cursor-pointer rounded-md;
 
       .ant-menu-title-content {
         @apply w-full;
@@ -275,21 +339,21 @@ async function onOpenModal({
 }
 
 .nc-viewlist-submenu-popup {
-  @apply !rounded-lg border-1 border-gray-50;
+  @apply !rounded-lg border-1 border-nc-border-gray-medium;
 
   .ant-menu.ant-menu-sub {
-    @apply p-2 !rounded-lg !shadow-lg shadow-gray-200;
+    @apply p-1 !rounded-lg !shadow-lg shadow-nc-border-gray-medium;
   }
 
   .ant-menu-item {
-    @apply h-auto !my-0 text-sm !leading-5 py-2 px-2 hover:!bg-gray-100 cursor-pointer rounded-md;
+    @apply h-auto min-h-8.5 !my-0 text-sm !leading-5 py-1 px-2 hover:!bg-nc-bg-gray-light cursor-pointer rounded-md flex items-center;
 
     .ant-menu-title-content {
       @apply w-full px-0;
     }
 
     .nc-viewlist-submenu-popup-item {
-      @apply flex items-center gap-2 !text-gray-800;
+      @apply flex items-center gap-2 !text-nc-content-gray;
     }
 
     &.ant-menu-item-selected {
@@ -297,7 +361,8 @@ async function onOpenModal({
     }
   }
 }
+
 .nc-viewlist-submenu-popup .ant-dropdown-menu.ant-dropdown-menu-sub {
-  @apply !rounded-lg !shadow-lg shadow-gray-200;
+  @apply !rounded-lg !shadow-lg shadow-nc-border-gray-medium;
 }
 </style>

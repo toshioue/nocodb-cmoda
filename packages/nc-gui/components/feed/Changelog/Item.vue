@@ -86,9 +86,9 @@ const handleOpenUrl = (url: string) => {
 </script>
 
 <template>
-  <div class="relative rounded-xl flex flex-col mt-6.25 bg-white changelog-card">
+  <div class="relative rounded-xl flex flex-col mt-6.25 bg-nc-bg-default changelog-card">
     <div
-      class="w-full relative border cursor-pointer border-black h-[334px] xl:h-[394px] w-[540px] xl:w-[638px] border-opacity-10 rounded-t-xl overflow-hidden"
+      class="w-full relative border cursor-pointer border-base-black h-[334px] xl:h-[394px] w-[540px] xl:w-[638px] border-opacity-10 rounded-t-xl overflow-hidden"
       @click="handleOpenUrl(item.Url)"
     >
       <img
@@ -98,42 +98,42 @@ const handleOpenUrl = (url: string) => {
       />
     </div>
     <div class="flex my-4 px-4 items-center justify-between">
-      <div class="flex items-center">
-        <NcBadge :border="false" color="brand" class="font-semibold text-[13px] mr-3 nc-title-badge cursor-pointer">
+      <div class="flex items-center flex-wrap gap-3">
+        <NcBadge :border="false" color="brand" class="font-semibold text-[13px] nc-title-badge cursor-pointer whitespace-nowrap">
           {{ Title }}
         </NcBadge>
         <span
           v-for="tag in tags"
           :key="tag.text"
           :class="{
-            'bg-red-50': tag.color === 'red',
-            'bg-purple-50': tag.color === 'purple',
-            'bg-green-50': tag.color === 'green',
+            'bg-nc-red-50': tag.color === 'red',
+            'bg-nc-purple-50': tag.color === 'purple',
+            'bg-nc-green-50': tag.color === 'green',
           }"
-          class="mr-3 flex gap-2 items-center px-1 rounded-md"
+          class="flex gap-2 items-center px-1 rounded-md"
         >
           <component
             :is="tag.icon"
             :class="{
-              'fill-red-700 text-transparent': tag.color === 'red',
-              'fill-purple-700 text-transparent': tag.color === 'purple',
-              'fill-green-700 text-transparent': tag.color === 'green',
+              'fill-nc-red-700 text-transparent': tag.color === 'red',
+              'fill-nc-purple-700 text-transparent': tag.color === 'purple',
+              'fill-nc-green-700 text-transparent': tag.color === 'green',
             }"
             class="w-4 h-4"
           />
           <span
             :class="{
-              'text-red-500': tag.color === 'red',
-              'text-purple-500': tag.color === 'purple',
-              'text-green-700': tag.color === 'green',
+              'text-nc-content-red-medium': tag.color === 'red',
+              'text-nc-content-purple-medium': tag.color === 'purple',
+              'text-nc-content-green-dark': tag.color === 'green',
             }"
-            class="leading-5 text-[13px]"
+            class="leading-5 text-[13px] whitespace-nowrap"
           >
             {{ tag.text }}
           </span>
         </span>
       </div>
-      <span class="font-medium text-sm text-gray-500">
+      <span class="font-medium text-sm text-nc-content-gray-muted whitespace-nowrap">
         {{ dayjs(CreatedAt).format('MMM DD, YYYY') }}
       </span>
     </div>
@@ -166,7 +166,7 @@ a {
 :deep(.prose) {
   @apply !max-w-auto;
   a {
-    @apply text-gray-900;
+    @apply text-nc-content-gray-extreme;
   }
 
   h1 {

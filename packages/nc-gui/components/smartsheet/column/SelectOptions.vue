@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import Draggable from 'vuedraggable'
-import tinycolor from 'tinycolor2'
 import { type SelectOptionsType, UITypes } from 'nocodb-sdk'
-import InfiniteLoading from 'v3-infinite-loading'
 
 interface Option {
   color: string
@@ -28,11 +26,19 @@ const vModel = useVModel(props, 'value', emit)
 
 const { isKanbanStack, optionId, isNewStack } = toRefs(props)
 
+const { $e } = useNuxtApp()
+
+const { isDark, getColor } = useTheme()
+
 const { setAdditionalValidations, validateInfos, column } = useColumnCreateStoreOrThrow()
 
 // const { base } = storeToRefs(useBase())
 
-const { optionsMagic: _optionsMagic } = useNocoEe()
+const { isAiFeaturesEnabled, aiIntegrationAvailable, predictSelectOptions } = useNocoAi()
+
+const { isAiModeFieldModal } = usePredictFields()
+
+const meta = inject(MetaInj, ref())
 
 const optionsWrapperDomRef = ref<HTMLElement>()
 
@@ -40,10 +46,8 @@ const options = ref<Option[]>([])
 
 const isAddingOption = ref(false)
 
-// TODO: Implement proper top and bottom virtual scrolling
-const OPTIONS_PAGE_COUNT = 20
-const loadedOptionAnchor = ref(OPTIONS_PAGE_COUNT)
-const isReverseLazyLoad = ref(false)
+const OPTIONS_PAGE_SIZE = 20
+const loadedCount = ref(OPTIONS_PAGE_SIZE)
 
 const renderedOptions = ref<Option[]>([])
 const savedDefaultOption = ref<Option[]>([])
@@ -54,9 +58,22 @@ const colors = ref(enumColor.light)
 
 const defaultOption = ref<Option[]>([])
 
+const isColorCodeEnabled = computed({
+  get: () => {
+    const metaObj = parseProp(vModel.value.meta)
+    return metaObj.isColorCodeEnabled !== false
+  },
+  set: (val: boolean) => {
+    const metaObj = parseProp(vModel.value.meta)
+    vModel.value.meta = { ...metaObj, isColorCodeEnabled: val }
+  },
+})
+
 const isKanban = inject(IsKanbanInj, ref(false))
 
 const { t } = useI18n()
+
+const isLoadingPredictOptions = ref<boolean>(false)
 
 const validators = {
   colOptions: [
@@ -75,7 +92,10 @@ const validators = {
                 if (vModel.value.uidt === UITypes.MultiSelect && opt.title.includes(',')) {
                   return reject(new Error(t('msg.selectOption.multiSelectCantHaveCommas')))
                 }
-                if (options.value.filter((el) => el.title === opt.title && (el as any).status !== 'remove').length > 1) {
+                if (
+                  options.value.filter((el) => el.title?.trim() === opt.title?.trim() && (el as any).status !== 'remove').length >
+                  1
+                ) {
                   return reject(new Error(t('msg.selectOption.cantHaveDuplicates')))
                 }
               }
@@ -111,6 +131,12 @@ const getNextColor = () => {
   return tempColor
 }
 
+const updateOptionsWrapperScrollHeight = (increment = 0) => {
+  if (!optionsWrapperDomRef.value) return
+
+  optionsWrapperDomRef.value.scrollTop = optionsWrapperDomRef.value.scrollHeight + increment
+}
+
 const addNewOption = () => {
   isAddingOption.value = true
 
@@ -125,15 +151,11 @@ const addNewOption = () => {
   if (isKanbanStack.value) {
     renderedOptions.value = options.value
   } else {
-    isReverseLazyLoad.value = true
-
-    loadedOptionAnchor.value = options.value.length - OPTIONS_PAGE_COUNT
-    loadedOptionAnchor.value = Math.max(loadedOptionAnchor.value, 0)
-
-    renderedOptions.value = options.value.slice(loadedOptionAnchor.value, options.value.length)
+    loadedCount.value = options.value.length
+    renderedOptions.value = [...options.value]
   }
 
-  optionsWrapperDomRef.value!.scrollTop = optionsWrapperDomRef.value!.scrollHeight
+  updateOptionsWrapperScrollHeight()
 
   nextTick(() => {
     // Last child doesnt work for query selector
@@ -146,16 +168,13 @@ const addNewOption = () => {
       }
     }, 150)
 
-    optionsWrapperDomRef.value!.scrollTop = optionsWrapperDomRef.value!.scrollHeight
+    updateOptionsWrapperScrollHeight()
+
     isAddingOption.value = false
   })
 }
 
-// const optionsMagic = async () => {
-//   await _optionsMagic(base, formState, getNextColor, options.value, renderedOptions.value)
-// }
-
-const syncOptions = (saveChanges: boolean = false, submit: boolean = false, payload?: Option) => {
+const syncOptions = (saveChanges = false, submit = false, payload?: Option) => {
   // set initial colOptions if not set
   vModel.value.colOptions = vModel.value.colOptions || {}
   vModel.value.colOptions.options = options.value
@@ -205,7 +224,7 @@ const removeRenderedOption = (index: number) => {
   }
 }
 
-const optionChanged = (changedElement: Option, saveChanges: boolean = false) => {
+const optionChanged = (changedElement: Option, saveChanges = false) => {
   const changedDefaultOptionIndex = defaultOption.value.findIndex((o) => {
     if (o.id !== undefined && changedElement.id !== undefined) {
       return o.id === changedElement.id
@@ -255,12 +274,37 @@ const undoRemoveRenderedOption = (index: number) => {
   }
 }
 
-// focus last created input
-// watch(inputs, () => {
-//   if (inputs.value?.$el) {
-//     inputs.value.$el.focus()
-//   }
-// })
+const refreshRenderedOptions = () => {
+  if (isKanbanStack.value) {
+    renderedOptions.value = options.value
+  } else {
+    renderedOptions.value = options.value.slice(0, loadedCount.value)
+  }
+}
+
+const loadMoreOptions = () => {
+  if (isAddingOption.value || loadedCount.value >= options.value.length) return
+
+  loadedCount.value = Math.min(loadedCount.value + OPTIONS_PAGE_SIZE, options.value.length)
+  refreshRenderedOptions()
+}
+
+useInfiniteScroll(optionsWrapperDomRef, loadMoreOptions, { distance: 50, interval: 300 })
+
+const onDragReorder = () => {
+  if (loadedCount.value >= options.value.length) {
+    options.value = [...renderedOptions.value]
+  } else {
+    const renderedSet = new Set(renderedOptions.value)
+    const unrendered = options.value.filter((opt) => !renderedSet.has(opt))
+    options.value = [...renderedOptions.value, ...unrendered]
+  }
+
+  options.value.forEach((opt, i) => {
+    opt.index = i
+  })
+  syncOptions()
+}
 
 // Removes the Select Option from cdf if the option is removed
 watch(vModel, (next) => {
@@ -286,48 +330,83 @@ watch(vModel, (next) => {
   next.cdf = newCdf.length === 0 ? null : newCdf
 })
 
-const loadListDataReverse = async ($state: any) => {
-  if (isAddingOption.value) return
+const predictOptions = async () => {
+  if (!vModel.value?.title || !meta.value?.id) return
 
-  if (loadedOptionAnchor.value === 0) {
-    $state.complete()
-    return
+  $e('a:column:ai:select:predict-options')
+
+  isLoadingPredictOptions.value = true
+
+  const history = options.value.map((o) => o.title).filter((o) => !!o.trim())
+
+  const predictedOptions = await predictSelectOptions(vModel.value?.title, meta.value?.id, history, meta.value?.base_id)
+
+  isLoadingPredictOptions.value = false
+
+  if (predictedOptions) {
+    for (const option of predictedOptions) {
+      // skip if option already exists
+      if (!option?.trim() || options.value.find((el) => el.title === option)) continue
+
+      if (isKanbanStack.value) {
+        const oldOption = options.value.find((el) => el.status === 'new')
+        if (oldOption) {
+          oldOption.title = option
+        } else {
+          options.value.push({
+            title: option,
+            color: getNextColor(),
+            index: options.value.length,
+            ...(isKanbanStack.value ? { status: 'new' } : {}),
+          })
+        }
+        break
+      } else {
+        options.value.push({
+          title: option,
+          color: getNextColor(),
+          index: options.value.length,
+          ...(isKanbanStack.value ? { status: 'new' } : {}),
+        })
+      }
+    }
+
+    if (isKanbanStack.value) {
+      renderedOptions.value = options.value
+    } else {
+      loadedCount.value = options.value.length
+      renderedOptions.value = [...options.value]
+      syncOptions()
+    }
+
+    updateOptionsWrapperScrollHeight()
   }
-  $state.loading()
-
-  loadedOptionAnchor.value -= OPTIONS_PAGE_COUNT
-  loadedOptionAnchor.value = Math.max(loadedOptionAnchor.value, 0)
-
-  renderedOptions.value = options.value.slice(loadedOptionAnchor.value, options.value.length)
-
-  optionsWrapperDomRef.value!.scrollTop = optionsWrapperDomRef.value!.scrollTop + 100
-
-  if (loadedOptionAnchor.value === 0) {
-    $state.complete()
-    return
-  }
-  $state.loaded()
 }
 
-const loadListData = async ($state: any) => {
-  if (isAddingOption.value) return
+const alphabetizeOptions = () => {
+  const activeOptions = options.value.filter((op) => op.status !== 'remove')
 
-  if (loadedOptionAnchor.value === options.value.length) {
-    return $state.complete()
-  }
+  const alreadySorted = activeOptions.every(
+    (op, i, arr) => i === 0 || (arr[i - 1].title ?? '').localeCompare(op.title ?? '') <= 0,
+  )
+  if (alreadySorted) return
 
-  $state.loading()
+  const removed = options.value.filter((op) => op.status === 'remove')
+  const sorted = [...activeOptions].sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''))
 
-  loadedOptionAnchor.value += OPTIONS_PAGE_COUNT
-  loadedOptionAnchor.value = Math.min(loadedOptionAnchor.value, options.value.length)
+  let idx = 0
+  sorted.forEach((op) => {
+    op.index = idx++
+  })
+  removed.forEach((op) => {
+    op.index = idx++
+  })
 
-  renderedOptions.value = options.value.slice(0, loadedOptionAnchor.value)
+  options.value = [...sorted, ...removed]
+  loadedCount.value = Math.min(OPTIONS_PAGE_SIZE, options.value.length)
+  refreshRenderedOptions()
 
-  if (loadedOptionAnchor.value === options.value.length) {
-    return $state.complete()
-  }
-
-  $state.loaded()
+  syncOptions()
 }
 
 onMounted(() => {
@@ -337,22 +416,19 @@ onMounted(() => {
     }
   }
 
-  isReverseLazyLoad.value = false
-
-  options.value = vModel.value.colOptions.options
+  options.value = [...vModel.value.colOptions.options]
 
   let indexCounter = 0
   options.value = options.value.map((el) => {
     el.index = indexCounter++
-    return el
+    return { ...el }
   })
 
   if (isKanbanStack.value) {
     renderedOptions.value = options.value
   } else {
-    loadedOptionAnchor.value = Math.min(loadedOptionAnchor.value, options.value.length)
-
-    renderedOptions.value = [...options.value].slice(0, loadedOptionAnchor.value)
+    loadedCount.value = Math.min(OPTIONS_PAGE_SIZE, options.value.length)
+    renderedOptions.value = options.value.slice(0, loadedCount.value)
   }
 
   // Support for older options
@@ -389,29 +465,65 @@ onMounted(() => {
 
 if (isKanbanStack.value) {
   onClickOutside(optionsWrapperDomRef, (e) => {
-    if (!kanbanStackOption.value || (e.target as HTMLElement)?.closest(`.nc-select-option-color-picker`)) return
-
     const option = (column.value?.colOptions as SelectOptionsType)?.options?.find(
       (o) => o?.id && o.id === kanbanStackOption.value?.id,
     )
 
-    if (option?.title !== kanbanStackOption.value?.title || option?.color !== kanbanStackOption.value?.color) {
+    if (
+      (e.target as HTMLElement)?.closest(
+        `.nc-select-option-color-picker, .nc-add-select-option-auto-suggest, .nc-kanban-stack-header-${
+          option?.id || 'new-stack'
+        }`,
+      )
+    ) {
+      return
+    }
+
+    if (
+      kanbanStackOption.value?.title &&
+      (option?.title !== kanbanStackOption.value?.title || option?.color !== kanbanStackOption.value?.color)
+    ) {
       syncOptions(true, true, kanbanStackOption.value)
     } else {
       emit('saveChanges', true, false)
     }
   })
 }
+
+if (!isKanbanStack.value) {
+  watch(isLoadingPredictOptions, (newValue) => {
+    if (!newValue) return
+    nextTick(() => {
+      updateOptionsWrapperScrollHeight()
+    })
+  })
+}
 </script>
 
 <template>
   <div class="w-full">
+    <div v-if="!isKanbanStack" class="flex items-center justify-between mb-2">
+      <div class="flex items-center select-none">
+        <NcSwitch v-model:checked="isColorCodeEnabled" v-e="['c:field:select:color-code:toggle']" size="xsmall">
+          {{ $t('labels.colorCodeOptions') }}
+        </NcSwitch>
+      </div>
+
+      <NcButton v-e="['c:field:select:alphabetize']" type="text" size="small" @click.stop="alphabetizeOptions">
+        <template #icon>
+          <GeneralIcon icon="ncArrowUpDown" class="h-4 w-4 opacity-80" />
+        </template>
+        {{ $t('labels.alphabetize') }}
+      </NcButton>
+    </div>
+
     <div
       ref="optionsWrapperDomRef"
       class="nc-col-option-select-option"
       :class="{
         'overflow-x-auto scrollbar-thin-dull rounded-lg': !isKanbanStack,
-        'border-1 border-gray-200': renderedOptions.length && !isKanbanStack,
+        'border-1 border-nc-border-gray-medium': renderedOptions.length && !isKanbanStack,
+        'bg-nc-bg-default': isAiModeFieldModal,
       }"
       :style="{
         maxHeight: props.fromTableExplorer ? 'calc(100vh - (var(--topbar-height) * 3.6) - 320px)' : 'calc(min(30vh, 250px))',
@@ -421,21 +533,26 @@ if (isKanbanStack.value) {
         <div v-if="kanbanStackOption" class="flex items-center nc-select-option">
           <div class="flex items-center w-full">
             <NcDropdown
+              v-if="isColorCodeEnabled"
               v-model:visible="colorMenus[kanbanStackOption.index!]"
               :auto-close="false"
               overlay-class-name="nc-select-option-color-picker"
+              :disabled="isLoadingPredictOptions"
+              use-backdrop
             >
               <div class="flex-none h-6 w-6 flex cursor-pointer mx-1">
                 <div
                   class="h-6 w-6 rounded flex items-center"
+                  :class="{
+                    'justify-center': isLoadingPredictOptions,
+                  }"
                   :style="{
-                    backgroundColor: kanbanStackOption.color,
-                    color: tinycolor.isReadable(kanbanStackOption.color || '#ccc', '#fff', { level: 'AA', size: 'large' })
-                      ? '#fff'
-                      : tinycolor.mostReadable(kanbanStackOption.color || '#ccc', ['#0b1d05', '#fff']).toHex8String(),
+                    backgroundColor: getSelectTypeFieldOptionBgColor({ color: kanbanStackOption.color || '#ccc', isDark }),
+                    color: getSelectTypeFieldOptionTextColor({ color: kanbanStackOption.color || '#ccc', isDark, getColor }),
                   }"
                 >
-                  <GeneralIcon icon="arrowDown" class="flex-none h-4 w-4 m-auto !text-current" />
+                  <GeneralLoader v-if="isLoadingPredictOptions" size="regular" class="!text-current" />
+                  <GeneralIcon v-else icon="arrowDown" class="flex-none h-4 w-4 m-auto !text-current" />
                 </div>
               </div>
 
@@ -444,6 +561,8 @@ if (isKanbanStack.value) {
                   <LazyGeneralAdvanceColorPicker
                     v-model="kanbanStackOption.color"
                     :is-open="colorMenus[kanbanStackOption.index!]"
+                    invert-in-dark-mode
+                    show-text-icon
                     @input="(el:string) => {
                       kanbanStackOption!.color = el
                       optionChanged(kanbanStackOption!)
@@ -458,6 +577,7 @@ if (isKanbanStack.value) {
               placeholder="Enter option name..."
               class="caption !rounded-lg nc-select-col-option-select-option nc-kanban-stack-input !bg-transparent"
               data-testid="nc-kanban-stack-title-input"
+              :disabled="isLoadingPredictOptions"
               @keydown.enter.prevent.stop="syncOptions(true, true, kanbanStackOption!)"
               @change="() => {
                   kanbanStackOption!.status = undefined
@@ -468,7 +588,7 @@ if (isKanbanStack.value) {
 
           <div
             v-if="isNewStack"
-            class="ml-1 hover:!text-black-500 text-gray-500 cursor-pointer hover:bg-gray-200 py-1 px-1.5 rounded-md h-7 flex items-center"
+            class="ml-1 hover:!text-nc-content-gray-subtle text-nc-content-gray-muted cursor-pointer hover:bg-nc-bg-gray-medium py-1 px-1.5 rounded-md h-7 flex items-center"
             @click="emit('saveChanges', true, false)"
           >
             <component :is="iconMap.close" class="-mt-0.25 w-4 h-4" />
@@ -476,19 +596,15 @@ if (isKanbanStack.value) {
         </div>
       </template>
       <template v-else>
-        <InfiniteLoading v-if="isReverseLazyLoad" v-bind="$attrs" @infinite="loadListDataReverse">
-          <template #spinner>
-            <div class="flex flex-row w-full justify-center mt-2">
-              <GeneralLoader />
-            </div>
-          </template>
-          <template #complete>
-            <span></span>
-          </template>
-        </InfiniteLoading>
-        <Draggable :list="renderedOptions" item-key="id" handle=".nc-child-draggable-icon" @change="syncOptions">
+        <Draggable
+          v-bind="getDraggableAutoScrollOptions({ scrollSensitivity: 45 })"
+          :list="renderedOptions"
+          item-key="id"
+          handle=".nc-child-draggable-icon"
+          @change="onDragReorder"
+        >
           <template #item="{ element, index }">
-            <div class="flex py-1 items-center nc-select-option hover:bg-gray-100 group">
+            <div class="flex py-1 items-center nc-select-option hover:bg-nc-bg-gray-light group">
               <div
                 class="flex items-center w-full"
                 :data-testid="`select-column-option-${index}`"
@@ -496,21 +612,19 @@ if (isKanbanStack.value) {
               >
                 <div
                   v-if="!isKanban"
-                  class="nc-child-draggable-icon p-2 flex cursor-pointer"
+                  class="nc-child-draggable-icon p-2 flex cursor-pointer text-nc-content-gray-subtle"
                   :data-testid="`select-option-column-handle-icon-${element.title}`"
                 >
                   <component :is="iconMap.dragVertical" small class="handle" />
                 </div>
 
-                <NcDropdown v-model:visible="colorMenus[index]" :auto-close="false">
+                <NcDropdown v-if="isColorCodeEnabled" v-model:visible="colorMenus[index]" :auto-close="false" use-backdrop>
                   <div class="flex-none h-6 w-6 flex cursor-pointer mx-1">
                     <div
                       class="h-6 w-6 rounded flex items-center"
                       :style="{
-                        backgroundColor: element.color,
-                        color: tinycolor.isReadable(element.color || '#ccc', '#fff', { level: 'AA', size: 'large' })
-                          ? '#fff'
-                          : tinycolor.mostReadable(element.color || '#ccc', ['#0b1d05', '#fff']).toHex8String(),
+                        backgroundColor: getSelectTypeFieldOptionBgColor({ color: element.color, isDark }),
+                        color: getSelectTypeFieldOptionTextColor({ color: element.color, isDark, getColor }),
                       }"
                     >
                       <GeneralIcon icon="arrowDown" class="flex-none h-4 w-4 m-auto !text-current" />
@@ -522,6 +636,8 @@ if (isKanbanStack.value) {
                       <LazyGeneralAdvanceColorPicker
                         v-model="element.color"
                         :is-open="colorMenus[index]"
+                        invert-in-dark-mode
+                        show-text-icon
                         @input="(el:string) => {
                           element.color = el
                           optionChanged(element)
@@ -544,7 +660,7 @@ if (isKanbanStack.value) {
               <div
                 v-if="element.status !== 'remove'"
                 :data-testid="`select-column-option-remove-${index}`"
-                class="mx-1 hover:!text-black-500 text-gray-500 cursor-pointer hover:bg-gray-200 py-1 px-1.5 rounded-md h-7 flex items-center invisible group-hover:visible"
+                class="mx-1 hover:!text-nc-content-gray-extreme-500 text-nc-content-gray-muted cursor-pointer hover:bg-nc-bg-gray-medium py-1 px-1.5 rounded-md h-7 flex items-center invisible group-hover:visible"
                 @click="removeRenderedOption(index)"
               >
                 <component :is="iconMap.close" class="-mt-0.25 w-4 h-4" />
@@ -552,27 +668,39 @@ if (isKanbanStack.value) {
               <div
                 v-else
                 :data-testid="`select-column-option-remove-undo-${index}`"
-                class="mx-1 hover:!text-black-500 text-gray-500 cursor-pointer hover:bg-gray-200 py-1 px-1.5 rounded-md h-7 flex items-center invisible group-hover:visible"
+                class="mx-1 hover:!text-nc-content-gray-extreme-500 text-nc-content-gray-muted cursor-pointer hover:bg-nc-bg-gray-medium py-1 px-1.5 rounded-md h-7 flex items-center invisible group-hover:visible"
                 @click="undoRemoveRenderedOption(index)"
               >
                 <MdiArrowULeftBottom
-                  class="hover:!text-black-500 text-gray-500 cursor-pointer w-4 h-4"
+                  class="hover:!text-nc-content-gray-extreme-500 text-nc-content-gray-muted cursor-pointer w-4 h-4"
                   @click="undoRemoveRenderedOption(index)"
                 />
               </div>
             </div>
           </template>
-        </Draggable>
-        <InfiniteLoading v-if="!isReverseLazyLoad" v-bind="$attrs" @infinite="loadListData">
-          <template #spinner>
-            <div class="flex flex-row w-full justify-center mt-2">
-              <GeneralLoader />
+          <template v-if="isLoadingPredictOptions" #footer>
+            <div class="flex py-1 items-center nc-select-option hover:bg-nc-bg-gray-light group">
+              <div class="flex items-center w-full">
+                <div class="p-2 flex !cursor-disabled">
+                  <component :is="iconMap.dragVertical" small class="handle opacity-75" />
+                </div>
+                <div class="flex-none h-6 w-6 flex cursor-pointer mx-1">
+                  <div
+                    class="h-6 w-6 rounded flex items-center justify-center"
+                    :style="{
+                      backgroundColor: getSelectTypeFieldOptionBgColor({ color: getNextColor(), isDark }),
+                      color: getSelectTypeFieldOptionTextColor({ color: getNextColor(), isDark, getColor }),
+                    }"
+                  >
+                    <GeneralLoader size="regular" class="!text-current" />
+                  </div>
+                </div>
+
+                <div class="caption px-3">...</div>
+              </div>
             </div>
           </template>
-          <template #complete>
-            <span></span>
-          </template>
-        </InfiniteLoading>
+        </Draggable>
       </template>
     </div>
 
@@ -585,25 +713,79 @@ if (isKanbanStack.value) {
     >
       {{ validateInfos.colOptions.help[0][0] }}
     </div>
-    <NcButton
+    <div
       v-if="!isKanbanStack"
-      type="secondary"
-      class="w-full caption"
+      class="nc-add-select-option-btn-wrapper flex shadow-sm"
       :class="{
         'mt-2': renderedOptions.length,
+        'bg-nc-bg-default': isAiModeFieldModal,
       }"
-      size="small"
-      data-testid="nc-add-select-option-btn"
-      @click="addNewOption()"
     >
-      <div class="flex items-center">
-        <component :is="iconMap.plus" />
-        <span class="flex-auto">Add option</span>
-      </div>
-    </NcButton>
-    <!-- <div v-if="isEeUI" class="w-full cursor-pointer" @click="optionsMagic()">
-      <GeneralIcon icon="magic" :class="{ 'nc-animation-pulse': loadMagic }" class="w-full flex mt-2 text-orange-400" />
-    </div> -->
+      <NcButton
+        type="text"
+        class="nc-add-select-option-btn flex-1 caption"
+        size="small"
+        data-testid="nc-add-select-option-btn"
+        @click.stop="addNewOption()"
+      >
+        <template #icon>
+          <component :is="iconMap.plus" />
+        </template>
+
+        {{ $t('labels.addOption') }}
+      </NcButton>
+      <NcTooltip v-if="isAiFeaturesEnabled" class="w-1/2">
+        <template #title>
+          {{
+            aiIntegrationAvailable
+              ? !vModel.title?.trim()
+                ? $t('tooltip.fieldNameIsRequriedToAutoSuggestOptions')
+                : $t('tooltip.autoSuggestSelectOptions')
+              : $t('title.noAiIntegrationAvailable')
+          }}
+        </template>
+
+        <NcButton
+          type="secondary"
+          theme="ai"
+          class="nc-add-select-option-auto-suggest w-full caption"
+          size="small"
+          :bordered="false"
+          :disabled="isLoadingPredictOptions || !vModel.title?.trim() || !aiIntegrationAvailable"
+          :loading="isLoadingPredictOptions"
+          @click.stop="predictOptions()"
+        >
+          <template #icon>
+            <GeneralIcon icon="ncAutoAwesome" class="h-4 w-4" />
+          </template>
+          <template #loading> {{ $t('labels.suggesting') }} </template>
+          {{ $t('labels.autoSuggest') }}
+        </NcButton>
+      </NcTooltip>
+    </div>
+    <div v-else-if="!kanbanStackOption?.id" class="mt-2 pl-1">
+      <NcTooltip v-if="isAiFeaturesEnabled" class="w-full" placement="bottom">
+        <template #title>
+          {{ aiIntegrationAvailable ? $t('tooltip.autoSuggestSelectOptions') : $t('title.noAiIntegrationAvailable') }}
+        </template>
+
+        <NcButton
+          type="secondary"
+          theme="ai"
+          class="nc-add-select-option-auto-suggest caption w-full"
+          size="small"
+          :disabled="isLoadingPredictOptions || !aiIntegrationAvailable"
+          :loading="isLoadingPredictOptions"
+          @click.stop="predictOptions()"
+        >
+          <template #icon>
+            <GeneralIcon icon="ncAutoAwesome" class="h-4 w-4" />
+          </template>
+          <template #loading> {{ $t('labels.suggesting') }} </template>
+          {{ $t('labels.autoSuggest') }}
+        </NcButton>
+      </NcTooltip>
+    </div>
   </div>
 </template>
 
@@ -616,7 +798,7 @@ if (isKanbanStack.value) {
   left: 0;
   top: 50%;
   height: 1px;
-  background: #ccc;
+  background: var(--color-gray-300);
   content: '';
   width: calc(100% + 5px);
   display: block;
@@ -636,6 +818,17 @@ if (isKanbanStack.value) {
   &:focus,
   &:focus-visible {
     @apply !border-[var(--ant-primary-color-hover)];
+  }
+}
+
+.nc-add-select-option-btn-wrapper {
+  @apply border-1 border-nc-border-gray-medium rounded-lg overflow-hidden;
+
+  .nc-add-select-option-btn {
+    @apply rounded-none;
+  }
+  .nc-add-select-option-auto-suggest {
+    @apply -my-[1px] h-[34px] rounded-none !border-l-1 !border-l-nc-border-gray-medium;
   }
 }
 </style>

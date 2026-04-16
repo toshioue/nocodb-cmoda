@@ -4,7 +4,6 @@ export const driverClientMapping = {
   postgres: 'pg',
   postgresql: 'pg',
   sqlite: 'sqlite3',
-  mssql: 'mssql',
 };
 
 export const defaultClientPortMapping = {
@@ -12,7 +11,6 @@ export const defaultClientPortMapping = {
   mysql2: 3306,
   postgres: 5432,
   pg: 5432,
-  mssql: 1433,
 };
 
 export const defaultConnectionConfig: any = {
@@ -25,7 +23,7 @@ export const defaultConnectionConfig: any = {
 export const defaultConnectionOptions = {
   pool: {
     min: 0,
-    max: 10,
+    max: +process.env.NC_DB_POOL_MAX || 10,
   },
 };
 
@@ -78,9 +76,37 @@ export const knownQueryParams = [
 export enum DriverClient {
   MYSQL = 'mysql2',
   MYSQL_LEGACY = 'mysql',
-  MSSQL = 'mssql',
   PG = 'pg',
   SQLITE = 'sqlite3',
   SNOWFLAKE = 'snowflake',
   DATABRICKS = 'databricks',
 }
+
+export const CHATWOOT_IDENTITY_KEY = process.env.CHATWOOT_IDENTITY_KEY;
+
+export const NC_DISABLE_SUPPORT_CHAT =
+  process.env.NC_DISABLE_SUPPORT_CHAT === 'true';
+
+export const NC_IFRAME_WHITELIST_DOMAINS =
+  process.env.NC_IFRAME_ALLOWED_DOMAINS ||
+  process.env.NC_IFRAME_WHITELIST_DOMAINS ||
+  '';
+
+export const NC_DISABLE_GROUP_BY_LIMIT =
+  process.env.NC_DISABLE_GROUP_BY_LIMIT === 'true' || false;
+
+export const NC_DISABLE_GROUP_BY_AGG =
+  process.env.NC_DISABLE_GROUP_BY_AGG === 'true' || false;
+
+const DEFAULT_THUMBNAIL_MAX_SIZE = 3 * 1024 * 1024;
+
+export const getThumbnailMaxSize = () => {
+  const envValue = process.env.NC_THUMBNAIL_MAX_SIZE;
+  if (envValue) {
+    const parsed = parseInt(envValue, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_THUMBNAIL_MAX_SIZE;
+};

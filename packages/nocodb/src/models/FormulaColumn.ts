@@ -33,7 +33,7 @@ export default class FormulaColumn {
       'parsed_tree',
     ]);
 
-    insertObj.parsed_tree = stringifyMetaProp(insertObj, 'parsed_tree');
+    insertObj.parsed_tree = stringifyMetaProp(insertObj, 'parsed_tree', null);
 
     await ncMeta.metaInsert2(
       context.workspace_id,
@@ -53,6 +53,7 @@ export default class FormulaColumn {
     let column =
       columnId &&
       (await NocoCache.get(
+        context,
         `${CacheScope.COL_FORMULA}:${columnId}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -64,9 +65,18 @@ export default class FormulaColumn {
         { fk_column_id: columnId },
       );
       if (column) {
-        column.parsed_tree = parseMetaProp(column, 'parsed_tree');
-        await NocoCache.set(`${CacheScope.COL_FORMULA}:${columnId}`, column);
+        column.parsed_tree = parseMetaProp(column, 'parsed_tree', null);
+        await NocoCache.set(
+          context,
+          `${CacheScope.COL_FORMULA}:${columnId}`,
+          column,
+        );
       }
+    }
+
+    // if stored value in cache is string, parse it
+    if (column) {
+      column.parsed_tree = parseMetaProp(column, 'parsed_tree', null);
     }
 
     return column ? new FormulaColumn(column) : null;
@@ -88,8 +98,9 @@ export default class FormulaColumn {
       'parsed_tree',
     ]);
 
-    if ('parsed_tree' in updateObj)
-      updateObj.parsed_tree = stringifyMetaProp(updateObj, 'parsed_tree');
+    if ('parsed_tree' in updateObj) {
+      updateObj.parsed_tree = stringifyMetaProp(updateObj, 'parsed_tree', null);
+    }
     // set meta
     await ncMeta.metaUpdate(
       context.workspace_id,
@@ -101,7 +112,16 @@ export default class FormulaColumn {
       },
     );
 
-    await NocoCache.update(`${CacheScope.COL_FORMULA}:${columnId}`, updateObj);
+    // if parsed_tree prop defined in update object, then parse it if string before storing to cache
+    if ('parsed_tree' in updateObj) {
+      updateObj.parsed_tree = parseMetaProp(updateObj, 'parsed_tree', null);
+    }
+
+    await NocoCache.update(
+      context,
+      `${CacheScope.COL_FORMULA}:${columnId}`,
+      updateObj,
+    );
   }
 
   public getParsedTree() {

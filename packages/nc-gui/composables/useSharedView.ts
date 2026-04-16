@@ -1,21 +1,28 @@
-import type {
-  CalendarType,
+import {
+  type BaseType,
+  type CalendarType,
   ExportTypes,
-  FilterType,
-  KanbanType,
-  MapType,
-  PaginatedType,
-  RequestParams,
-  SortType,
-  TableType,
-  ViewType,
+  type FilterType,
+  type KanbanType,
+  type MapType,
+  type PaginatedType,
+  type RequestParams,
+  type SortType,
+  type TableType,
+  UITypes,
+  type ViewType,
+  ViewTypes,
 } from 'nocodb-sdk'
-import { UITypes, ViewTypes } from 'nocodb-sdk'
+import { setI18nLanguage } from '~/plugins/a.i18n'
 
 export function useSharedView() {
+  const router = useRouter()
+
   const nestedFilters = ref<(FilterType & { status?: 'update' | 'delete' | 'create'; parentId?: string })[]>([])
 
-  const { appInfo, gridViewPageSize } = useGlobal()
+  const { appInfo } = useGlobal()
+
+  const workspaceStore = useWorkspace()
 
   const baseStore = useBase()
 
@@ -25,14 +32,17 @@ export function useSharedView() {
 
   const { base } = storeToRefs(baseStore)
 
-  const appInfoDefaultLimit = gridViewPageSize.value || appInfo.value.defaultLimit || 25
+  const appInfoDefaultLimit = appInfo.value.defaultLimit || 50
 
   const paginationData = useState<PaginatedType>('paginationData', () => ({
     page: 1,
     pageSize: appInfoDefaultLimit,
   }))
 
-  const sharedView = useState<ViewType | undefined>('sharedView', () => undefined)
+  const sharedView = useState<(ViewType & { basePermissions: BaseType['permissions'] }) | undefined>(
+    'sharedView',
+    () => undefined,
+  )
 
   const sorts = ref<SortType[]>([])
 
@@ -70,6 +80,12 @@ export function useSharedView() {
         'xc-password': localPassword ?? password.value,
       },
     })
+
+    // Set workspace info if present
+    if (viewMeta?.workspace) {
+      workspaceStore.workspaces.set(viewMeta.workspace.id, viewMeta.workspace)
+    }
+
     try {
       allowCSVDownload.value = parseProp(viewMeta.meta)?.allowCSVDownload
     } catch {
@@ -80,26 +96,14 @@ export function useSharedView() {
     sharedView.value = { title: '', ...viewMeta } as ViewType
     meta.value = { ...viewMeta.model }
 
-    let order = 1
-
-    // Required for Calendar View
-    const rangeFields: Array<string> = []
-    if ((sharedView.value?.view as CalendarType)?.calendar_range?.length) {
-      for (const range of (sharedView.value?.view as CalendarType)?.calendar_range ?? []) {
-        if (range.fk_from_column_id) {
-          rangeFields.push(range.fk_from_column_id)
-        }
-        if ((range as any).fk_to_column_id) {
-          rangeFields.push((range as any).fk_to_column_id)
-        }
-      }
+    if (parseProp(viewMeta.meta)?.language) {
+      setI18nLanguage(parseProp(viewMeta.meta).language)
     }
 
+    let order = 1
+
     if (meta.value) {
-      meta.value.columns = [...viewMeta.model.columns]
-        .filter((c) => c.show || rangeFields.includes(c.id) || (sharedView.value?.type === ViewTypes.GRID && c?.group_by))
-        .map((c) => ({ ...c, order: order++ }))
-        .sort((a, b) => a.order - b.order)
+      meta.value.columns = [...viewMeta.model.columns].map((c) => ({ ...c, order: order++ })).sort((a, b) => a.order - b.order)
     }
 
     await setMeta(viewMeta.model)
@@ -112,6 +116,7 @@ export function useSharedView() {
           {
             id: viewMeta.source_id,
             type: viewMeta.client,
+            ...(viewMeta.source || {}),
           },
         ],
       })
@@ -134,9 +139,12 @@ export function useSharedView() {
       /** Query params for nested data */
       nested?: any
       offset?: number
+      limit?: number
+      whereTz?: string
     },
     opts?: {
       isGroupBy?: boolean
+      isInfiniteScroll?: boolean
     },
   ) => {
     if (!sharedView.value)
@@ -147,7 +155,9 @@ export function useSharedView() {
 
     if (!param.offset) {
       const page = paginationData.value.page || 1
-      const pageSize = opts?.isGroupBy
+      const pageSize = opts?.isInfiniteScroll
+        ? param.limit
+        : opts?.isGroupBy
         ? appInfo.value.defaultGroupByLimit?.limitRecord || 10
         : paginationData.value.pageSize || appInfoDefaultLimit
       param.offset = (page - 1) * pageSize
@@ -158,8 +168,9 @@ export function useSharedView() {
       sharedView.value.uuid!,
       {
         ...param,
-        filterArrJson: JSON.stringify(param.filtersArr ?? nestedFilters.value),
-        sortArrJson: JSON.stringify(param.sortsArr ?? sorts.value),
+        filterArrJson: stringifyFilterOrSortArr(param.filtersArr ?? nestedFilters.value),
+        sortArrJson: stringifyFilterOrSortArr(param.sortsArr ?? sorts.value),
+        include_row_color: true,
       } as any,
       {
         headers: {
@@ -172,11 +183,14 @@ export function useSharedView() {
   const fetchSharedCalendarViewData = async (param: {
     from_date: string
     to_date: string
+    next_date: string
+    prev_date: string
     sortsArr: SortType[]
     filtersArr: FilterType[]
     fields?: any[]
     sort?: any[]
     where?: string
+    whereTz?: string
     /** Query params for nested data */
     nested?: any
     offset?: number
@@ -198,8 +212,9 @@ export function useSharedView() {
       {
         limit: sharedView.value?.type === ViewTypes.CALENDAR ? 3000 : undefined,
         ...param,
-        filterArrJson: JSON.stringify(param.filtersArr ?? nestedFilters.value),
-        sortArrJson: JSON.stringify(param.sortsArr ?? sorts.value),
+        filterArrJson: stringifyFilterOrSortArr(param.filtersArr ?? nestedFilters.value),
+        sortArrJson: stringifyFilterOrSortArr(param.sortsArr ?? sorts.value),
+        include_row_color: true,
       } as any,
       {
         headers: {
@@ -223,7 +238,7 @@ export function useSharedView() {
       sharedView.value.uuid!,
       {
         ...param,
-        filterArrJson: JSON.stringify(param.filtersArr ?? nestedFilters.value),
+        filterArrJson: stringifyFilterOrSortArr(param.filtersArr ?? nestedFilters.value),
       } as any,
       {
         headers: {
@@ -254,7 +269,7 @@ export function useSharedView() {
       bulkFilterList,
       {
         ...param,
-        filterArrJson: JSON.stringify(param.filtersArr ?? nestedFilters.value),
+        filterArrJson: stringifyFilterOrSortArr(param.filtersArr ?? nestedFilters.value),
       } as any,
       {
         headers: {
@@ -297,7 +312,7 @@ export function useSharedView() {
       bulkFilterList,
       {
         ...param,
-        filterArrJson: JSON.stringify(param.filtersArr ?? nestedFilters.value),
+        filterArrJson: stringifyFilterOrSortArr(param.filtersArr ?? nestedFilters.value),
       } as any,
       {
         headers: {
@@ -310,6 +325,8 @@ export function useSharedView() {
   const fetchSharedViewActiveDate = async (param: {
     from_date: string
     to_date: string
+    next_date: string
+    prev_date: string
     sortsArr: SortType[]
     filtersArr: FilterType[]
     sort?: any[]
@@ -325,8 +342,8 @@ export function useSharedView() {
       sharedView.value.uuid!,
       {
         ...param,
-        filterArrJson: JSON.stringify(param.filtersArr ?? nestedFilters.value),
-        sortArrJson: JSON.stringify(param.sortsArr ?? sorts.value),
+        filterArrJson: stringifyFilterOrSortArr(param.filtersArr ?? nestedFilters.value),
+        sortArrJson: stringifyFilterOrSortArr(param.sortsArr ?? sorts.value),
       } as any,
       {
         headers: {
@@ -336,9 +353,31 @@ export function useSharedView() {
     )
   }
 
+  const fetchCount = async (param: { filtersArr: FilterType[]; where?: string }) => {
+    const data = await $api.public.dbViewRowCount(
+      sharedView.value.uuid!,
+      {
+        filterArrJson: stringifyFilterOrSortArr(param.filtersArr ?? nestedFilters.value),
+        where: param.where,
+      },
+      {
+        headers: {
+          'xc-password': password.value,
+        },
+      },
+    )
+
+    return data
+  }
+
   const fetchSharedViewGroupedData = async (
     columnId: string,
-    { sortsArr, filtersArr }: { sortsArr: SortType[]; filtersArr: FilterType[] },
+    {
+      sortsArr,
+      filtersArr,
+      include_row_color,
+      where,
+    }: { sortsArr: SortType[]; filtersArr: FilterType[]; include_row_color?: boolean; where?: string },
   ) => {
     if (!sharedView.value) return
 
@@ -350,8 +389,10 @@ export function useSharedView() {
       columnId,
       {
         offset: (page - 1) * pageSize,
-        filterArrJson: JSON.stringify(filtersArr ?? nestedFilters.value),
-        sortArrJson: JSON.stringify(sortsArr ?? sorts.value),
+        filterArrJson: stringifyFilterOrSortArr(filtersArr ?? nestedFilters.value),
+        sortArrJson: stringifyFilterOrSortArr(sortsArr ?? sorts.value),
+        include_row_color,
+        where,
       } as any,
       {
         headers: {
@@ -384,20 +425,37 @@ export function useSharedView() {
     offset: number,
     type: ExportTypes.EXCEL | ExportTypes.CSV,
     responseType: 'base64' | 'blob',
-    { sortsArr, filtersArr }: { sortsArr: SortType[]; filtersArr: FilterType[] } = { sortsArr: [], filtersArr: [] },
+    { sortsArr, filtersArr }: { sortsArr: SortType[]; filtersArr: FilterType[] } = {
+      sortsArr: [],
+      filtersArr: [],
+    },
   ) => {
     return await $api.public.csvExport(sharedView.value!.uuid!, type, {
       format: responseType,
       query: {
         fields: fields.map((field) => field.title),
         offset,
-        filterArrJson: JSON.stringify(filtersArr ?? nestedFilters.value),
-        sortArrJson: JSON.stringify(sortsArr ?? sorts.value),
+        filterArrJson: stringifyFilterOrSortArr(filtersArr ?? nestedFilters.value),
+        sortArrJson: stringifyFilterOrSortArr(sortsArr ?? sorts.value),
+        encoding: type === ExportTypes.EXCEL ? 'base64' : undefined,
       },
       headers: {
         'xc-password': password.value,
       },
     } as RequestParams)
+  }
+
+  const triggerNotFound = () => {
+    const isNcNotFoundQueryExists = router.currentRoute.value.query.ncNotFound === 'true'
+
+    if (isNcNotFoundQueryExists) return
+
+    const currentQuery = { ...router.currentRoute.value.query, ncNotFound: 'true' }
+
+    router.push({
+      path: router.currentRoute.value.path,
+      query: currentQuery,
+    })
   }
 
   return {
@@ -419,5 +477,7 @@ export function useSharedView() {
     exportFile,
     formColumns,
     allowCSVDownload,
+    fetchCount,
+    triggerNotFound,
   }
 }

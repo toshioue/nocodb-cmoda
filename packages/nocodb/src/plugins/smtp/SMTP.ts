@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import type { IEmailAdapter } from '~/types/nc-plugin';
 import type Mail from 'nodemailer/lib/mailer';
 import type { XcEmail } from '~/interface/IEmailAdapter';
+import { NcError } from '~/helpers/ncError';
 
 export default class SMTP implements IEmailAdapter {
   private transporter: Mail;
@@ -25,7 +26,10 @@ export default class SMTP implements IEmailAdapter {
           ? this.input?.ignoreTLS
           : this.input?.ignoreTLS === 'true',
       tls: {
-        rejectUnauthorized: this.input?.rejectUnauthorized,
+        rejectUnauthorized:
+          typeof this.input?.rejectUnauthorized === 'boolean'
+            ? this.input?.rejectUnauthorized
+            : this.input?.rejectUnauthorized === 'true',
       },
       ...(this.input?.username || this.input?.password
         ? {
@@ -56,9 +60,7 @@ export default class SMTP implements IEmailAdapter {
       return true;
     } catch (e) {
       console.log('SMTP test error :: ', e);
-      throw new Error(
-        'SMTP test failed, please check server log for more details.',
-      );
+      NcError.pluginTestError(e?.message);
     }
   }
 }

@@ -8,9 +8,10 @@ import {
   NumericalAggregations,
   UITypes,
 } from 'nocodb-sdk';
-import type { BaseModelSqlv2 } from '~/db/BaseModelSqlv2';
+import type CustomKnex from '~/db/CustomKnex';
 import type { Knex } from 'knex';
 import type { Column } from '~/models';
+import type { IBaseModelSqlV2 } from '~/db/IBaseModelSqlV2';
 
 export function genPgAggregateQuery({
   column,
@@ -22,8 +23,8 @@ export function genPgAggregateQuery({
   alias,
 }: {
   column: Column;
-  column_query: string;
-  baseModelSqlv2: BaseModelSqlv2;
+  column_query: string | Knex.QueryBuilder;
+  baseModelSqlv2: IBaseModelSqlV2;
   aggregation: string;
   parsedFormulaType?: FormulaDataTypes;
   aggType:
@@ -392,7 +393,7 @@ export function genPgAggregateQuery({
     }
   }
 
-  if (alias && aggregationSql) {
+  if (aggregationSql) {
     if (
       ![AllAggregations.EarliestDate, AllAggregations.LatestDate].includes(
         aggregation as any,
@@ -401,8 +402,56 @@ export function genPgAggregateQuery({
       aggregationSql = knex.raw(`COALESCE(??, 0)`, [aggregationSql]);
     }
 
-    aggregationSql = knex.raw(`?? AS ??`, [aggregationSql, alias]);
+    if (alias) {
+      aggregationSql = knex.raw(`?? AS ??`, [aggregationSql, alias]);
+    }
   }
 
   return aggregationSql?.toQuery();
+}
+
+export function replaceDelimitedWithKeyValuePg(params: {
+  knex: CustomKnex;
+  stack: { key: string; value: string }[];
+  needleColumn: string | Knex.QueryBuilder | Knex.RawBuilder;
+  delimiter?: string;
+}) {
+  const delimiter = params.delimiter ?? ',';
+  const knex = params.knex;
+
+  if (!params.stack || params.stack.length === 0) {
+    return knex.raw(`??`, [params.needleColumn]).toQuery();
+  }
+
+  // create union replace statement for each user
+  const mapUnion = params.stack
+    .map((row) => {
+      return knex
+        .raw(`select ? as nc_p_key, ? as nc_p_value`, [row.key, row.value])
+        .toQuery();
+    })
+    .join(' UNION ALL ');
+
+  const needleAsRows = knex
+    .raw(
+      `select ?? as nc_raw_needle, trim(unnest(string_to_array(??, '${delimiter}'))) as nc_p_needle`,
+      [params.needleColumn, params.needleColumn],
+    )
+    .toQuery();
+
+  const result = knex
+    .raw(
+      [
+        `select nc_p_result from (`,
+        `  select nc_t_needle.nc_raw_needle, string_agg(coalesce(nc_t_stack.nc_p_value, nc_t_stack.nc_p_key), '${delimiter}') as nc_p_result`,
+        `  from (${needleAsRows}) nc_t_needle`,
+        `  left join (${mapUnion}) nc_t_stack`,
+        `    on nc_t_needle.nc_p_needle = nc_t_stack.nc_p_key`,
+        `  group by nc_t_needle.nc_raw_needle`,
+        `) nc_subquery`,
+      ].join(' '),
+    )
+    .toQuery();
+
+  return result;
 }

@@ -10,22 +10,27 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { IntegrationReqType, IntegrationsType } from 'nocodb-sdk';
+import { IntegrationReqType, IntegrationsType, NcApiVersion } from 'nocodb-sdk';
+// This service is overwritten entirely in the cloud and does not extend there.
+// As a result, it refers to services from OSS to avoid type mismatches.
+import { IntegrationsService } from 'src/services/integrations.service';
 import { GlobalGuard } from '~/guards/global/global.guard';
 import { Acl } from '~/middlewares/extract-ids/extract-ids.middleware';
-import { IntegrationsService } from '~/services/integrations.service';
 import { MetaApiLimiterGuard } from '~/guards/meta-api-limiter.guard';
 import { TenantContext } from '~/decorators/tenant-context.decorator';
 import { NcContext, NcRequest } from '~/interface/config';
+import { Integration } from '~/models';
+import { maskKnexConfig } from '~/helpers/responseHelpers';
+import { NcError } from '~/helpers/ncError';
 
 @Controller()
 @UseGuards(MetaApiLimiterGuard, GlobalGuard)
 export class IntegrationsController {
-  constructor(private readonly integrationsService: IntegrationsService) {}
+  constructor(protected readonly integrationsService: IntegrationsService) {}
 
   @Get(['/api/v2/meta/integrations/:integrationId'])
   @Acl('integrationGet', {
-    scope: 'org',
+    scope: 'workspace',
   })
   async integrationGet(
     @TenantContext() context: NcContext,
@@ -49,11 +54,19 @@ export class IntegrationsController {
     )
       integration.config = undefined;
 
+    if (integration.type === IntegrationsType.Database) {
+      maskKnexConfig(integration);
+    }
+
     return integration;
   }
-  @Post(['/api/v2/meta/integrations'])
+  // TODO: remove '/api/v2/meta/integrations' once CE fully migrates to workspace-scoped endpoints
+  @Post([
+    '/api/v2/meta/workspaces/:workspaceId/integrations',
+    '/api/v2/meta/integrations',
+  ])
   @Acl('integrationCreate', {
-    scope: 'org',
+    scope: 'workspace',
   })
   async integrationCreate(
     @TenantContext() context: NcContext,
@@ -68,7 +81,7 @@ export class IntegrationsController {
 
   @Delete(['/api/v2/meta/integrations/:integrationId'])
   @Acl('integrationDelete', {
-    scope: 'org',
+    scope: 'workspace',
   })
   async integrationDelete(
     @TenantContext() context: NcContext,
@@ -85,7 +98,7 @@ export class IntegrationsController {
 
   @Patch(['/api/v2/meta/integrations/:integrationId'])
   @Acl('integrationUpdate', {
-    scope: 'org',
+    scope: 'workspace',
   })
   async integrationUpdate(
     @TenantContext() context: NcContext,
@@ -105,9 +118,13 @@ export class IntegrationsController {
     return integration;
   }
 
-  @Get(['/api/v2/meta/integrations'])
+  // TODO: remove '/api/v2/meta/integrations' once CE fully migrates to workspace-scoped endpoints
+  @Get([
+    '/api/v2/meta/workspaces/:workspaceId/integrations',
+    '/api/v2/meta/integrations',
+  ])
   @Acl('integrationList', {
-    scope: 'org',
+    scope: 'workspace',
     extendedScope: 'base',
   })
   async integrationList(
@@ -122,9 +139,6 @@ export class IntegrationsController {
       req,
       includeDatabaseInfo: includeDatabaseInfo === 'true',
       type,
-      // if limit/offset is not provided, then return all integrations
-      limit: limit && (+limit || 25),
-      offset: offset && (+offset || 0),
       query,
     });
 
@@ -135,5 +149,92 @@ export class IntegrationsController {
     }
 
     return integrations;
+  }
+
+  @Get(['/api/v2/integrations'])
+  async availableIntegrations() {
+    return Integration.availableIntegrations
+      .sort((a, b) => a.type.localeCompare(b.type))
+      .sort((a, b) => a.sub_type.localeCompare(b.sub_type))
+      .map((i) => ({
+        type: i.type,
+        sub_type: i.sub_type,
+        manifest: i.manifest,
+      }));
+  }
+
+  @Get(['/api/v2/integrations/:type/:subType'])
+  async getIntegrationMeta(
+    @Param('type') type: IntegrationsType,
+    @Param('subType') subType: string,
+  ) {
+    const integration = Integration.availableIntegrations.find(
+      (i) => i.type === type && i.sub_type === subType,
+    );
+
+    if (!integration) {
+      NcError.get({
+        api_version: NcApiVersion.V2,
+      }).integrationNotFound(`${type}:${subType}`);
+    }
+
+    return {
+      integrationType: integration.type,
+      integrationSubType: integration.sub_type,
+      form: integration.form,
+      manifest: integration.manifest,
+    };
+  }
+
+  @Post(['/api/v2/integrations/:integrationId/store'])
+  @Acl('integrationStore', {
+    scope: 'workspace',
+  })
+  async storeIntegration(
+    @TenantContext() context: NcContext,
+    @Param('integrationId') integrationId: string,
+    @Body()
+    payload?:
+      | {
+          op: 'list';
+          limit: number;
+          offset: number;
+        }
+      | {
+          op: 'get';
+        }
+      | {
+          op: 'sum';
+          fields: string[];
+        },
+  ) {
+    const integration = await Integration.get(context, integrationId);
+
+    if (!integration) {
+      NcError.get(context).integrationNotFound(integrationId);
+    }
+
+    return await this.integrationsService.integrationStore(
+      context,
+      integration,
+      payload,
+    );
+  }
+
+  @Post(['/api/v2/integrations/:integrationId/:endpoint'])
+  @Acl('integrationEndpointGet', {
+    scope: 'workspace',
+  })
+  async integrationEndpointGet(
+    @TenantContext() context: NcContext,
+    @Param('integrationId') integrationId: string,
+    @Param('endpoint') endpoint: string,
+    @Body() body: any,
+  ) {
+    return await this.integrationsService.callIntegrationEndpoint(context, {
+      integrationId,
+      endpoint,
+      payload: body,
+    });
   }
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { type ColumnType, UITypes } from 'nocodb-sdk'
-import { AllowedColumnTypesForQrAndBarcodes, isVirtualCol } from 'nocodb-sdk'
+import { ColumnHelper, type ColumnType, UITypes } from 'nocodb-sdk'
+import { AllowedColumnTypesForQrAndBarcodes } from 'nocodb-sdk'
+import { supportedBarcodeFormats } from '~/helpers/columnDefaultMeta'
 
 const props = defineProps<{
   modelValue: any
@@ -12,7 +13,8 @@ const { fields, metaColumnById } = useViewColumnsOrThrow()
 
 const vModel = useVModel(props, 'modelValue', emit)
 
-const { setAdditionalValidations, validateInfos, column, isEdit } = useColumnCreateStoreOrThrow()
+const { setAdditionalValidations, setAvoidShowingToastMsgForValidations, validateInfos, column, isEdit } =
+  useColumnCreateStoreOrThrow()
 
 const { t } = useI18n()
 
@@ -32,7 +34,7 @@ const columnsAllowedAsBarcodeValue = computed<ColumnType[]>(() => {
 onMounted(() => {
   // set default value
   vModel.value.meta = {
-    ...columnDefaultMeta[UITypes.Barcode],
+    ...ColumnHelper.getColumnDefaultMeta(UITypes.Barcode),
     ...(vModel.value.meta || {}),
   }
   vModel.value.fk_barcode_value_column_id =
@@ -51,12 +53,12 @@ setAdditionalValidations({
   barcode_format: [{ required: true, message: t('general.required') }],
 })
 
-const showBarcodeValueColumnInfoIcon = computed(() => !columnsAllowedAsBarcodeValue.value?.length)
+setAvoidShowingToastMsgForValidations({
+  fk_barcode_value_column_id: true,
+  barcode_format: true,
+})
 
-const cellIcon = (column: ColumnType) =>
-  h(isVirtualCol(column) ? resolveComponent('SmartsheetHeaderVirtualCellIcon') : resolveComponent('SmartsheetHeaderCellIcon'), {
-    columnMeta: column,
-  })
+const showBarcodeValueColumnInfoIcon = computed(() => !columnsAllowedAsBarcodeValue.value?.length)
 </script>
 
 <template>
@@ -73,12 +75,13 @@ const cellIcon = (column: ColumnType) =>
           :not-found-content="$t('placeholder.notFoundContent')"
           @click.stop
         >
-          <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-gray-700" /> </template>
+          <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-nc-content-gray-subtle" /> </template>
 
           <a-select-option v-for="(option, index) of columnsAllowedAsBarcodeValue" :key="index" :value="option.id">
             <div class="w-full flex gap-2 truncate items-center justify-between" :data-testid="`nc-barcode-${option.title}`">
               <div class="inline-flex items-center gap-2 flex-1 truncate">
-                <component :is="cellIcon(option)" :column-meta="option" class="!mx-0" />
+                <SmartsheetHeaderIcon :column="option" class="!mx-0" color="text-nc-content-gray-subtle2" />
+
                 <div class="truncate flex-1">{{ option.title }}</div>
               </div>
 
@@ -110,7 +113,7 @@ const cellIcon = (column: ColumnType) =>
         :placeholder="$t('placeholder.selectBarcodeFormat')"
         @click.stop
       >
-        <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-gray-700" /> </template
+        <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-nc-content-gray-subtle" /> </template
       ></a-select>
     </a-form-item>
   </div>

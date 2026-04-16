@@ -17,6 +17,7 @@ const emit = defineEmits<Emits>()
 
 interface Emits {
   (event: 'init', player: any): void
+  (event: 'error'): void
 }
 
 const videoPlayer = ref<HTMLElement>()
@@ -36,20 +37,54 @@ onBeforeUnmount(() => {
     player.value.destroy()
   }
 })
+
+const handleError = async () => {
+  const isURLExp = await isURLExpired(props.src?.[0])
+  if (isURLExp.isExpired) {
+    emit('error')
+  }
+}
 </script>
 
 <template>
+  <template v-if="mimeType === 'video/quicktime' && props.src?.length">
+    <video
+      ref="videoPlayer"
+      controls
+      playsinline
+      :src="props.src[0]"
+      :class="{
+        [props.class]: props.class,
+      }"
+      class="videoplayer !min-w-128 !min-h-72 w-full h-auto"
+      @error="handleError"
+    ></video>
+  </template>
   <video
+    v-else
     ref="videoPlayer"
     controls
     playsinline
     :class="{
       [props.class]: props.class,
     }"
-    class="videoplayer !min-w-128 !min-h-72 w-full"
+    class="videoplayer !min-w-128 !min-h-72 w-full h-auto"
+    @error="handleError"
   >
     <source v-for="(source, id) in props.src" :key="id" :src="source" :type="mimeType" />
   </video>
 </template>
 
-<style scoped lang="scss"></style>
+<style lang="scss">
+.plyr.plyr--video {
+  max-height: 100%;
+  height: auto;
+}
+.plyr > .plyr__video-wrapper {
+  display: flex;
+}
+
+.plyr video.h-auto {
+  height: auto;
+}
+</style>

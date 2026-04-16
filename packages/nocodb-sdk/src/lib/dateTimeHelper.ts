@@ -5,6 +5,9 @@ import duration from 'dayjs/plugin/duration.js';
 import utc from 'dayjs/plugin/utc.js';
 import weekday from 'dayjs/plugin/weekday.js';
 import timezone from 'dayjs/plugin/timezone.js';
+import { ColumnType } from './Api';
+import { parseProp } from './helperFunctions';
+import { ncIsNull, ncIsUndefined } from './is';
 
 dayjs.extend(utc);
 dayjs.extend(relativeTime);
@@ -27,6 +30,13 @@ export const dateFormats = [
   'DD MM YYYY',
   'MM DD YYYY',
   'YYYY MM DD',
+  ///added 2 new format#9652
+  'DD MMM YYYY',
+  'DD MMM YY',
+
+  // German date notations
+  'DD.MM.YYYY',
+  'DD.MM.YY',
 ];
 
 export const isDateMonthFormat = (format: string) =>
@@ -47,7 +57,7 @@ export function validateDateWithUnknownFormat(v: string) {
 }
 
 export function getDateFormat(v: string) {
-  for (const format of dateFormats) {
+  for (const format of dateFormats.concat(dateMonthFormats)) {
     if (dayjs(v, format, true).isValid()) {
       return format;
     }
@@ -149,4 +159,142 @@ export const isValidTimeFormat = (value: string, format: string) => {
     return regexValidator[format].test(value);
   }
   return false;
+};
+
+export function constructDateTimeFormat(column: ColumnType) {
+  const dateFormat = constructDateFormat(column);
+  const timeFormat = constructTimeFormat(column);
+  return `${dateFormat} ${timeFormat}`;
+}
+
+export function constructDateFormat(column: ColumnType) {
+  return parseProp(column?.meta)?.date_format ?? dateFormats[0];
+}
+
+export function constructTimeFormat(column: ColumnType) {
+  const columnMeta = parseProp(column?.meta);
+  const metaTimeFormat = columnMeta.time_format ?? timeFormats[0];
+  return columnMeta?.is12hrFormat
+    ? metaTimeFormat.replace('HH', 'hh') + ' A' // if 12h, replace HH and add AM/PM at the end
+    : metaTimeFormat;
+}
+
+export function workerWithTimezone(isEeUI: boolean, timezone?: string) {
+  // Check if the timezone is UTC or GMT (case insensitive)
+  const isUtcOrGmt = timezone && /^(utc|gmt)$/i.test(timezone);
+
+  return {
+    dayjsTz(value?: string | number | null | dayjs.Dayjs, format?: string) {
+      if (!isEeUI) {
+        return dayjs(value, format);
+      }
+
+      if (ncIsNull(value) || ncIsUndefined(value)) {
+        if (timezone) {
+          return dayjs.tz(undefined, timezone);
+        } else {
+          return dayjs();
+        }
+      } else if (typeof value === 'object' && value.isValid()) {
+        return value;
+      }
+
+      if (timezone) {
+        if (isUtcOrGmt) {
+          const strValue =
+            typeof value === 'object' &&
+            typeof value.isValid === 'function' &&
+            value.isValid()
+              ? value.toISOString()
+              : value;
+          return format
+            ? dayjs.tz(strValue, format, timezone)
+            : dayjs.tz(strValue, timezone);
+        } else {
+          if (!format) {
+            return dayjs.tz(value, timezone);
+          } else {
+            return dayjs.tz(value, format, timezone);
+          }
+        }
+      } else {
+        return dayjs(value, format);
+      }
+    },
+
+    timezonize(value?: string | number | null | dayjs.Dayjs) {
+      if (!isEeUI || !timezone) {
+        return dayjs(value);
+      }
+
+      if (!value) {
+        return this.dayjsTz();
+      }
+
+      let dayjsObject: dayjs.Dayjs;
+
+      if (
+        typeof value === 'object' &&
+        typeof value.isValid === 'function' &&
+        value.isValid()
+      ) {
+        dayjsObject = value.isUTC() ? value : value.utc();
+      } else {
+        dayjsObject = dayjs.utc(value);
+      }
+
+      if (!isEeUI) {
+        return dayjsObject.local();
+      }
+
+      if (timezone) {
+        if (isUtcOrGmt) {
+          return dayjs(dayjsObject.toISOString()).tz(timezone);
+        } else {
+          return dayjsObject.tz(timezone);
+        }
+      }
+
+      return dayjsObject.local();
+    },
+  };
+}
+
+export const getDateTimeValue = (
+  modelValue: string | null,
+  col: ColumnType,
+  isXcdbBase?: boolean
+) => {
+  if (!modelValue || !dayjs(modelValue).isValid()) {
+    return '';
+  }
+
+  const dateFormat = parseProp(col?.meta)?.date_format ?? dateFormats[0];
+  const timeFormat = parseProp(col?.meta)?.time_format ?? timeFormats[0];
+  const dateTimeFormat = `${dateFormat} ${timeFormat}`;
+
+  if (!isXcdbBase) {
+    return dayjs(
+      /^\d+$/.test(modelValue) ? +modelValue : modelValue,
+      dateTimeFormat
+    ).format(dateTimeFormat);
+  }
+
+  return dayjs(modelValue).utc().local().format(dateTimeFormat);
+};
+
+export const getDateValue = (
+  modelValue: string | null | number,
+  col: ColumnType,
+  isSystemCol?: boolean
+) => {
+  const dateFormat = !isSystemCol
+    ? parseProp(col.meta)?.date_format ?? 'YYYY-MM-DD'
+    : 'YYYY-MM-DD HH:mm:ss';
+  if (!modelValue || !dayjs(modelValue).isValid()) {
+    return '';
+  }
+  return dayjs(
+    /^\d+$/.test(String(modelValue)) ? +modelValue : modelValue
+  ).format(dateFormat);
 };

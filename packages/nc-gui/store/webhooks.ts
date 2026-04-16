@@ -8,29 +8,22 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
 
   const { $api, $e } = useNuxtApp()
 
-  const router = useRouter()
-
-  const route = router.currentRoute
-
   const { getMeta } = useMetas()
   const { activeTable } = toRefs(useTablesStore())
 
-  const createWebhookUrl = computed(() => {
-    return navigateToWebhookRoute({
-      openCreatePage: true,
-    })
-  })
-
-  const webhookMainUrl = computed(() => {
-    return navigateToWebhookRoute({
-      openMainPage: true,
-    })
+  const hasV2Webhooks = computed(() => {
+    return hooks.value.some((hook) => hook.version === 'v2')
   })
 
   async function loadHooksList() {
     isHooksLoading.value = true
     try {
-      const hookList = (await $api.dbTableWebhook.list(activeTable.value?.id as string)).list
+      const hookList = (
+        await $api.internal.getOperation(activeTable.value!.fk_workspace_id!, activeTable.value!.base_id!, {
+          operation: 'hookList',
+          tableId: activeTable.value?.id as string,
+        })
+      ).list
 
       hooks.value = hookList.map((hook) => {
         hook.notification = parseProp(hook.notification)
@@ -48,7 +41,15 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
 
     try {
       if (id) {
-        await $api.dbTableWebhook.delete(id)
+        await $api.internal.postOperation(
+          activeTable.value!.fk_workspace_id!,
+          activeTable.value!.base_id!,
+          {
+            operation: 'hookDelete',
+            hookId: id,
+          },
+          {},
+        )
         hooks.value.splice(index, 1)
       } else {
         hooks.value.splice(index, 1)
@@ -60,32 +61,54 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
     } catch (e: any) {
       message.error(await extractSdkResponseErrorMsg(e))
     } finally {
-      await getMeta(activeTable.value.id!, true)
+      await getMeta(activeTable.value.base_id!, activeTable.value.id!, true)
     }
   }
 
   async function copyHook(hook: HookType) {
     try {
-      const newHook = await $api.dbTableWebhook.create(hook.fk_model_id!, {
-        ...hook,
-        title: generateUniqueTitle(`${hook.title} copy`, hooks.value, 'title', '_', true),
-        active: hook.event === 'manual',
-      } as HookReqType)
+      const newHook = await $api.internal.postOperation(
+        activeTable.value!.fk_workspace_id!,
+        activeTable.value!.base_id!,
+        {
+          operation: 'hookCreate',
+          tableId: hook.fk_model_id!,
+        },
+        {
+          ...hook,
+          trigger_field: !!hook.trigger_field,
+          title: generateUniqueTitle(`${hook.title} copy`, hooks.value, 'title', '_', true),
+          active: hook.event === 'manual',
+        } as HookReqType,
+      )
 
       if (newHook) {
         $e('a:webhook:copy')
         // create the corresponding filters
-        const hookFilters = (await $api.dbTableWebhookFilter.read(hook.id!, {})).list
+        const hookFilters = (
+          await $api.internal.getOperation(activeTable.value!.fk_workspace_id!, activeTable.value!.base_id!, {
+            operation: 'hookFilterList',
+            hookId: hook.id!,
+          })
+        ).list
         for (const hookFilter of hookFilters) {
-          await $api.dbTableWebhookFilter.create(newHook.id!, {
-            comparison_op: hookFilter.comparison_op,
-            comparison_sub_op: hookFilter.comparison_sub_op,
-            fk_column_id: hookFilter.fk_column_id,
-            fk_parent_id: hookFilter.fk_parent_id,
-            is_group: hookFilter.is_group,
-            logical_op: hookFilter.logical_op,
-            value: hookFilter.value,
-          } as FilterReqType)
+          await $api.internal.postOperation(
+            activeTable.value!.fk_workspace_id!,
+            activeTable.value!.base_id!,
+            {
+              operation: 'hookFilterCreate',
+              hookId: newHook.id!,
+            },
+            {
+              comparison_op: hookFilter.comparison_op,
+              comparison_sub_op: hookFilter.comparison_sub_op,
+              fk_column_id: hookFilter.fk_column_id,
+              fk_parent_id: hookFilter.fk_parent_id,
+              is_group: hookFilter.is_group,
+              logical_op: hookFilter.logical_op,
+              value: hookFilter.value,
+            } as FilterReqType,
+          )
         }
         newHook.notification = parseProp(newHook.notification)
         hooks.value = [newHook, ...hooks.value]
@@ -93,12 +116,14 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
     } catch (e: any) {
       message.error(await extractSdkResponseErrorMsg(e))
     } finally {
-      await getMeta(activeTable.value.id!, true)
+      await getMeta(activeTable.value.base_id!, activeTable.value.id!, true)
     }
   }
 
   async function saveHooks({ hook: _hook, ogHook }: { hook: HookType; ogHook: HookType }) {
     if (!activeTable.value) throw new Error('activeTable is not defined')
+
+    _hook.trigger_field = !!_hook.trigger_field
 
     if (typeof _hook.notification === 'string') {
       _hook.notification = JSON.parse(_hook.notification)
@@ -112,21 +137,37 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
     try {
       let res
       if (hook.id) {
-        res = await $api.dbTableWebhook.update(hook.id, {
-          ...hook,
-          notification: {
-            ...hook.notification,
-            payload: hook.notification.payload,
+        res = await $api.internal.postOperation(
+          activeTable.value!.fk_workspace_id!,
+          activeTable.value!.base_id!,
+          {
+            operation: 'hookUpdate',
+            hookId: hook.id,
           },
-        })
+          {
+            ...hook,
+            notification: {
+              ...hook.notification,
+              payload: hook.notification.payload,
+            },
+          },
+        )
       } else {
-        res = await $api.dbTableWebhook.create(activeTable.value!.id!, {
-          ...hook,
-          notification: {
-            ...hook.notification,
-            payload: hook.notification.payload,
+        res = await $api.internal.postOperation(
+          activeTable.value!.fk_workspace_id!,
+          activeTable.value!.base_id!,
+          {
+            operation: 'hookCreate',
+            tableId: activeTable.value!.id!,
           },
-        } as HookReqType)
+          {
+            ...hook,
+            notification: {
+              ...hook.notification,
+              payload: hook.notification.payload,
+            },
+          } as HookReqType,
+        )
 
         hooks.value.push(res)
       }
@@ -159,7 +200,7 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
         })
       }
     } finally {
-      await getMeta(activeTable.value.id!, true)
+      await getMeta(activeTable.value.base_id!, activeTable.value.id!, true)
     }
 
     $e('a:webhook:add', {
@@ -171,52 +212,9 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
     return hook
   }
 
-  function navigateToWebhookRoute({
-    hookId,
-    openCreatePage,
-    openMainPage,
-  }: {
-    hookId?: string
-    openCreatePage?: Boolean
-    openMainPage?: Boolean
-  }) {
-    const { activeView } = useViewsStore()
-    if (!activeView) throw new Error('activeView is not defined')
-
-    if (!openMainPage && !openCreatePage && !hookId) throw new Error('hook id is not defined')
-
-    return {
-      name: 'index-typeOrId-baseId-index-index-viewId-viewTitle-slugs',
-      params: {
-        typeOrId: route.value.params.typeOrId,
-        baseId: route.value.params.baseId,
-        viewId: route.value.params.viewId,
-        viewTitle: activeView.id,
-        slugs: openMainPage ? ['webhook'] : ['webhook', openCreatePage ? 'create' : hookId!],
-      },
-    }
-  }
-
-  const navigateToWebhook = async ({
-    hookId,
-    openCreatePage,
-    openMainPage,
-  }: {
-    hookId?: string
-    openCreatePage?: Boolean
-    openMainPage?: Boolean
-  }) => {
-    const { activeView } = useViewsStore()
-    if (!activeView) return
-
-    await router.push(
-      navigateToWebhookRoute({
-        hookId,
-        openCreatePage,
-        openMainPage,
-      }),
-    )
-  }
+  // Used for deep-linking to a specific webhook from email notifications
+  const pendingDeepLinkHookId = ref<string | null>(null)
+  const pendingDeepLinkHookTab = ref<string | null>(null)
 
   return {
     hooks,
@@ -224,11 +222,10 @@ export const useWebhooksStore = defineStore('webhooksStore', () => {
     deleteHook,
     copyHook,
     saveHooks,
-    navigateToWebhook,
-    createWebhookUrl,
-    webhookMainUrl,
     isHooksLoading,
-    navigateToWebhookRoute,
+    hasV2Webhooks,
+    pendingDeepLinkHookId,
+    pendingDeepLinkHookTab,
   }
 })
 

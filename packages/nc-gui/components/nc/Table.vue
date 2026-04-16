@@ -1,6 +1,8 @@
 <script lang="ts" setup>
 import type { CSSProperties } from '@vue/runtime-dom'
 
+import { type PaginatedType } from 'nocodb-sdk'
+
 interface Props {
   columns: NcTableColumnProps[]
   data: Record<string, any>[]
@@ -11,13 +13,18 @@ interface Props {
   bordered?: boolean
   isDataLoading?: boolean
   stickyHeader?: boolean
+  forceStickyHeader?: boolean
   stickyFirstColumn?: boolean
+  disableTableScroll?: boolean
   headerRowClassName?: string
   bodyRowClassName?: string
   headerCellClassName?: string
   bodyCellClassName?: string
   customHeaderRow?: (columns: NcTableColumnProps[]) => Record<string, any>
   customRow?: (record: Record<string, any>, recordIndex: number) => Record<string, any>
+  pagination?: boolean
+  paginationOffset?: number
+  tableToolbarClassName?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -30,15 +37,24 @@ const props = withDefaults(defineProps<Props>(), {
   bordered: true,
   isDataLoading: false,
   stickyHeader: true,
+  forceStickyHeader: false,
+  disableTableScroll: false,
   headerRowClassName: '',
   bodyRowClassName: '',
   headerCellClassName: '',
   bodyCellClassName: '',
   customHeaderRow: () => ({}),
   customRow: () => ({}),
+  pagination: false,
+  paginationOffset: 10,
+  tableToolbarClassName: '',
 })
 
-const emit = defineEmits(['update:orderBy'])
+const emit = defineEmits(['update:orderBy', 'rowClick'])
+
+const defaultPaginationData = { page: 1, pageSize: 25, totalRows: 0, isLoading: true }
+
+const { isMobileMode } = useGlobal()
 
 const tableWrapper = ref<HTMLDivElement>()
 
@@ -46,9 +62,13 @@ const tableHeader = ref<HTMLTableElement>()
 
 const tableFooterRef = ref<HTMLDivElement>()
 
+const tableToolbarRef = ref<HTMLDivElement>()
+
+const { height: _tableToolbarHeight } = useElementBounding(tableToolbarRef)
+
 const { height: tableHeadHeight, width: tableHeadWidth } = useElementBounding(tableHeader)
 
-const { height: tableFooterHeight } = useElementBounding(tableFooterRef)
+const { height: _tableFooterHeight } = useElementBounding(tableFooterRef)
 
 const orderBy = useVModel(props, 'orderBy', emit)
 
@@ -56,11 +76,40 @@ const { columns, data, isDataLoading, customHeaderRow, customRow } = toRefs(prop
 
 const headerRowClassName = computed(() => `nc-table-header-row ${props.headerRowClassName}`)
 
-const bodyRowClassName = computed(() => `nc-table-row ${props.headerRowClassName}`)
+const bodyRowClassName = computed(() => `nc-table-row ${props.bodyRowClassName}`)
 
 const slots = useSlots()
 
 const headerCellWidth = ref<(number | undefined)[]>([])
+
+const paginationData = ref<PaginatedType>(defaultPaginationData)
+
+const showPagination = computed(() => {
+  return (
+    props.pagination &&
+    !isDataLoading.value &&
+    paginationData.value.totalRows &&
+    paginationData.value.totalRows > props.paginationOffset
+  )
+})
+
+const paginatedData = computed(() => {
+  if (!showPagination.value) return data.value
+
+  const { page, pageSize } = paginationData.value
+  const start = (page! - 1) * pageSize!
+  const end = start + pageSize!
+
+  return data.value.slice(start, end)
+})
+
+const tableToolbarHeight = computed(() => {
+  return _tableToolbarHeight.value || 0
+})
+
+const tableFooterHeight = computed(() => {
+  return showPagination.value ? Math.max(40, _tableFooterHeight.value) : _tableFooterHeight.value
+})
 
 const updateOrderBy = (field: string) => {
   if (!data.value.length || !field) return
@@ -74,15 +123,26 @@ const updateOrderBy = (field: string) => {
   }
 }
 
+watch(
+  () => data.value.length,
+  () => {
+    if (!props.pagination) return
+
+    paginationData.value.totalRows = data.value.length
+  },
+  {
+    immediate: true,
+  },
+)
+
 /**
  * We are using 2 different table tag to make header sticky,
  * so it's imp to keep header cell and body cell width same
  */
-watch(
-  tableHeadWidth,
-  () => {
-    if (!tableHeader.value || !tableHeadWidth.value) return
+const handleUpdateCellWidth = () => {
+  if (!tableHeader.value || !tableHeadWidth.value) return
 
+  ncDelay(500).then(() => [
     nextTick(() => {
       const headerCells = tableHeader.value?.querySelectorAll('th > div')
 
@@ -91,12 +151,26 @@ watch(
           headerCellWidth.value[i] = el.getBoundingClientRect().width || undefined
         })
       }
+    }),
+  ])
+}
+
+watch(
+  [tableHeader, tableHeadWidth],
+  () => {
+    nextTick(() => {
+      handleUpdateCellWidth()
     })
   },
   {
     immediate: true,
+    flush: 'post',
   },
 )
+
+onMounted(() => {
+  handleUpdateCellWidth()
+})
 
 useEventListener(tableWrapper, 'scroll', () => {
   const stickyHeaderCell = tableWrapper.value?.querySelector('th:nth-of-type(1)')
@@ -117,6 +191,24 @@ useEventListener(tableWrapper, 'scroll', () => {
     tableWrapper.value?.classList.remove('sticky-border')
   }
 })
+
+const onRowClick = (record: Record<string, any>, recordIndex: number) => {
+  emit('rowClick', record, recordIndex)
+}
+
+/**
+ * We have to reset page if `page * pageSize` is greater than totalRows
+ */
+watch(
+  () => paginationData.value.pageSize,
+  () => {
+    if (paginationData.value.page === 1) return
+
+    if (paginationData.value.page! * paginationData.value.pageSize! > data.value.length) {
+      paginationData.value.page = 1
+    }
+  },
+)
 </script>
 
 <template>
@@ -124,25 +216,47 @@ useEventListener(tableWrapper, 'scroll', () => {
     class="nc-table-container relative"
     :class="{
       bordered,
+      'nc-disable-table-scroll': disableTableScroll,
       'min-h-120': isDataLoading,
     }"
   >
+    <template v-if="$slots.tableToolbar">
+      <div
+        ref="tableToolbarRef"
+        class="nc-table-toolbar pb-4"
+        :class="[
+          tableToolbarClassName,
+          {
+            'sticky z-5 top-0 bg-nc-bg-default': forceStickyHeader,
+          },
+        ]"
+      >
+        <slot name="tableToolbar" />
+      </div>
+    </template>
+
     <div
       ref="tableWrapper"
-      class="nc-table-wrapper max-h-full relative nc-scrollbar-thin !overflow-auto"
+      class="nc-table-wrapper relative"
       :class="{
-        'sticky-first-column': stickyFirstColumn,
-        'h-full': data.length,
+        'sticky-first-column': stickyFirstColumn && !isMobileMode,
+        'h-full':
+          (data.length || (isDataLoading && !data.length && (slots.tableFooter || showPagination))) && !disableTableScroll,
+        'nc-scrollbar-thin !overflow-auto max-h-full': !disableTableScroll,
       }"
       :style="{
-        maxHeight: `calc(100% - ${tableFooterHeight}px)`,
+        maxHeight: disableTableScroll ? undefined : `calc(100% - ${tableToolbarHeight + tableFooterHeight}px)`,
       }"
     >
       <table
         ref="tableHeader"
         class="w-full max-w-full"
         :class="{
-          '!sticky top-0 z-5': stickyHeader,
+          '!sticky top-0 z-5': stickyHeader && !disableTableScroll,
+          '!sticky z-5': forceStickyHeader,
+        }"
+        :style="{
+          ...(forceStickyHeader ? { top: `${tableToolbarHeight}px` } : {}),
         }"
       >
         <thead>
@@ -159,18 +273,20 @@ useEventListener(tableWrapper, 'scroll', () => {
               class="nc-table-header-cell"
               :class="[
                 `${headerCellClassName}`,
+                `${col.headerCellClassName ?? ''}`,
                 `nc-table-header-cell-${index}`,
+                `nc-table-header-cell-${col.key}`,
                 {
-                  '!hover:bg-gray-100 select-none cursor-pointer': col.showOrderBy,
+                  '!hover:bg-nc-bg-gray-light select-none cursor-pointer': col.showOrderBy,
                   'cursor-not-allowed': col.showOrderBy && !data?.length,
-                  '!text-gray-700': col.showOrderBy && col?.dataIndex && orderBy[col.dataIndex],
+                  '!text-nc-content-gray-subtle': col.showOrderBy && col?.dataIndex && orderBy[col.dataIndex],
                   'flex-1': !col.width && !col.basis,
                 },
               ]"
               :style="{
-                width: col.width,
+                width: col.width ? `${col.width}px` : undefined,
                 flexBasis: !col.width ? col.basis : undefined,
-                maxWidth: col.width ? col.width : undefined,
+                maxWidth: col.width ? `${col.width}px` : undefined,
               }"
               :data-test-id="`nc-table-header-cell-${col.name || col.key}`"
               @click="col.showOrderBy && col?.dataIndex ? updateOrderBy(col.dataIndex) : undefined"
@@ -208,18 +324,20 @@ useEventListener(tableWrapper, 'scroll', () => {
         <table
           class="w-full h-full"
           :style="{
-            maxHeight: `calc(100% - ${tableHeadHeight}px)`,
+            maxHeight: disableTableScroll ? undefined : `calc(100% - ${tableHeadHeight}px)`,
           }"
         >
           <tbody>
+            <slot name="body-prepend" />
             <tr
-              v-for="(record, recordIndex) of data"
+              v-for="(record, recordIndex) of paginatedData"
               :key="recordIndex"
               :style="{
                 height: rowHeight,
               }"
               :class="[`${bodyRowClassName}`, `nc-table-row-${recordIndex}`]"
               v-bind="customRow ? customRow(record, recordIndex) : {}"
+              @click="onRowClick(record, recordIndex)"
             >
               <td
                 v-for="(col, colIndex) of columns"
@@ -227,15 +345,17 @@ useEventListener(tableWrapper, 'scroll', () => {
                 class="nc-table-cell"
                 :class="[
                   `${bodyCellClassName}`,
+                  `${col.bodyCellClassName ?? ''}`,
                   `nc-table-cell-${recordIndex}`,
+                  `nc-table-cell-${col.key}`,
                   {
                     'flex-1': !col.width && !col.basis,
                   },
                 ]"
                 :style="{
-                  width: col.width,
+                  width: col.width ? `${col.width}px` : undefined,
                   flexBasis: !col.width ? col.basis : undefined,
-                  maxWidth: col.width ? col.width : undefined,
+                  maxWidth: col.width ? `${col.width}px` : undefined,
                 }"
                 :data-test-id="`nc-table-cell-${col.name || col.key}`"
               >
@@ -268,7 +388,7 @@ useEventListener(tableWrapper, 'scroll', () => {
       class="flex items-center justify-center absolute left-0 top-0 w-full h-full z-10 pointer-events-none"
     >
       <div class="flex flex-col justify-center items-center gap-2">
-        <GeneralLoader size="xlarge" />
+        <a-spin size="large" />
         <span class="text-center">{{ $t('general.loading') }}</span>
       </div>
     </div>
@@ -276,7 +396,7 @@ useEventListener(tableWrapper, 'scroll', () => {
       v-if="!isDataLoading && !data?.length"
       class="flex-none nc-table-empty flex items-center justify-center py-8 px-6 h-full"
       :style="{
-        maxHeight: `calc(100% - ${headerRowHeight} - ${tableFooterHeight}px)`,
+        maxHeight: `calc(100% - ${headerRowHeight} - ${tableToolbarHeight + tableFooterHeight}px)`,
       }"
     >
       <div class="flex-none text-center flex flex-col items-center gap-3">
@@ -286,9 +406,25 @@ useEventListener(tableWrapper, 'scroll', () => {
       </div>
     </div>
     <!-- Not scrollable footer  -->
-    <template v-if="slots.tableFooter">
+    <template v-if="slots.tableFooter || showPagination">
       <div ref="tableFooterRef">
-        <slot name="tableFooter" />
+        <slot name="tableFooter">
+          <div v-if="showPagination" class="flex flex-row justify-center items-center bg-nc-bg-gray-extralight min-h-10">
+            <div class="flex justify-between items-center w-full px-6">
+              <div>&nbsp;</div>
+              <NcPagination
+                v-model:current="paginationData.page"
+                v-model:page-size="paginationData.pageSize"
+                :total="+(paginationData.totalRows || 0)"
+                show-size-changer
+                :use-stored-page-size="false"
+              />
+              <div class="text-nc-content-gray-muted text-xs">
+                {{ paginationData.totalRows }} {{ paginationData.totalRows === 1 ? 'row' : 'rows' }}
+              </div>
+            </div>
+          </div>
+        </slot>
       </div>
     </template>
   </div>
@@ -297,10 +433,10 @@ useEventListener(tableWrapper, 'scroll', () => {
 <style lang="scss" scoped>
 .nc-table-container {
   &.bordered {
-    @apply border-1 border-gray-200 rounded-lg overflow-hidden w-full;
+    @apply border-1 border-nc-border-gray-medium rounded-lg overflow-hidden w-full;
   }
 
-  &:not(.bordered) {
+  &:not(.bordered):not(.nc-disable-table-scroll) {
     @apply overflow-hidden w-full;
   }
 
@@ -310,12 +446,12 @@ useEventListener(tableWrapper, 'scroll', () => {
     &.sticky-first-column {
       th {
         &:first-of-type {
-          @apply bg-gray-50;
+          @apply bg-nc-bg-gray-extralight;
         }
       }
       td {
         &:first-of-type {
-          @apply bg-white;
+          @apply bg-nc-bg-default;
         }
       }
 
@@ -330,7 +466,7 @@ useEventListener(tableWrapper, 'scroll', () => {
         th,
         td {
           &:first-of-type {
-            @apply !border-gray-200;
+            @apply !border-nc-border-gray-medium;
           }
         }
       }
@@ -339,9 +475,9 @@ useEventListener(tableWrapper, 'scroll', () => {
     thead {
       @apply w-full max-w-full;
       th {
-        @apply bg-gray-50 text-sm text-gray-500 font-weight-500;
+        @apply bg-nc-bg-gray-extralight text-sm text-nc-content-gray-muted font-weight-500;
         &.cell-title {
-          @apply sticky left-0 z-4 bg-gray-50;
+          @apply sticky left-0 z-4 bg-nc-bg-gray-extralight;
         }
       }
     }
@@ -354,7 +490,7 @@ useEventListener(tableWrapper, 'scroll', () => {
         }
 
         td {
-          @apply text-sm text-gray-600;
+          @apply text-sm text-nc-content-gray-subtle2;
         }
       }
     }
@@ -362,15 +498,19 @@ useEventListener(tableWrapper, 'scroll', () => {
       @apply flex w-full max-w-full;
 
       &:not(.nc-table-extra-row) {
-        @apply border-b-1 border-gray-200;
+        @apply border-b-1 border-nc-border-gray-medium;
+      }
+
+      &.no-border-last:not(.nc-table-extra-row):last-child {
+        @apply border-b-0;
       }
 
       &.selected td {
-        @apply !bg-[#F0F3FF];
+        @apply !bg-nc-bg-brand;
       }
 
       &:not(.selected):hover td {
-        @apply !bg-gray-50;
+        @apply !bg-nc-bg-gray-extralight;
       }
 
       th,

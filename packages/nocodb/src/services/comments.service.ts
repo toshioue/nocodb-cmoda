@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { AppEvents } from 'nocodb-sdk';
+import { AppEvents, EventType } from 'nocodb-sdk';
 import { Base, Model } from '../models';
 import type {
   CommentReqType,
@@ -11,10 +11,16 @@ import { NcError } from '~/helpers/catchError';
 import { validatePayload } from '~/helpers';
 import { AppHooksService } from '~/services/app-hooks/app-hooks.service';
 import Comment from '~/models/Comment';
+import { MailService } from '~/services/mail/mail.service';
+import { MailEvent } from '~/interface/Mail';
+import NocoSocket from '~/socket/NocoSocket';
 
 @Injectable()
 export class CommentsService {
-  constructor(protected readonly appHooksService: AppHooksService) {}
+  constructor(
+    protected readonly appHooksService: AppHooksService,
+    protected readonly mailService: MailService,
+  ) {}
 
   async commentRow(
     context: NcContext,
@@ -36,14 +42,43 @@ export class CommentsService {
       id: param.body.fk_model_id,
     });
 
+    const base = await Base.getByTitleOrId(context, model.base_id);
+
+    await this.mailService.sendMail({
+      mailEvent: MailEvent.COMMENT_CREATE,
+      payload: {
+        base,
+        model,
+        user: param.user,
+        comment: res,
+        rowId: param.body.row_id,
+        req: param.req,
+      },
+    });
+
     this.appHooksService.emit(AppEvents.COMMENT_CREATE, {
-      base: await Base.getByTitleOrId(context, model.base_id),
-      model: model,
+      base,
+      model,
       user: param.user,
       comment: res,
       rowId: param.body.row_id,
       req: param.req,
+      context,
     });
+
+    NocoSocket.broadcastEvent(
+      context,
+      {
+        event: EventType.COMMENT_EVENT,
+        payload: {
+          action: 'add',
+          payload: res,
+          id: param.body.row_id,
+        },
+        scopes: [model.id],
+      },
+      context.socket_id,
+    );
 
     return res;
   }
@@ -59,7 +94,7 @@ export class CommentsService {
     const comment = await Comment.get(context, param.commentId);
 
     if (comment.created_by !== param.user.id || comment.is_deleted) {
-      NcError.unauthorized('Unauthorized access');
+      NcError.get(context).unauthorized('Unauthorized access');
     }
 
     const res = await Comment.delete(context, param.commentId);
@@ -75,7 +110,23 @@ export class CommentsService {
       comment: comment,
       rowId: comment.row_id,
       req: param.req,
+      context,
     });
+
+    NocoSocket.broadcastEvent(
+      context,
+      {
+        event: EventType.COMMENT_EVENT,
+        payload: {
+          action: 'delete',
+          payload: comment,
+          id: comment.row_id,
+        },
+        scopes: [model.id],
+      },
+      context.socket_id,
+    );
+
     return res;
   }
 
@@ -118,7 +169,7 @@ export class CommentsService {
     const comment = await Comment.get(context, param.commentId);
 
     if (comment.created_by !== param.user.id || comment.is_deleted) {
-      NcError.unauthorized('Unauthorized access');
+      NcError.get(context).unauthorized('Unauthorized access');
     }
 
     const res = await Comment.update(context, param.commentId, {
@@ -126,12 +177,26 @@ export class CommentsService {
     });
 
     const model = await Model.getByIdOrName(context, {
-      id: param.body.fk_model_id,
+      id: comment.fk_model_id,
+    });
+
+    const base = await Base.getByTitleOrId(context, model.base_id);
+
+    await this.mailService.sendMail({
+      mailEvent: MailEvent.COMMENT_CREATE,
+      payload: {
+        base,
+        model,
+        user: param.user,
+        comment: res,
+        rowId: res.row_id,
+        req: param.req,
+      },
     });
 
     this.appHooksService.emit(AppEvents.COMMENT_UPDATE, {
-      base: await Base.getByTitleOrId(context, model.base_id),
-      model: model,
+      base,
+      model,
       user: param.user,
       comment: {
         ...comment,
@@ -139,7 +204,22 @@ export class CommentsService {
       },
       rowId: comment.row_id,
       req: param.req,
+      context,
     });
+
+    NocoSocket.broadcastEvent(
+      context,
+      {
+        event: EventType.COMMENT_EVENT,
+        payload: {
+          action: 'update',
+          payload: res,
+          id: comment.row_id,
+        },
+        scopes: [model.id],
+      },
+      context.socket_id,
+    );
 
     return res;
   }

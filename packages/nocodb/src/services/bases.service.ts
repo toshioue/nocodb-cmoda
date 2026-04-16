@@ -1,15 +1,19 @@
 import { promisify } from 'util';
-import { Injectable } from '@nestjs/common';
-import * as DOMPurify from 'isomorphic-dompurify';
+import { Injectable, Logger } from '@nestjs/common';
+import DOMPurify from 'isomorphic-dompurify';
 import { customAlphabet } from 'nanoid';
 import {
   AppEvents,
+  BaseVersion,
+  EventType,
   extractRolesObj,
   IntegrationsType,
+  NcBaseError,
   OrgUserRoles,
   SqlUiFactory,
 } from 'nocodb-sdk';
 import type {
+  NcApiVersion,
   ProjectReqType,
   ProjectUpdateReqType,
   UserType,
@@ -21,17 +25,21 @@ import { populateMeta, validatePayload } from '~/helpers';
 import { NcError } from '~/helpers/catchError';
 import { extractPropsAndSanitize } from '~/helpers/extractProps';
 import syncMigration from '~/helpers/syncMigration';
-import { Base, BaseUser, Integration } from '~/models';
+import { Base, BaseUser, Integration, IntegrationLink } from '~/models';
 import Noco from '~/Noco';
 import { getToolDir } from '~/utils/nc-config';
 import { MetaService } from '~/meta/meta.service';
 import { MetaTable, RootScopes } from '~/utils/globals';
 import { TablesService } from '~/services/tables.service';
+import { stringifyMetaProp } from '~/utils/modelUtils';
+import NocoSocket from '~/socket/NocoSocket';
 
 const nanoid = customAlphabet('1234567890abcdefghijklmnopqrstuvwxyz_', 4);
 
 @Injectable()
 export class BasesService {
+  protected logger = new Logger(BasesService.name);
+
   constructor(
     protected readonly appHooksService: AppHooksService,
     protected metaService: MetaService,
@@ -47,9 +55,17 @@ export class BasesService {
   ) {
     const bases = extractRolesObj(param.user?.roles)[OrgUserRoles.SUPER_ADMIN]
       ? await Base.list()
-      : await BaseUser.getProjectsList(param.user.id, param.query);
+      : await BaseUser.getProjectsList(param.user.id, {
+          ...param.query,
+          workspaceId: Noco.ncDefaultWorkspaceId,
+        });
 
     return bases;
+  }
+
+  async getProject(context: NcContext, param: { baseId: string }) {
+    const base = await Base.get(context, param.baseId);
+    return base;
   }
 
   async getProjectWithInfo(
@@ -76,14 +92,22 @@ export class BasesService {
       base: ProjectUpdateReqType;
       user: UserType;
       req: NcRequest;
+      apiVersion?: NcApiVersion;
     },
   ) {
     validatePayload(
       'swagger.json#/components/schemas/ProjectUpdateReq',
       param.base,
+      false,
+      { api_version: param.apiVersion },
     );
 
     const base = await Base.getWithInfo(context, param.baseId);
+
+    // stringify meta prop then only we can make the sanitize function work
+    if ('meta' in param.base) {
+      param.base.meta = stringifyMetaProp(param.base);
+    }
 
     const data: Partial<Base> = extractPropsAndSanitize(param?.base as Base, [
       'title',
@@ -91,6 +115,9 @@ export class BasesService {
       'color',
       'status',
       'order',
+      'description',
+      'default_role',
+      'version',
     ]);
     await this.validateProjectTitle(context, data, base);
 
@@ -101,10 +128,31 @@ export class BasesService {
     const result = await Base.update(context, param.baseId, data);
 
     this.appHooksService.emit(AppEvents.PROJECT_UPDATE, {
-      base,
+      base: {
+        ...base,
+        ...data,
+      },
+      updateObj: data,
+      oldBaseObj: base,
       user: param.user,
       req: param.req,
+      context,
     });
+
+    NocoSocket.broadcastEventToBaseUsers(
+      context,
+      {
+        event: EventType.USER_EVENT,
+        payload: {
+          action: 'base_update',
+          payload: {
+            ...base,
+            ...data,
+          },
+        },
+      },
+      context.socket_id,
+    );
 
     return result;
   }
@@ -132,26 +180,60 @@ export class BasesService {
   async baseSoftDelete(
     context: NcContext,
     param: { baseId: any; user: UserType; req: NcRequest },
+    ncMeta = Noco.ncMeta,
   ) {
-    const base = await Base.getWithInfo(context, param.baseId);
+    const base = await Base.getWithInfo(
+      context,
+      param.baseId,
+      undefined,
+      ncMeta,
+    );
 
     if (!base) {
       NcError.baseNotFound(param.baseId);
     }
 
-    await Base.softDelete(context, param.baseId);
+    const transaction = await ncMeta.startTransaction();
+
+    try {
+      await IntegrationLink.deleteByBase(context, param.baseId, transaction);
+      await Base.softDelete(context, param.baseId, transaction);
+
+      await transaction.commit();
+    } catch (e) {
+      await transaction.rollback();
+      if (e instanceof NcError || e instanceof NcBaseError) throw e;
+      this.logger.error('Error deleting base', e);
+      NcError.get(context).internalServerError('Failed to delete base');
+    }
 
     this.appHooksService.emit(AppEvents.PROJECT_DELETE, {
       base,
       user: param.user,
       req: param.req,
+      context,
     });
 
     return true;
   }
 
-  async baseCreate(param: { base: ProjectReqType; user: any; req: any }) {
-    validatePayload('swagger.json#/components/schemas/ProjectReq', param.base);
+  async baseCreate(
+    param: {
+      base: ProjectReqType & { version?: BaseVersion };
+      user: any;
+      req: any;
+      apiVersion?: NcApiVersion;
+    },
+    ncMeta = Noco.ncMeta,
+  ) {
+    validatePayload(
+      'swagger.json#/components/schemas/ProjectReq',
+      param.base,
+      false,
+      {
+        api_version: param?.apiVersion,
+      },
+    );
 
     const baseId = await this.metaService.genNanoid(MetaTable.PROJECT);
 
@@ -237,15 +319,18 @@ export class BasesService {
 
       for (const source of baseBody.sources || []) {
         if (!source.fk_integration_id) {
-          const integration = await Integration.createIntegration({
-            title: source.alias || baseBody.title,
-            type: IntegrationsType.Database,
-            sub_type: source.config?.client,
-            is_private: !!param.req.user?.id,
-            config: source.config,
-            workspaceId: param.req?.ncWorkspaceId,
-            created_by: param.req.user?.id,
-          });
+          const integration = await Integration.createIntegration(
+            {
+              title: source.alias || baseBody.title,
+              type: IntegrationsType.Database,
+              sub_type: source.config?.client,
+              is_private: !!param.req.user?.id,
+              config: source.config,
+              workspaceId: param.req?.ncWorkspaceId,
+              created_by: param.req.user?.id,
+            },
+            ncMeta,
+          );
 
           source.fk_integration_id = integration.id;
           source.config = {
@@ -257,13 +342,22 @@ export class BasesService {
     }
 
     if (baseBody?.title.length > 50) {
+      // Limited for consistent behaviour across identifier names for table, view, columns
       NcError.badRequest('Base title exceeds 50 characters');
     }
 
     baseBody.title = DOMPurify.sanitize(baseBody.title);
     baseBody.slug = baseBody.title;
+    // TODO: set default version to V3 after beta of v3 is over
+    baseBody.version = param.base.version || BaseVersion.V2;
 
-    const base = await Base.createProject(baseBody);
+    // Ensure workspace context: in unlicensed on-prem (EE build), @EEOnly()
+    // falls back to this CE code, but the EE Base model needs fk_workspace_id.
+    if (!baseBody.fk_workspace_id && Noco.ncDefaultWorkspaceId) {
+      baseBody.fk_workspace_id = Noco.ncDefaultWorkspaceId;
+    }
+
+    const base = await Base.createProject(baseBody, ncMeta);
 
     const context = {
       workspace_id: base.fk_workspace_id,
@@ -271,22 +365,31 @@ export class BasesService {
     };
 
     // TODO: create n:m instances here
-    await BaseUser.insert(context, {
-      fk_user_id: (param as any).user.id,
-      base_id: base.id,
-      roles: 'owner',
-    });
+    await BaseUser.insert(
+      context,
+      {
+        fk_user_id: (param as any).user.id,
+        base_id: base.id,
+        roles: 'owner',
+      },
+      ncMeta,
+    );
 
     await syncMigration(base);
 
     // populate metadata if existing table
-    for (const source of await base.getSources()) {
+    for (const source of await base.getSources(undefined, ncMeta)) {
       if (process.env.NC_CLOUD !== 'true' && !base.is_meta) {
-        const info = await populateMeta(context, source, base);
+        const info = await populateMeta(context, {
+          source,
+          base,
+          user: param.user,
+        });
 
         this.appHooksService.emit(AppEvents.APIS_CREATED, {
           info,
           req: param.req,
+          context,
         });
 
         source.config = undefined;
@@ -298,20 +401,27 @@ export class BasesService {
       user: param.user,
       xcdb: !baseBody.external,
       req: param.req,
+      context,
     });
 
     return base;
   }
 
-  async createDefaultBase(param: { user: UserType; req: Request }) {
-    const base = await this.baseCreate({
-      base: {
-        title: 'Getting Started',
-        type: 'database',
-      } as any,
-      user: param.user,
-      req: param.req,
-    });
+  async createDefaultBase(
+    param: { user: UserType; req: Request },
+    ncMeta = Noco.ncMeta,
+  ) {
+    const base = await this.baseCreate(
+      {
+        base: {
+          title: 'Getting Started',
+          type: 'database',
+        } as any,
+        user: param.user,
+        req: param.req,
+      },
+      ncMeta,
+    );
 
     const context = {
       workspace_id: base.fk_workspace_id,
@@ -330,6 +440,7 @@ export class BasesService {
         columns,
       },
       user: param.user,
+      req: param.req,
     });
 
     (base as any).tables = [table];

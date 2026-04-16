@@ -17,8 +17,6 @@ import MdiFlagOutline from '~icons/mdi/flag-outline'
 import MsMove from '~icons/material-symbols/drive-file-move-outline'
 import MSCloseRounded from '~icons/material-symbols/close-rounded'
 import MdiTableLarge from '~icons/mdi/table-large'
-import TablerColumnInsertLeft from '~icons/tabler/column-insert-left'
-import TablerColumnInsertRight from '~icons/tabler/column-insert-right'
 import MdiEyeCircleOutline from '~icons/mdi/eye-circle-outline'
 import MsGroup from '~icons/material-symbols/groups-outline-rounded'
 import MsAddBoxOutline from '~icons/nc-icons/add-box'
@@ -45,6 +43,7 @@ import PhExcelThin from '~icons/ph/microsoft-excel-logo-light'
 import VscodeIconsExcelColored from '~icons/vscode-icons/file-type-excel'
 import PhCsvThin from '~icons/ph/file-csv'
 import PhSplitVerticalThin from '~icons/material-symbols/height-rounded'
+import PhSplitHorizontalThin from '~icons/material-symbols/arrow-range-rounded'
 import LogosDiscordIcon from '~icons/logos/discord-icon'
 import LogosRedditIcon from '~icons/logos/reddit-icon'
 import RiTwitterXFill from '~icons/ri/twitter-x-line'
@@ -72,10 +71,12 @@ import HasManySolidIcon from '~icons/nc-icons/hm-solid'
 import ManytoManySolidIcon from '~icons/nc-icons/mm-solid'
 import BelongsToSolidIcon from '~icons/nc-icons/bt-solid'
 import Record from '~icons/nc-icons/record'
+import TableCurrent from '~icons/nc-icons/table-current'
 import Project from '~icons/nc-icons/project'
 import LookupIcon from '~icons/nc-icons/lookup'
 import FileImageIcon from '~icons/nc-icons/file-image'
-import Calendar from '~icons/lucide/calendar'
+import AutomationIcon from '~icons/nc-icons/automations'
+import AiPlayIcon from '~icons/nc-icons/ai-play'
 
 import PhUsers from '~icons/ph/users'
 import PhUser from '~icons/ph/user'
@@ -139,6 +140,8 @@ import NcCheckFill from '~icons/nc-icons/checkFill'
 import NcExternalLink from '~icons/nc-icons/external-link'
 import NcCamera from '~icons/nc-icons/camera'
 import NcRefreshCW from '~icons/nc-icons/refresh-cw'
+import NcBulb from '~icons/nc-icons/bulb'
+import NcSnow from '~icons/nc-icons/snow'
 // import NcProjectGray from '~icons/nc-icons/project-gray'
 import NcPhoneCall from '~icons/nc-icons/phone-call'
 import NcItalic from '~icons/nc-icons/italic'
@@ -171,6 +174,7 @@ import NcCellLinks from '~icons/nc-icons/cell-link'
 import NcCellLongText from '~icons/nc-icons/cell-longtext'
 import NcCellLookup from '~icons/nc-icons/cell-lookup'
 import NcCellMultiSelect from '~icons/nc-icons/cell-multiselect'
+import NcCellAutoNumber from '~icons/nc-icons/cell-auto-number'
 import NcCellNumber from '~icons/nc-icons/cell-number'
 import NcCellPercent from '~icons/nc-icons/cell-percentage'
 import NcCellPhone from '~icons/nc-icons/cell-phone'
@@ -188,6 +192,10 @@ import NcCellSystemUser from '~icons/nc-icons/system-user'
 import NcCellSystemText from '~icons/nc-icons/system-text'
 import NcCellAttachment from '~icons/nc-icons/cell-attachment'
 import NcCellButton from '~icons/nc-icons/cell-button'
+import NcCellAiButton from '~icons/nc-icons/cell-ai-button'
+import NcCellAi from '~icons/nc-icons/cell-ai'
+import NcCellColour from '~icons/nc-icons/cell-colour'
+import NcCellUuid from '~icons/nc-icons/cell-uuid'
 
 import NcCircleCheck from '~icons/nc-icons/circle-check'
 import OnetoOneIcon from '~icons/nc-icons/onetoone'
@@ -202,6 +210,7 @@ import NcSettings from '~icons/nc-icons/settings'
 import NcHelp from '~icons/nc-icons/help'
 import NcAlertTriangle from '~icons/nc-icons/alert-triangle'
 import NcAudit from '~icons/nc-icons/audit'
+import NcAuditNew from '~icons/nc-icons-v2/audit-new'
 import NcMessageCircle from '~icons/nc-icons/message-circle'
 import NcKey from '~icons/nc-icons/key'
 
@@ -220,6 +229,8 @@ import NcCircle from '~icons/nc-icons/circle'
 import NcServer1 from '~icons/nc-icons/server1'
 import NcThumbsUpOutline from '~icons/nc-icons/thumbs-up-outline'
 import NcNocoDB from '~icons/nc-icons/nocodb'
+import NcNocoDB1 from '~icons/nc-icons/nocodb1'
+import NcNocoDBSquarePuck from '~icons/nc-icons/nocodb-square-puck'
 
 // Sync data
 import NcAppleSolid from '~icons/nc-icons/apple_solid'
@@ -232,6 +243,7 @@ import NcGoogleSheet from '~icons/nc-icons/google_sheet'
 import NcGoogleDrive from '~icons/nc-icons/google-drive'
 import NcHubspot from '~icons/nc-icons/hubspot'
 import NcJira from '~icons/nc-icons/jira'
+import NcLinear from '~icons/nc-icons-v2/linear'
 import NcMailchimp from '~icons/nc-icons/mailchimp'
 import NcMicrosoftAccess from '~icons/nc-icons/microsoft_access'
 import NcMicrosoftExcel from '~icons/nc-icons/microsoft_excel'
@@ -258,6 +270,7 @@ import NcMattermost from '~icons/nc-icons/mattermost'
 import NcTwilio from '~icons/nc-icons/twilio'
 import NcWhatsapp from '~icons/nc-icons/whatsapp'
 import NcWhatsappSolid from '~icons/nc-icons/whatsapp-solid'
+import NcMCP from '~icons/nc-icons/mcp'
 
 // View icons
 import NcViewGantt from '~icons/nc-icons/view-gantt'
@@ -272,7 +285,6 @@ import NcPostgreSql from '~icons/nc-icons/postgresql'
 import NcSqlServer from '~icons/nc-icons/sql-server'
 import NcDataBricks from '~icons/nc-icons/data-bricks'
 import NcMssqlServer from '~icons/nc-icons/mssql-server'
-import NcOracle from '~icons/nc-icons/oracle'
 import NcGmail from '~icons/nc-icons/gmail'
 import NcTelegram from '~icons/nc-icons/telegram'
 import NcMicrosoftDynamics365 from '~icons/nc-icons/microsoft-dynamics-365'
@@ -288,6 +300,11 @@ import NcOpenai from '~icons/nc-icons/openai'
 import NcClaude from '~icons/nc-icons/claude'
 import NcOllama from '~icons/nc-icons/ollama'
 import NcGroq from '~icons/nc-icons/groq'
+import NcPosthog from '~icons/nc-icons/posthog'
+import NcNocodbPg from '~icons/nc-icons/nocodb-pg'
+import NcStopCircle from '~icons/nc-icons/stop-circle'
+import NcEnter from '~icons/nc-icons/enter'
+import NcAmazonAws from '~icons/nc-icons/amazon_aws'
 
 // Buttons Icons V2
 
@@ -298,12 +315,17 @@ import NcTriangleIcon from '~icons/nc-icons-v2/triangle.svg'
 import NcSearchIcon from '~icons/nc-icons-v2/search.svg'
 import NcVolume2Icon from '~icons/nc-icons-v2/volume-2.svg'
 import NcArrowUpCircleIcon from '~icons/nc-icons-v2/arrow-up-circle.svg'
+import NcArrowUpCircleSolidIcon from '~icons/nc-icons-v2/arrow-up-circle-solid.svg'
 import NcPauseCircleIcon from '~icons/nc-icons-v2/pause-circle.svg'
 import NcCheckSquareIcon from '~icons/nc-icons-v2/check-square.svg'
 import NcArrowDownIcon from '~icons/nc-icons-v2/arrow-down.svg'
 import NcCornerRightUpIcon from '~icons/nc-icons-v2/corner-right-up.svg'
 import NcChevronsRightIcon from '~icons/nc-icons-v2/chevrons-right.svg'
 import NcListIcon from '~icons/nc-icons-v2/list.svg'
+import NcListEndIcon from '~icons/nc-icons-v2/list-end.svg'
+import NcWandSparklesIcon from '~icons/nc-icons-v2/wand-sparkles.svg'
+import NcNumberListIcon from '~icons/nc-icons-v2/number-list.svg'
+import NcCheckListIcon from '~icons/nc-icons-v2/check-list.svg'
 import NcChevronsDownIcon from '~icons/nc-icons-v2/chevrons-down.svg'
 import NcCornerUpRightIcon from '~icons/nc-icons-v2/corner-up-right.svg'
 import NcTargetIcon from '~icons/nc-icons-v2/target.svg'
@@ -325,6 +347,11 @@ import NcPhoneMissedIcon from '~icons/nc-icons-v2/phone-missed.svg'
 import NcEdit2Icon from '~icons/nc-icons-v2/edit-2.svg'
 import NcCornerLeftUpIcon from '~icons/nc-icons-v2/corner-left-up.svg'
 import NcHomeIcon from '~icons/nc-icons-v2/home.svg'
+import NcHomeFilledIcon from '~icons/nc-icons-v2/home-filled.svg'
+import NcTableOutlineIcon from '~icons/nc-icons-v2/table-outline.svg'
+import NcTableFilledIcon from '~icons/nc-icons-v2/table-filled.svg'
+import NcTableIcon from '~icons/nc-icons-v2/nc-table.svg'
+import NcAutomationsFilledIcon from '~icons/nc-icons-v2/automations-filled.svg'
 import NcGitlabIcon from '~icons/nc-icons-v2/gitlab.svg'
 import NcSmartphoneIcon from '~icons/nc-icons-v2/smartphone.svg'
 import NcMoreHorizontalIcon from '~icons/nc-icons-v2/more-horizontal.svg'
@@ -347,10 +374,12 @@ import NcFileIcon from '~icons/nc-icons-v2/file.svg'
 import NcMessageCircleIcon from '~icons/nc-icons-v2/message-circle.svg'
 import NcTerminalIcon from '~icons/nc-icons-v2/terminal.svg'
 import NcMoveIcon from '~icons/nc-icons-v2/move.svg'
+import NcMoveHorizontalIcon from '~icons/nc-icons-v2/move-horizontal.svg'
 import NcMaximizeIcon from '~icons/nc-icons-v2/maximize.svg'
 import NcChevronUpIcon from '~icons/nc-icons-v2/chevron-up.svg'
 import NcArrowDownLeftIcon from '~icons/nc-icons-v2/arrow-down-left.svg'
 import NcFileTextIcon from '~icons/nc-icons-v2/file-text.svg'
+import NcFileTextSolidIcon from '~icons/nc-icons-v2/file-text-solid.svg'
 import NcDropletIcon from '~icons/nc-icons-v2/droplet.svg'
 import NcZapOffIcon from '~icons/nc-icons-v2/zap-off.svg'
 import NcXIcon from '~icons/nc-icons-v2/x.svg'
@@ -400,6 +429,7 @@ import NcUserMinusIcon from '~icons/nc-icons-v2/user-minus.svg'
 import NcBellIcon from '~icons/nc-icons-v2/bell.svg'
 import NcGitBranchIcon from '~icons/nc-icons-v2/git-branch.svg'
 import NcCodeIcon from '~icons/nc-icons-v2/code.svg'
+import NcCodeBlockIcon from '~icons/nc-icons-v2/code-block.svg'
 import NcCastIcon from '~icons/nc-icons-v2/cast.svg'
 import NcFlagIcon from '~icons/nc-icons-v2/flag.svg'
 import NcEyeOffIcon from '~icons/nc-icons-v2/eye-off.svg'
@@ -463,8 +493,11 @@ import NcDollarSignIcon from '~icons/nc-icons-v2/dollar-sign.svg'
 import NcStarIcon from '~icons/nc-icons-v2/star.svg'
 import NcCloudOffIcon from '~icons/nc-icons-v2/cloud-off.svg'
 import NcMessageSquareIcon from '~icons/nc-icons-v2/message-square.svg'
+import NcMessageSquare1OutlineIcon from '~icons/nc-icons-v2/message-square1-outline.svg'
+import NcMessageSquare1SolidIcon from '~icons/nc-icons-v2/message-square1-solid.svg'
 import NcEditIcon from '~icons/nc-icons-v2/edit.svg'
 import NcAlertCircleIcon from '~icons/nc-icons-v2/alert-circle.svg'
+import NcAlertCircleFilledIcon from '~icons/nc-icons-v2/alert-circle-filled.svg'
 import NcChevronsUpIcon from '~icons/nc-icons-v2/chevrons-up.svg'
 import NcUploadCloudIcon from '~icons/nc-icons-v2/upload-cloud.svg'
 import NcYoutubeIcon from '~icons/nc-icons-v2/youtube.svg'
@@ -484,15 +517,19 @@ import NcEyeIcon from '~icons/nc-icons-v2/eye.svg'
 import NcPhoneOffIcon from '~icons/nc-icons-v2/phone-off.svg'
 import NcExternalLinkIcon from '~icons/nc-icons-v2/external-link.svg'
 import NcZapIcon from '~icons/nc-icons-v2/zap.svg'
+import NcAgentIcon from '~icons/nc-icons-v2/agent.svg'
 import NcMoreVerticalIcon from '~icons/nc-icons-v2/more-vertical.svg'
 import NcMicOffIcon from '~icons/nc-icons-v2/mic-off.svg'
 import NcShareIcon from '~icons/nc-icons-v2/share.svg'
 import NcArrowUpIcon from '~icons/nc-icons-v2/arrow-up.svg'
+import NcArrowUpDownIcon from '~icons/nc-icons-v2/arrow-up-down.svg'
 import NcBellOffIcon from '~icons/nc-icons-v2/bell-off.svg'
 import NcLinkedinIcon from '~icons/nc-icons-v2/linkedin.svg'
 import NcVideoIcon from '~icons/nc-icons-v2/video.svg'
 import NcActivityIcon from '~icons/nc-icons-v2/activity.svg'
 import NcMapPinIcon from '~icons/nc-icons-v2/map-pin.svg'
+import NcPinIcon from '~icons/nc-icons-v2/pin.svg'
+import NcPinOffIcon from '~icons/nc-icons-v2/pin-off.svg'
 import NcFilterIcon from '~icons/nc-icons-v2/filter.svg'
 import NcPhoneIncomingIcon from '~icons/nc-icons-v2/phone-incoming.svg'
 import NcItalicIcon from '~icons/nc-icons-v2/italic.svg'
@@ -520,6 +557,9 @@ import NcAlertOctagonIcon from '~icons/nc-icons-v2/alert-octagon.svg'
 import NcMenuIcon from '~icons/nc-icons-v2/menu.svg'
 import NcChromeIcon from '~icons/nc-icons-v2/chrome.svg'
 import NcFolderIcon from '~icons/nc-icons-v2/folder.svg'
+import NcFolderClosedIcon from '~icons/nc-icons-v2/folder-closed.svg'
+import NcFolderOpenIcon from '~icons/nc-icons-v2/folder-open.svg'
+import NcPaletteIcon from '~icons/nc-icons-v2/palette.svg'
 import NcUsersIcon from '~icons/nc-icons-v2/users.svg'
 import NcCornerDownLeftIcon from '~icons/nc-icons-v2/corner-down-left.svg'
 import NcMonitorIcon from '~icons/nc-icons-v2/monitor.svg'
@@ -531,12 +571,32 @@ import NcMoonIcon from '~icons/nc-icons-v2/moon.svg'
 import NcShieldOffIcon from '~icons/nc-icons-v2/shield-off.svg'
 import NcMousePointerIcon from '~icons/nc-icons-v2/mouse-pointer.svg'
 import NcAlignLeftIcon from '~icons/nc-icons-v2/align-left.svg'
+import NcInsertColumnLeftIcon from '~icons/nc-icons-v2/insert-column-left.svg'
+import NcInsertColumnRightIcon from '~icons/nc-icons-v2/insert-column-right.svg'
+import NcInsertRowAboveIcon from '~icons/nc-icons-v2/insert-row-above.svg'
+import NcInsertRowBelowIcon from '~icons/nc-icons-v2/insert-row-below.svg'
+import NcMoveRowUpIcon from '~icons/nc-icons-v2/move-row-up.svg'
+import NcMoveRowDownIcon from '~icons/nc-icons-v2/move-row-down.svg'
+import NcMoveColumnLeftIcon from '~icons/nc-icons-v2/move-column-left.svg'
+import NcMoveColumnRightIcon from '~icons/nc-icons-v2/move-column-right.svg'
 import NcHeartIcon from '~icons/nc-icons-v2/heart.svg'
 import NcTrendingUpIcon from '~icons/nc-icons-v2/trending-up.svg'
 import NcYoutube2Icon from '~icons/nc-icons/youtube2.svg'
 import NcRedditIcon from '~icons/nc-icons/reddit.svg'
 import NcTwitterIcon from '~icons/nc-icons/twitter-x-line.svg'
 import NcDiscordIcon from '~icons/nc-icons/discord.svg'
+import NcVerticalAlignTop from '~icons/nc-icons/align-vertical-top.svg'
+import NcVerticalAlignCenter from '~icons/nc-icons/align-vertical-center.svg'
+import NcVerticalAlignBottom from '~icons/nc-icons/align-vertical-bottom.svg'
+import NcAngleRotateCw from '~icons/nc-icons/angle-rotate-cw.svg'
+import NcCheckCircle2 from '~icons/nc-icons/check-2.svg'
+import NcMessageCircleFilled from '~icons/nc-icons-v2/message-circle-filled.svg'
+import NcChartScatterPlot from '~icons/nc-icons-v2/scatter-plot.svg'
+import NcChartDonut from '~icons/nc-icons-v2/chart-donut.svg'
+import NcChartBar from '~icons/nc-icons-v2/chart-bar.svg'
+import NcChartLine from '~icons/nc-icons-v2/chart-line.svg'
+import NcChartPie from '~icons/nc-icons-v2/chart-pie.svg'
+import NcGaugeWidget from '~icons/nc-icons-v2/gauge-widget.svg'
 
 import NcSlash1 from '~icons/nc-icons/slash1'
 
@@ -560,13 +620,228 @@ import NcFormViewIcon from '~icons/nc-icons/form'
 import NcGalleryViewIcon from '~icons/nc-icons/gallery'
 import NcKanbanViewIcon from '~icons/nc-icons/kanban'
 import NcCalendarViewIcon from '~icons/nc-icons/calendar'
+import NcTimelineViewIcon from '~icons/nc-icons/timeline'
+import NcMapViewIcon from '~icons/nc-icons/map'
 import NcPuzzleSolid from '~icons/nc-icons/puzzle-solid'
 import NcPuzzleOutline from '~icons/nc-icons/puzzle-outline'
 
 import NcInfoSolid from '~icons/nc-icons/info-solid'
 import NcPlaceholderIcon from '~icons/nc-icons/placeholder-icon'
+import NcImagePlaceholderIcon from '~icons/nc-icons/image-placeholder.svg'
 import NcSpanner from '~icons/nc-icons/spanner'
 import NcScript from '~icons/nc-icons/script'
+import NcAutoAwesome from '~icons/nc-icons/auto_awesome'
+import NcPlusAi from '~icons/nc-icons/plus-ai'
+import NcPlusMultiple from '~icons/nc-icons/plus-multiple'
+import NcPlusSquareSolid from '~icons/nc-icons/plus-square-solid'
+import NcDashboards from '~icons/nc-icons/dashboards'
+
+/* file types */
+
+import NcFileTypeCsv from '~icons/nc-icons-v2/file-type-csv'
+import NcFileTypeCsvSmall from '~icons/nc-icons-v2/file-type-csv-small'
+import NcFileTypeExcel from '~icons/nc-icons-v2/file-type-excel'
+import NcFileTypePdf from '~icons/nc-icons-v2/file-type-pdf'
+import NcFileTypeWord from '~icons/nc-icons-v2/file-type-word'
+import NcFileTypePresentation from '~icons/nc-icons-v2/file-type-presentation'
+import NcFileTypeVideo from '~icons/nc-icons-v2/file-type-video'
+import NcFileTypeAudio from '~icons/nc-icons-v2/file-type-audio'
+import NcFileTypeImage from '~icons/nc-icons-v2/file-type-image'
+import NcFileTypeZip from '~icons/nc-icons-v2/file-type-zip'
+import NcFileTypeUnknown from '~icons/nc-icons-v2/file-type-unknown'
+import NcFileSearch from '~icons/nc-icons-v2/file-search'
+import NcFileTypeJson from '~icons/nc-icons-v2/file-type-json'
+
+/* imports */
+
+import NcImportAirtable from '~icons/nc-icons-v2/import-airtable'
+import NcImportCsv from '~icons/nc-icons-v2/import-csv'
+import NcImportJson from '~icons/nc-icons-v2/import-json'
+import NcImportExcel from '~icons/nc-icons-v2/import-excel'
+import NcImportSheets from '~icons/nc-icons-v2/import-sheets'
+import NcImportSalesforce from '~icons/nc-icons-v2/import-salesforce'
+import NcImportMonday from '~icons/nc-icons-v2/import-monday'
+
+import NcHeading1 from '~icons/nc-icons-v2/heading-1'
+import NcHeading2 from '~icons/nc-icons-v2/heading-2'
+import NcHeading3 from '~icons/nc-icons-v2/heading-3'
+import NcQuote from '~icons/nc-icons-v2/quote'
+
+import NcPenLine from '~icons/nc-icons-v2/pen-line.svg'
+import NcNode from '~icons/nc-icons-v2/nc-node.svg'
+import NcErd from '~icons/nc-icons/erd'
+import NcInsertBefore from '~icons/nc-icons/insert-before'
+import NcInsertAfter from '~icons/nc-icons/insert-after'
+import NcWebhook from '~icons/nc-icons-v2/webhook'
+
+import NcFormResponse from '~icons/nc-icons-v2/new-form-responce'
+import NcRecordCreate from '~icons/nc-icons-v2/record-create'
+import NcRecordUpdate from '~icons/nc-icons-v2/record-update'
+import NcRecordDelete from '~icons/nc-icons-v2/record-delete'
+import NcRecordEntersView from '~icons/nc-icons-v2/record-enters-view'
+import NcIfElse from '~icons/nc-icons-v2/if-else'
+
+import NcLogoAsanaColored from '~icons/nc-icons-v2/asana-colored.svg'
+import NcLogoAsana from '~icons/nc-icons-v2/asana.svg'
+import NcLogoBitbucketColored from '~icons/nc-icons-v2/bitbucket-colored.svg'
+import NcLogoBitbucket from '~icons/nc-icons-v2/bitbucket.svg'
+import NcLogoBoxLogoColored from '~icons/nc-icons-v2/box-logo-colored.svg'
+import NcLogoBoxLogo from '~icons/nc-icons-v2/box-logo.svg'
+import NcLogoChromeColored from '~icons/nc-icons-v2/chrome-colored.svg'
+import NcLogoClaudeAiColored from '~icons/nc-icons-v2/claude-ai-colored.svg'
+import NcLogoClaudeAi from '~icons/nc-icons-v2/claude-ai.svg'
+import NcLogoDiscordColored from '~icons/nc-icons-v2/discord-colored.svg'
+import NcLogoDiscord from '~icons/nc-icons-v2/discord.svg'
+import NcLogoDropboxColored from '~icons/nc-icons-v2/dropbox-colored.svg'
+import NcLogoDropbox from '~icons/nc-icons-v2/dropbox.svg'
+import NcLogoFacebookColored from '~icons/nc-icons-v2/facebook-colored.svg'
+import NcLogoFacebook from '~icons/nc-icons-v2/facebook.svg'
+import NcLogoFigmaColored from '~icons/nc-icons-v2/figma-colored.svg'
+import NcLogoFigma from '~icons/nc-icons-v2/figma.svg'
+import NcLogoFramerColored from '~icons/nc-icons-v2/framer-colored.svg'
+import NcLogoFramer from '~icons/nc-icons-v2/framer.svg'
+import NcLogoFreshdeskColored from '~icons/nc-icons-v2/freshdesk-colored.svg'
+import NcLogoFreshdesk from '~icons/nc-icons-v2/freshdesk.svg'
+import NcLogoGeminiAiColored from '~icons/nc-icons-v2/gemini-ai-colored.svg'
+import NcLogoGeminiAi from '~icons/nc-icons-v2/gemini-ai.svg'
+import NcLogoGithubColored from '~icons/nc-icons-v2/github-colored.svg'
+import NcLogoGitlabColored from '~icons/nc-icons-v2/gitlab-colored.svg'
+import NcLogoGmailColored from '~icons/nc-icons-v2/gmail-colored.svg'
+import NcLogoGmail from '~icons/nc-icons-v2/gmail.svg'
+import NcLogoGoogleDriveColored from '~icons/nc-icons-v2/google-drive-colored.svg'
+import NcLogoGoogleMapColored from '~icons/nc-icons-v2/google-map-colored.svg'
+import NcLogoOpenStreetMapColored from '~icons/nc-icons-v2/open-street-map.svg'
+import NcLogoGoogleDrive from '~icons/nc-icons-v2/google-drive.svg'
+import NcLogoGreenhouseColored from '~icons/nc-icons-v2/greenhouse-colored.svg'
+import NcLogoGreenhouse from '~icons/nc-icons-v2/greenhouse.svg'
+import NcLogoGroqAiColored from '~icons/nc-icons-v2/groq-ai-colored.svg'
+import NcLogoGroqAi from '~icons/nc-icons-v2/groq-ai.svg'
+import NcLogoHubspotColored from '~icons/nc-icons-v2/hubspot-colored.svg'
+import NcLogoHubspot from '~icons/nc-icons-v2/hubspot.svg'
+import NcLogoInstagramColored from '~icons/nc-icons-v2/instagram-colored.svg'
+import NcLogoIntercomColored from '~icons/nc-icons-v2/intercom-colored.svg'
+import NcLogoIntercom from '~icons/nc-icons-v2/intercom.svg'
+import NcLogoJiraColored from '~icons/nc-icons-v2/jira-colored.svg'
+import NcLogoJira from '~icons/nc-icons-v2/jira.svg'
+import NcLogoLeverColored from '~icons/nc-icons-v2/lever-colored.svg'
+import NcLogoLever from '~icons/nc-icons-v2/lever.svg'
+import NcLogoLinkedinColored from '~icons/nc-icons-v2/linkedin-colored.svg'
+import NcLogoMailchimpColored from '~icons/nc-icons-v2/mailchimp-colored.svg'
+import NcLogoMailchimp from '~icons/nc-icons-v2/mailchimp.svg'
+import NcLogoMiroColored from '~icons/nc-icons-v2/miro-colored.svg'
+import NcLogoMiro from '~icons/nc-icons-v2/miro.svg'
+import NcLogoMondayColored from '~icons/nc-icons-v2/monday-colored.svg'
+import NcLogoMsDynamicsColored from '~icons/nc-icons-v2/ms-dynamics-colored.svg'
+import NcLogoMsDynamics from '~icons/nc-icons-v2/ms-dynamics.svg'
+import NcLogoOllamaColored from '~icons/nc-icons-v2/ollama-colored.svg'
+import NcLogoOllama from '~icons/nc-icons-v2/ollama.svg'
+import NcLogoOpenAiColored from '~icons/nc-icons-v2/open-ai-colored.svg'
+import NcLogoOpenAi from '~icons/nc-icons-v2/open-ai.svg'
+import NcLogoOutlookColored from '~icons/nc-icons-v2/outlook-colored.svg'
+import NcLogoOutlook from '~icons/nc-icons-v2/outlook.svg'
+import NcLogoPipedriveColored from '~icons/nc-icons-v2/pipedrive-colored.svg'
+import NcLogoPipedrive from '~icons/nc-icons-v2/pipedrive.svg'
+import NcLogoQuickbooksColored from '~icons/nc-icons-v2/quickbooks-colored.svg'
+import NcLogoQuickbooks from '~icons/nc-icons-v2/quickbooks.svg'
+import NcLogoSalesforceColored from '~icons/nc-icons-v2/salesforce-colored.svg'
+import NcLogoSalesforce from '~icons/nc-icons-v2/salesforce.svg'
+import NcLogoSlackColored from '~icons/nc-icons-v2/slack-colored.svg'
+import NcLogoSlack from '~icons/nc-icons-v2/slack.svg'
+import NcLogoStripeColored from '~icons/nc-icons-v2/stripe-colored.svg'
+import NcLogoStripe from '~icons/nc-icons-v2/stripe.svg'
+import NcLogoSurveyMonkeyColored from '~icons/nc-icons-v2/survey-monkey-colored.svg'
+import NcLogoSurveyMonkey from '~icons/nc-icons-v2/survey-monkey.svg'
+import NcLogoTeamsColored from '~icons/nc-icons-v2/teams-colored.svg'
+import NcLogoTeams from '~icons/nc-icons-v2/teams.svg'
+import NcLogoTelegramColored from '~icons/nc-icons-v2/telegram-colored.svg'
+import NcLogoTelegram from '~icons/nc-icons-v2/telegram.svg'
+import NcLogoTrelloColored from '~icons/nc-icons-v2/trello-colored.svg'
+import NcLogoTrello from '~icons/nc-icons-v2/trello.svg'
+import NcLogoTwilioColored from '~icons/nc-icons-v2/twilio-colored.svg'
+import NcLogoTwilio from '~icons/nc-icons-v2/twilio.svg'
+import NcLogoTwitchColored from '~icons/nc-icons-v2/twitch-colored.svg'
+import NcLogoTwitch from '~icons/nc-icons-v2/twitch.svg'
+import NcLogoTwitterColored from '~icons/nc-icons-v2/twitter-colored.svg'
+import NcLogoTwitter from '~icons/nc-icons-v2/twitter.svg'
+import NcLogoTypeformColored from '~icons/nc-icons-v2/typeform-colored.svg'
+import NcLogoTypeform from '~icons/nc-icons-v2/typeform.svg'
+import NcLogoWhatsappColored from '~icons/nc-icons-v2/whatsapp-colored.svg'
+import NcLogoWhatsapp from '~icons/nc-icons-v2/whatsapp.svg'
+import NcLogoWorkdayColored from '~icons/nc-icons-v2/workday-colored.svg'
+import NcLogoWorkdayColoredOutline from '~icons/nc-icons-v2/workday-colored-outline.svg'
+import NcLogoWorkday from '~icons/nc-icons-v2/workday.svg'
+import NcLogoZendeskColored from '~icons/nc-icons-v2/zendesk-colored.svg'
+import NcLogoZendesk from '~icons/nc-icons-v2/zendesk.svg'
+import NcLogoZohoColored from '~icons/nc-icons-v2/zoho-colored.svg'
+import NcLogoZoho from '~icons/nc-icons-v2/zoho.svg'
+import NcLogoBaserowColored from '~icons/nc-icons-v2/baserow-colored.svg'
+import NcLogoSoftrColored from '~icons/nc-icons-v2/softr-colored.svg'
+import NcLogoNotionColored from '~icons/nc-icons-v2/notion-colored.svg'
+import NcLogoCodaColored from '~icons/nc-icons-v2/coda-colored.svg'
+import NcLogoRetoolColored from '~icons/nc-icons-v2/retool-colored.svg'
+import NcLogoN8nColored from '~icons/nc-icons-v2/n8n-colored.svg'
+import NcLogoZapierColored from '~icons/nc-icons-v2/zapier-colored.svg'
+import NcLogoMakeColored from '~icons/nc-icons-v2/make-colored.svg'
+import NcLogoCrewAi from '~icons/nc-icons-v2/crew-ai.svg'
+import NcLogoManusIm from '~icons/nc-icons-v2/manus-im.svg'
+import NcLogoHuggingface from '~icons/nc-icons-v2/huggingface-colored.svg'
+import NcLogoReplitAi from '~icons/nc-icons-v2/replit-ai-colored.svg'
+import NcLogoLangchain from '~icons/nc-icons-v2/langchain.svg'
+import NcLogoBambooHrColored from '~icons/nc-icons-v2/bamboo-hr-colored.svg'
+import NcLogoDockerColored from '~icons/nc-icons-v2/docker-colored.svg'
+import NcLogoHootsuiteColored from '~icons/nc-icons-v2/hootsuite-colored.svg'
+import NcLogoGongColored from '~icons/nc-icons-v2/gong-colored.svg'
+import NcLogoProductBoardColored from '~icons/nc-icons-v2/product-board-colored.svg'
+import NcLogoXeroColored from '~icons/nc-icons-v2/xero-colored.svg'
+import NcLogoSketchColored from '~icons/nc-icons-v2/sketch-colored.svg'
+import NcLogoLookerColored from '~icons/nc-icons-v2/looker-colored.svg'
+import NcLogoPowerLogoColored from '~icons/nc-icons-v2/power-logo-colored.svg'
+import NcLogoClickupColored from '~icons/nc-icons-v2/clickup-colored.svg'
+
+import NcSendAlt from '~icons/nc-icons-v2/send-alt.svg'
+import NcSendHorizontal from '~icons/nc-icons-v2/send-horizontal.svg'
+import NcBaseOutline from '~icons/nc-icons-v2/base-outline.svg'
+import NcBasePrivate from '~icons/nc-icons-v2/base-private.svg'
+import NcBaseOutlineDuo from '~icons/nc-icons-v2/base-outline-duo.svg'
+import NcSearchDuo from '~icons/nc-icons-v2/search-duo.svg'
+import NcSettingsDuo from '~icons/nc-icons-v2/settings-duo.svg'
+import NcIntegrationDuo from '~icons/nc-icons-v2/integration-duo.svg'
+import NcMegaPhoneDuo from '~icons/nc-icons-v2/mega-phone-duo.svg'
+import NcNotificationDuo from '~icons/nc-icons-v2/notification-duo.svg'
+import NcLayout from '~icons/nc-icons-v2/layout.svg'
+import NcPlusCircleSolid from '~icons/nc-icons-v2/plus-circle-solid.svg'
+import NcHeadphone from '~icons/nc-icons-v2/headphone'
+import NcPaintRoller from '~icons/nc-icons-v2/paint-roller.svg'
+import NcConditions from '~icons/nc-icons-v2/conditions.svg'
+import NcSun from '~icons/nc-icons-v2/sun.svg'
+import NcSunMoon from '~icons/nc-icons-v2/sun-moon.svg'
+
+import MdiNcCheckBold from '~icons/nc-icons/mdi-check-bold'
+import MdiNcCropSquare from '~icons/nc-icons/mdi-crop-square'
+import MdiNcCheckCircleOutline from '~icons/nc-icons/mdi-check-circle-outline'
+import MdiNcCheckboxBlankCircleOutline from '~icons/nc-icons/mdi-checkbox-blank-circle-outline'
+import MdiNcStar from '~icons/nc-icons/mdi-star'
+import MdiNcStarOutline from '~icons/nc-icons/mdi-star-outline'
+import MdiNcHeartOutline from '~icons/nc-icons/mdi-heart-outline'
+import MdiNcHeart from '~icons/nc-icons/mdi-heart'
+import MdiNcMoonFull from '~icons/nc-icons/mdi-moon-full'
+import MdiNcMoonNew from '~icons/nc-icons/mdi-moon-new'
+import MdiNcThumbUp from '~icons/nc-icons/mdi-thumb-up'
+import MdiNcThumbUpOutline from '~icons/nc-icons/mdi-thumb-up-outline'
+import MdiNcFlag from '~icons/nc-icons/mdi-flag'
+import MdiNcFlagOutline from '~icons/nc-icons/mdi-flag-outline'
+import MdiNcAttachFile from '~icons/nc-icons/mdi-attach'
+import MdiCloudKeyOutline from '~icons/mdi/cloud-key-outline'
+import NcDiscordForum from '~icons/nc-icons/discord-forum'
+import NcCrown from '~icons/nc-icons-v2/crown'
+import NcMultiCircle from '~icons/nc-icons-v2/multi-circle'
+import NcChatwoot from '~icons/nc-icons-v2/chatwoot'
+import NcGraduationCap from '~icons/nc-icons-v2/graduation-cap'
+import NcSupportAgent from '~icons/nc-icons-v2/support-agent'
+import NcBuilding from '~icons/nc-icons-v2/building'
+import NcExtUrlPreviewEmptyState from '~icons/nc-icons/extension-url-preview-empty-state'
+import NcClipboardType from '~icons/nc-icons-v2/clipboard-type'
+import NcKeyboardIcon from '~icons/nc-icons-v2/keyboard'
 
 // keep it for reference
 // todo: remove it after all icons are migrated
@@ -716,641 +991,910 @@ import NcScript from '~icons/nc-icons/script'
 } as const */
 
 export const iconMap = {
-  calendar: NcCalendarViewIcon,
-  grid: NcGridViewIcon,
-  form: NcFormViewIcon,
-  gallery: NcGalleryViewIcon,
-  kanban: NcKanbanViewIcon,
+  'calendar': NcCalendarViewIcon,
+  'timeline': NcTimelineViewIcon,
+  'grid': NcGridViewIcon,
+  'form': NcFormViewIcon,
+  'gallery': NcGalleryViewIcon,
+  'kanban': NcKanbanViewIcon,
+  'map': NcMapViewIcon,
 
-  strike: NcStrike,
-  atSign: NcAtSign,
-  slash: NcSlash,
-  ncSlash1: NcSlash1,
-  arrowUpRight: NcArrowUpRight,
-  ncWorkspace: NcWorkspace,
-  controlPanel: NcControlPanel,
-  home: NcHome,
-  home1: NcHome1,
-  cellBarcode: h(NcCellBarcode, { stroke: 'transparent' }),
-  cellCheckbox: NcCellCheckbox,
-  cellDate: NcCellDate,
-  cellYear: NcCellYear,
-  cellEmail: NcCellEmail,
-  cellFormula: NcCellFormula,
-  cellCurrency: NcCellCurrency,
-  cellDatetime: NcCellDatetime,
-  cellDb: NcCellDb,
-  cellDecimal: NcCellDecimal,
-  cellDuration: NcCellDuration,
-  cellGeometry: NcCellGeometry,
-  cellJson: NcCellJson,
-  cellLinks: NcCellLinks,
-  cellLongText: NcCellLongText,
-  cellLookup: NcCellLookup,
-  cellMultiSelect: NcCellMultiSelect,
-  cellNumber: NcCellNumber,
-  cellPercent: NcCellPercent,
-  cellPhone: NcCellPhone,
-  cellQrCode: NcCellQrCode,
-  cellRating: NcCellRating,
-  cellRollup: h(NcCellRollup, { stroke: 'transparent' }),
-  cellSingleSelect: NcCellSingleSelect,
-  cellText: NcCellText,
-  cellTime: NcCellTime,
-  cellUrl: NcCellUrl,
-  cellUser: NcCellUser,
-  cellSystemDate: NcCellSystemDate,
-  cellSystemKey: NcCellSystemKey,
-  cellSystemUser: NcCellSystemUser,
-  cellSystemText: NcCellSystemText,
-  cellAttachment: NcCellAttachment,
-  cellButton: NcCellButton,
-  camera: NcCamera,
-  megaPhone: NcMegaPhone,
-  nocodb: NcNocoDB,
+  'strike': NcStrike,
+  'atSign': NcAtSign,
+  'slash': NcSlash,
+  'ncSlash1': NcSlash1,
+  'arrowUpRight': NcArrowUpRight,
+  'ncWorkspace': NcWorkspace,
+  'controlPanel': NcControlPanel,
+  'home': NcHome,
+  'home1': NcHome1,
+  'cellBarcode': h(NcCellBarcode, { stroke: 'transparent' }),
+  'cellCheckbox': NcCellCheckbox,
+  'cellDate': NcCellDate,
+  'cellYear': NcCellYear,
+  'cellEmail': NcCellEmail,
+  'cellFormula': NcCellFormula,
+  'cellCurrency': NcCellCurrency,
+  'cellDatetime': NcCellDatetime,
+  'cellDb': NcCellDb,
+  'cellDecimal': NcCellDecimal,
+  'cellDuration': NcCellDuration,
+  'cellGeometry': NcCellGeometry,
+  'cellJson': NcCellJson,
+  'cellLinks': NcCellLinks,
+  'cellLongText': NcCellLongText,
+  'cellLookup': NcCellLookup,
+  'cellMultiSelect': NcCellMultiSelect,
+  'cellAutoNumber': NcCellAutoNumber,
+  'cellNumber': NcCellNumber,
+  'cellPercent': NcCellPercent,
+  'cellPhone': NcCellPhone,
+  'cellQrCode': NcCellQrCode,
+  'cellRating': NcCellRating,
+  'cellColour': NcCellColour,
+  'cellRollup': h(NcCellRollup, { stroke: 'transparent' }),
+  'cellSingleSelect': NcCellSingleSelect,
+  'cellText': NcCellText,
+  'cellUuid': NcCellUuid,
+  'cellTime': NcCellTime,
+  'cellUrl': NcCellUrl,
+  'cellUser': NcCellUser,
+  'cellSystemDate': NcCellSystemDate,
+  'cellSystemKey': NcCellSystemKey,
+  'cellSystemUser': NcCellSystemUser,
+  'cellSystemText': NcCellSystemText,
+  'cellAttachment': NcCellAttachment,
+  'cellButton': NcCellButton,
+  'cellAiButton': h(NcCellAiButton, { stroke: 'transparent' }),
+  'cellAi': h(NcCellAi, { stroke: 'transparent' }),
+  'camera': NcCamera,
+  'megaPhone': NcMegaPhone,
+  'nocodb': h(NcNocoDB, { stroke: 'transparent' }),
+  'nocodb1': h(NcNocoDB1, { stroke: 'transparent' }),
+  'nocodbSquarePuck': h(NcNocoDBSquarePuck, { stroke: 'transparent' }),
+  'bulb': NcBulb,
+  'snow': NcSnow,
 
-  office: NcOffice,
-  sort: Sort,
-  group: Group,
-  filter: Filter,
-  fields: Fields,
-  mm: ManytoManyIcon,
-  hm: HasManyIcon,
-  bt: BelongsToIcon,
-  mm_solid: ManytoManySolidIcon,
-  hm_solid: HasManySolidIcon,
-  bt_solid: BelongsToSolidIcon,
-  oneToOneSolid: OnetoOneIcon,
-  workspaceDefault: MsGroup,
-  project: Project,
-  search: NcSearch,
+  'office': NcOffice,
+  'sort': Sort,
+  'group': Group,
+  'filter': Filter,
+  'fields': Fields,
+  'mm': ManytoManyIcon,
+  'hm': HasManyIcon,
+  'bt': BelongsToIcon,
+  'mm_solid': ManytoManySolidIcon,
+  'hm_solid': HasManySolidIcon,
+  'bt_solid': BelongsToSolidIcon,
+  'oneToOneSolid': OnetoOneIcon,
+  'workspaceDefault': MsGroup,
+  'project': h(Project, { stroke: 'transparent' }),
+  'search': NcSearch,
   // calendar: Calendar,
-  checkCircle: NcCheckCircle,
-  checkFill: NcCheckFill,
-  externalLink: NcExternalLink,
-  error: h('span', { class: 'material-symbols' }, 'error'),
-  info: h(MsInfo, {}, () => 'info'),
-  inbox: h('span', { class: 'material-symbols' }, 'inbox'),
-  addOutlineBox: MsAddBoxOutline,
-  loading: h('span', { class: 'material-symbols' }, 'autorenew'),
-  arrowCollapse: Up,
-  markerAlert: h('span', { class: 'material-symbols' }, 'warning'),
-  appStore: h('span', { class: 'material-symbols' }, 'apps'),
-  chevronLeft: h('span', { class: 'material-symbols' }, 'chevron_left'),
-  chevronRight: h('span', { class: 'material-symbols' }, 'chevron_right'),
-  imagePlaceholder: h('span', { class: 'material-symbols' }, 'insert_photo'),
-  linkRemove: h('span', { class: 'material-symbols' }, 'link_off'),
-  closeThick: h('span', { class: 'material-symbols' }, 'cancel'),
-  role: h('span', { class: 'material-symbols' }, 'badge'),
-  tableKey: h('span', { class: 'material-symbols' }, 'table_rows'),
-  export: h('span', { class: 'material-symbols' }, 'get_app'),
-  colInsertAfter: TablerColumnInsertRight,
-  colInsertBefore: TablerColumnInsertLeft,
-  star: NcStar,
-  unStar: NcUnStar,
-  sortDesc: MsSort,
-  article: NcArticle,
-  triangleFill: PhTriangleFill,
-  sortAsc: h('span', { class: 'material-symbols', style: { transform: 'scaleY(-1)' } }, 'sort'),
-  contentSaveExit: h('span', { class: 'material-symbols' }, 'save'),
-  contentSaveStay: h('span', { class: 'material-symbols' }, 'save_as'),
-  exit: h('span', { class: 'material-symbols' }, 'exit_to_app'),
-  snippet: ApiSnippet,
-  embed: h('span', { class: 'material-symbols' }, 'code'),
-  list: h('span', { class: 'material-symbols' }, 'list'),
-  viewList: h('span', { class: 'material-symbols' }, 'view_list'),
-  cloud: h('span', { class: 'material-symbols' }, 'cloud'),
-  apiAndSupport: h('span', { class: 'material-symbols' }, 'api'),
-  translate: h('span', { class: 'material-symbols' }, 'translate'),
-  preview: h('span', { class: 'material-symbols' }, 'visibility'),
-  link: h('span', { class: 'material-symbols' }, 'link'),
-  link2: NcLink,
-  returnKey: h('span', { class: 'material-symbols' }, 'keyboard_return'),
-  keyboard: h('span', { class: 'material-symbols' }, 'keyboard'),
-  accountPlus: h('span', { class: 'material-symbols' }, 'person_add'),
-  database: MsDatabase,
-  discord: LogosDiscordIcon,
-  reddit: LogosRedditIcon,
-  github: PhGithubLogoLight,
-  twitter: RiTwitterXFill,
-  at: h('span', { class: 'material-symbols' }, 'alternate_email'),
-  plusCircle: h('span', { class: 'material-symbols' }, 'add_circle'),
-  minusCircle: h('span', { class: 'material-symbols' }, 'remove_circle'),
-  save: h('span', { class: 'material-symbols' }, 'save'),
-  signin: h('span', { class: 'material-symbols' }, 'login'),
-  signout: h('span', { class: 'material-symbols' }, 'logout'),
-  lock: h('span', { class: 'material-symbols' }, 'lock'),
-  account: h('span', { class: 'material-symbols' }, 'person'),
-  accountCircle: h('span', { class: 'material-symbols' }, 'account_circle'),
-  phUser: PhUser,
-  phUsers: PhUsers,
-  user: NcUser,
-  users: NcUsers,
-  cloudDownload: h('span', { class: 'material-symbols' }, 'cloud_download'),
-  download: NcDownload,
-  cloudUpload: h('span', { class: 'material-symbols' }, 'cloud_upload'),
-  upload: NcUpload,
-  hook: Phishing,
-  erd: h('span', { class: 'material-symbols' }, 'account_tree'),
-  plus: h('span', { class: 'material-symbols', style: '-webkit-text-stroke: 0.3px' }, 'add'),
-  plusSquare: PlusSquare,
-  minus: Minus,
-  help: h('span', { class: 'material-symbols' }, 'help'),
-  copy: NcCopy,
-  duplicate: NcDuplicate,
-  clipboard: h('span', { class: 'material-symbols' }, 'content_paste'),
-  settings: h('span', { class: 'material-symbols' }, 'settings'),
-  image: h('span', { class: 'material-symbols' }, 'image'),
-  datasource: h('span', { class: 'material-symbols' }, 'hard_drive'),
-  book: h('span', { class: 'material-symbols' }, 'menu_book'),
-  arrowDown: Down,
-  arrowRight: Right,
-  arrowLeft: Left,
-  arrowUp: Up,
-  layout: PhLayout,
-  sidebar: LayoutSidebar,
-  doubleRightArrow: h('span', { class: 'material-symbols', style: '-webkit-text-stroke: 0.5px' }, 'keyboard_double_arrow_right'),
-  doubleLeftArrow: h('span', { class: 'material-symbols', style: '-webkit-text-stroke: 0.5px' }, 'keyboard_double_arrow_left'),
-  sidebarMinimise: PhCaretDoubleLeftThin, // h('span', { class: 'material-symbols' }, 'left_panel_close'),
+  'checkCircle': NcCheckCircle,
+  'checkFill': NcCheckFill,
+  'externalLink': NcExternalLink,
+  'error': h('span', { class: 'material-symbols' }, 'error'),
+  'info': h(MsInfo, {}, () => 'info'),
+  'inbox': h('span', { class: 'material-symbols' }, 'inbox'),
+  'addOutlineBox': MsAddBoxOutline,
+  'loading': h('span', { class: 'material-symbols' }, 'autorenew'),
+  'arrowCollapse': Up,
+  'markerAlert': h('span', { class: 'material-symbols' }, 'warning'),
+  'appStore': h('span', { class: 'material-symbols' }, 'apps'),
+  'chevronLeft': NcChevronLeftIcon,
+  'chevronRight': NcChevronRightIcon,
+  'imagePlaceholder': h('span', { class: 'material-symbols' }, 'insert_photo'),
+  'linkRemove': h('span', { class: 'material-symbols' }, 'link_off'),
+  'closeThick': h('span', { class: 'material-symbols' }, 'cancel'),
+  'role': h('span', { class: 'material-symbols' }, 'badge'),
+  'tableKey': h('span', { class: 'material-symbols' }, 'table_rows'),
+  'export': h('span', { class: 'material-symbols' }, 'get_app'),
+  'colInsertAfter': NcInsertAfter,
+  'colInsertBefore': NcInsertBefore,
+  'star': NcStar,
+  'unStar': NcUnStar,
+  'sortDesc': MsSort,
+  'article': NcArticle,
+  'template': h('span', { class: 'material-symbols' }, 'content_copy'),
+  'triangleFill': PhTriangleFill,
+  'sortAsc': h('span', { class: 'material-symbols', style: { transform: 'scaleY(-1)' } }, 'sort'),
+  'contentSaveExit': h('span', { class: 'material-symbols' }, 'save'),
+  'contentSaveStay': h('span', { class: 'material-symbols' }, 'save_as'),
+  'exit': h('span', { class: 'material-symbols' }, 'exit_to_app'),
+  'snippet': ApiSnippet,
+  'embed': h('span', { class: 'material-symbols' }, 'code'),
+  'list': h('span', { class: 'material-symbols' }, 'list'),
+  'viewList': h('span', { class: 'material-symbols' }, 'view_list'),
+  'cloud': h('span', { class: 'material-symbols' }, 'cloud'),
+  'apiAndSupport': h('span', { class: 'material-symbols' }, 'api'),
+  'translate': h('span', { class: 'material-symbols' }, 'translate'),
+  'preview': h('span', { class: 'material-symbols' }, 'visibility'),
+  'link': h('span', { class: 'material-symbols' }, 'link'),
+  'link2': NcLink,
+  'returnKey': h('span', { class: 'material-symbols' }, 'keyboard_return'),
+  'keyboard': h('span', { class: 'material-symbols' }, 'keyboard'),
+  'accountPlus': h('span', { class: 'material-symbols' }, 'person_add'),
+  'database': MsDatabase,
+  'discord': LogosDiscordIcon,
+  'reddit': LogosRedditIcon,
+  'github': PhGithubLogoLight,
+  'twitter': RiTwitterXFill,
+  'at': h('span', { class: 'material-symbols' }, 'alternate_email'),
+  'plusCircle': h('span', { class: 'material-symbols' }, 'add_circle'),
+  'minusCircle': h('span', { class: 'material-symbols' }, 'remove_circle'),
+  'save': h('span', { class: 'material-symbols' }, 'save'),
+  'signin': h('span', { class: 'material-symbols' }, 'login'),
+  'signout': h('span', { class: 'material-symbols' }, 'logout'),
+  'lock': h('span', { class: 'material-symbols' }, 'lock'),
+  'account': h('span', { class: 'material-symbols' }, 'person'),
+  'accountCircle': h('span', { class: 'material-symbols' }, 'account_circle'),
+  'phUser': PhUser,
+  'phUsers': PhUsers,
+  'user': NcUser,
+  'users': NcUsers,
+  'cloudDownload': h('span', { class: 'material-symbols' }, 'cloud_download'),
+  'download': NcDownload,
+  'cloudUpload': h('span', { class: 'material-symbols' }, 'cloud_upload'),
+  'upload': NcUpload,
+  'hook': Phishing,
+  'erd': h('span', { class: 'material-symbols' }, 'account_tree'),
+  'plus': NcPlusIcon,
+  'plusSquare': PlusSquare,
+  'minus': Minus,
+  'help': h('span', { class: 'material-symbols' }, 'help'),
+  'copy': NcCopy,
+  'duplicate': NcDuplicate,
+  'clipboard': h('span', { class: 'material-symbols' }, 'content_paste'),
+  'settings': NcSettingsIcon,
+  'image': h('span', { class: 'material-symbols' }, 'image'),
+  'datasource': h('span', { class: 'material-symbols' }, 'hard_drive'),
+  'book': h('span', { class: 'material-symbols' }, 'menu_book'),
+  'arrowDown': Down,
+  'arrowRight': Right,
+  'arrowLeft': Left,
+  'arrowUp': Up,
+  'layout': PhLayout,
+  'sidebar': LayoutSidebar,
+  'doubleRightArrow': NcChevronsRightIcon,
+  'doubleLeftArrow': NcChevronsLeftIcon,
+  'sidebarMinimise': PhCaretDoubleLeftThin, // h('span', { class: 'material-symbols' }, 'left_panel_close'),
   // threeDotVertical: h('span', { class: 'material-symbols' }, 'more_vert'),
   // threeDotHorizontal: h('span', { class: 'material-symbols' }, 'more_horiz'),
-  threeDotVertical: MdiDotsVertical,
-  threeDotHorizontal: MdiDotsHorizontal,
-  table: Record,
-  excel: PhExcelThin, // h('span', { class: 'material-symbols' }, 'grid_on'),
-  csv: PhCsvThin, // h('span', { class: 'material-symbols' }, 'grid_on'),
-  code: Code,
-  palette: h(Palette, {}, () => 'palette'),
-  delete: NcTrash,
-  deleteListItem: h('span', { class: 'material-symbols' }, 'delete'),
-  import: h('span', { class: 'material-symbols' }, 'system_update_alt'),
-  edit: MaterialSymbolsEdit,
-  lookup: LookupIcon,
-  text: h('span', { class: 'material-symbols' }, 'text_fields'),
-  longText: h('span', { class: 'material-symbols' }, 'view_headline'),
-  clock: h('span', { class: 'material-symbols' }, 'access_time'),
-  web: h('span', { class: 'material-symbols' }, 'web'),
-  webhook: h('span', { class: 'material-symbols' }, 'webhook'),
-  boolean: h('span', { class: 'material-symbols' }, 'check_box'),
-  singleSelect: h('span', { class: 'material-symbols' }, 'radio_button_checked'),
-  multiSelect: h('span', { class: 'material-symbols' }, 'check_box_outline_blank'),
-  datetime: h('span', { class: 'material-symbols' }, 'date_range'),
-  geoData: h('span', { class: 'material-symbols' }, 'place'),
-  rating: h('span', { class: 'material-symbols' }, 'star_half'),
-  generic: h('span', { class: 'material-symbols' }, 'toc'),
-  number: h('span', { class: 'material-symbols' }, 'looks_one'),
-  email: h('span', { class: 'material-symbols' }, 'email'),
-  sendEmail: h('span', { class: 'material-symbols' }, 'email'),
-  send: LcSend,
-  dataSource: NcAddDataSource,
-  currency: h('span', { class: 'material-symbols' }, 'attach_money'),
-  percent: h('span', { class: 'material-symbols' }, 'percent'),
-  decimal: h('span', { class: 'material-symbols' }, 'decimal_increase'),
-  specificDbType: h('span', { class: 'material-symbols' }, 'inbox_customize'),
-  duration: h('span', { class: 'material-symbols' }, 'timer'),
-  phone: h('span', { class: 'material-symbols' }, 'phone'),
-  formula: h('span', { class: 'material-symbols' }, 'function'),
-  function: h('span', { class: 'material-symbols' }, 'functions'),
-  key: h('span', { class: 'material-symbols' }, 'key'),
-  json: h('span', { class: 'material-symbols' }, 'code'),
-  qrCode: h('span', { class: 'material-symbols' }, 'qr_code'),
-  qrCodeScan: h('span', { class: 'material-symbols' }, 'qr_code_scanner'),
-  barCode: h('span', { class: 'material-symbols' }, 'barcode'),
-  calculator: h('span', { class: 'material-symbols' }, 'calculate'),
-  rollup: h('span', { class: 'material-symbols' }, 'group_work'),
-  eye: NcEye,
-  eyeSlash: NcEyeOff,
-  expand: h('span', { class: 'material-symbols' }, 'open_in_full'),
-  shrink: h('span', { class: 'material-symbols' }, 'close_fullscreen'),
-  check: NcCheck,
-  circleCheck: MdiCheckboxMarkedCircle,
-  acl: h('span', { class: 'material-symbols' }, 'shield'),
-  sync: MsSync,
-  warning: MaterialSymbolsWarningOutlineRounded,
-  share: h('span', { class: 'material-symbols' }, 'share'),
-  mobileShare: MobileShare,
-  reload: MdiRefresh,
-  xml: h('span', { class: 'material-symbols' }, 'code'),
-  airtable: LogosAirtable,
-  excelColored: VscodeIconsExcelColored,
+  'threeDotVertical': MdiDotsVertical,
+  'threeDotHorizontal': MdiDotsHorizontal,
+  'tableOld': Record,
+  'table': TableCurrent,
+  'excel': PhExcelThin, // h('span', { class: 'material-symbols' }, 'grid_on'),
+  'csv': PhCsvThin, // h('span', { class: 'material-symbols' }, 'grid_on'),
+  'code': Code,
+  'palette': h(Palette, {}, () => 'palette'),
+  'delete': NcTrash,
+  'deleteListItem': h('span', { class: 'material-symbols' }, 'delete'),
+  'import': h('span', { class: 'material-symbols' }, 'system_update_alt'),
+  'edit': MaterialSymbolsEdit,
+  'lookup': LookupIcon,
+  'text': h('span', { class: 'material-symbols' }, 'text_fields'),
+  'longText': h('span', { class: 'material-symbols' }, 'view_headline'),
+  'clock': h('span', { class: 'material-symbols' }, 'access_time'),
+  'web': h('span', { class: 'material-symbols' }, 'web'),
+  'webhook': h('span', { class: 'material-symbols' }, 'webhook'),
+  'boolean': h('span', { class: 'material-symbols' }, 'check_box'),
+  'singleSelect': h('span', { class: 'material-symbols' }, 'radio_button_checked'),
+  'multiSelect': h('span', { class: 'material-symbols' }, 'check_box_outline_blank'),
+  'datetime': h('span', { class: 'material-symbols' }, 'date_range'),
+  'geoData': h('span', { class: 'material-symbols' }, 'place'),
+  'rating': h('span', { class: 'material-symbols' }, 'star_half'),
+  'generic': h('span', { class: 'material-symbols' }, 'toc'),
+  'number': h('span', { class: 'material-symbols' }, 'looks_one'),
+  'email': h('span', { class: 'material-symbols' }, 'email'),
+  'sendEmail': h('span', { class: 'material-symbols' }, 'email'),
+  'send': LcSend,
+  'dataSource': NcAddDataSource,
+  'currency': h('span', { class: 'material-symbols' }, 'attach_money'),
+  'percent': h('span', { class: 'material-symbols' }, 'percent'),
+  'decimal': h('span', { class: 'material-symbols' }, 'decimal_increase'),
+  'specificDbType': h('span', { class: 'material-symbols' }, 'inbox_customize'),
+  'duration': h('span', { class: 'material-symbols' }, 'timer'),
+  'phone': h('span', { class: 'material-symbols' }, 'phone'),
+  'formula': h('span', { class: 'material-symbols' }, 'function'),
+  'function': h('span', { class: 'material-symbols' }, 'functions'),
+  'key': h('span', { class: 'material-symbols' }, 'key'),
+  'json': h('span', { class: 'material-symbols' }, 'code'),
+  'qrCode': h('span', { class: 'material-symbols' }, 'qr_code'),
+  'qrCodeScan': h('span', { class: 'material-symbols' }, 'qr_code_scanner'),
+  'barCode': h('span', { class: 'material-symbols' }, 'barcode'),
+  'calculator': h('span', { class: 'material-symbols' }, 'calculate'),
+  'rollup': h('span', { class: 'material-symbols' }, 'group_work'),
+  'eye': NcEye,
+  'eyeSlash': NcEyeOff,
+  'expand': h('span', { class: 'material-symbols' }, 'open_in_full'),
+  'shrink': h('span', { class: 'material-symbols' }, 'close_fullscreen'),
+  'check': NcCheck,
+  'circleCheck': MdiCheckboxMarkedCircle,
+  'circleCheck3': NcCheckCircle2,
+  'acl': h('span', { class: 'material-symbols' }, 'shield'),
+  'sync': MsSync,
+  'warning': MaterialSymbolsWarningOutlineRounded,
+  'share': h('span', { class: 'material-symbols' }, 'share'),
+  'mobileShare': MobileShare,
+  'reload': MdiRefresh,
+  'xml': h('span', { class: 'material-symbols' }, 'code'),
+  'airtable': LogosAirtable,
+  'excelColored': VscodeIconsExcelColored,
   // grid: h('span', { class: 'material-symbols' }, 'grid_view'),
   // gallery: h('span', { class: 'material-symbols' }, 'image'),
   // form: h('span', { class: 'material-symbols' }, 'article'),
-  map: h('span', { class: 'material-symbols' }, 'map'),
+  // 'map': NcMapViewIcon,
   // kanban: h('span', { class: 'material-symbols' }, 'view_kanban'),
-  view: h('span', { class: 'material-symbols' }, 'visibility'),
+  'view': h('span', { class: 'material-symbols' }, 'visibility'),
   // rowHeight: h('span', { class: 'material-symbols' }, 'height'),
-  rowHeight: h(PhSplitVerticalThin, { style: { fontSize: '14px' } }),
-  closeCircle: h('span', { class: 'material-symbols' }, 'cancel'),
-  closeBox: h('span', { class: 'material-symbols' }, 'close'),
-  close: MSCloseRounded,
-  openInNew: h('span', { class: 'material-symbols' }, 'open_in_new'),
-  passwordChange: h('span', { class: 'material-symbols' }, 'vpn_key'),
-  mapMarker: h('span', { class: 'material-symbols' }, 'room'),
-  currentLocation: h('span', { class: 'material-symbols' }, 'my_location'),
-  plusThick: h('span', { class: 'material-symbols' }, 'add_box'),
-  dragVertical: h('span', { class: 'material-symbols' }, 'drag_indicator'),
-  databaseSync: h('span', { class: 'material-symbols' }, 'sync_alt'),
-  fileUpload: h('span', { class: 'material-symbols' }, 'cloud_upload'),
-  drag: MaterialSymbolsDragIndicator,
-  comment: h('span', { class: 'material-symbols' }, 'comment'),
-  doc: h('span', { class: 'material-symbols' }, 'menu_book'),
-  menu: h('span', { class: 'material-symbols' }, 'menu'),
-  move: MsMove,
-  creditCard: NcCreditCard,
-  heightShort: NcIconsRowHeightShort,
-  heightMedium: NcIconsRowHeightMedium,
-  heightTall: NcIconsRowHeightTall,
-  heightExtra: NcIconsRowHeightExtraTall,
-  databaseSearch: MdiDatabaseSearch,
-  layers: NcLayers,
-  ncDatabase: NcDatabaseIcon,
-  magic: PhSparkleFill,
-  magic1: MdiMagicStaff,
-  workspace: h('span', { class: 'material-symbols' }, 'dataset'),
-  notification: NcNotification,
-  role_owner: Owner,
-  role_creator: Creator,
-  role_editor: Editor,
-  role_commenter: Commentor,
-  role_viewer: Viewer,
-  role_super: SuperAdmin,
-  role_no_access: NoAccess,
-  commentHere: NcCommentHere,
-  fileImage: FileImageIcon,
-  paste: NcPaste,
-  chevronDown: NcChevronDown,
-  pencil: NcPencil,
-  rename: NcRename,
-  ncEdit: NcEdit,
-  ncArrowUp: NcArrowUp,
-  ncArrowDown: NcArrowDown,
-  ncArrowLeft: NcArrowLeft,
-  ncArrowRight: NcArrowRight,
-  underline: NcUnderline,
-  bold: NcBold,
-  italic: NcItalic,
-  phoneCall: NcPhoneCall,
-  crop: NcCrop,
-  circleCheck2: NcCircleCheck,
-  ncDiscord: NcDiscord,
-  ncReddit: NcReddit,
-  ncTwitter: NcTwitter,
-  file: NcFile,
-  fileBig: NcFileBig,
-  ncSettings: NcSettings,
-  ncHelp: NcHelp,
-  puzzle: MdiPuzzle,
-  arrowDropUp: MaterialSymbolsArrowDropUp,
-  arrowDropDown: MaterialSymbolsArrowDropDown,
-  alertTriangle: NcAlertTriangle,
-  audit: NcAudit,
-  messageCircle: NcMessageCircle,
-  ncKey: NcKey,
-  minimize: NcMinimize,
-  minimizeAll: NcMinimizeAll,
-  maximize: NcMaximize,
-  maximizeAll: NcMaximizeAll,
-  ncDrag: NcDrag,
-  refresh: NcRefresh,
-  chevronUpDown: NcChevronUpDown,
-  play: NcPlay,
-  googleDocs: GoogleDocs,
-  pdfFile: MdiPdf,
-  globe: NcGlobe,
-  integration: NcIntegration,
-  gitCommit: NcGitCommit,
-  circle: NcCircle,
-  server1: NcServer1,
-  thumbsUpOutline: NcThumbsUpOutline,
-  appleSolid: NcAppleSolid,
-  asana: NcAsana,
-  box: NcBox,
-  githubSolid: NcGithubSolid,
-  gitlab: NcGitlab,
-  googleCalendar: NcGoogleCalendar,
-  googleSheet: NcGoogleSheet,
-  googleDrive: NcGoogleDrive,
-  hubspot: NcHubspot,
-  jira: NcJira,
-  mailchimp: NcMailchimp,
-  microsoftAccess: NcMicrosoftAccess,
-  microsoftExcel: NcMicrosoftExcel,
-  microsoftOutlook: NcMicrosoftOutlook,
-  miro: NcMiro,
-  salesforce: NcSalesforce,
-  snowflake: NcSnowflake,
-  stripe: NcStripe,
-  surveyMonkey: NcSurveyMonkey,
-  tableau: NcTableau,
-  trello: NcTrello,
-  typeform: NcTypeform,
-  workday: NcWorkday,
-  zendesk: NcZendesk,
-  freshdesk: NcFreshdesk,
-  bookOpen: NcBookOpen,
-  circleCheckSolid: NcCircleCheckSolid,
-  alertTriangleSolid: NcAlertTriangleSolid,
-  mail: NcMail,
-  slack: NcSlack,
-  microsoftTeams: NcMicrosoftTeams,
-  mattermost: NcMattermost,
-  twilio: NcTwilio,
-  whatsapp: NcWhatsapp,
-  whatsappSolid: NcWhatsappSolid,
-  viewGannt: NcViewGantt,
-  dollerSign: NcDollerSign,
-  multiFile: NcMultiFile,
-  heart: NcHeart,
-  ncSave: NcSave,
-  mysql: NcMySql,
-  postgreSql: NcPostgreSql,
-  sqlServer: NcSqlServer,
-  dataBricks: NcDataBricks,
-  mssqlServer: NcMssqlServer,
-  oracle: NcOracle,
-  gmail: NcGmail,
-  telegram: NcTelegram,
-  microsoftDynamics365: NcMicrosoftDynamics365,
-  pipedrive: NcPipedrive,
-  zohoCrm: NcZohoCrm,
-  greenhouse: NcGreenhouse,
-  lever: NcLever,
-  bitBucket: NcBitBucket,
-  quickbooks: NcQuickbooks,
-  intercom: NcIntercom,
-  dropbox: NcDropbox,
-  gift: NcIconsGift,
-  openai: NcOpenai,
-  claude: NcClaude,
-  ollama: NcOllama,
-  groq: NcGroq,
-  refreshCw: NcRefreshCW,
-  iconReddit: NcRedditIcon,
-  iconTwitter: NcTwitterIcon,
-  iconDiscord: NcDiscordIcon,
+  'rowHeight': h(PhSplitVerticalThin, { style: { fontSize: '14px' } }),
+  'columnWidth': h(PhSplitHorizontalThin, { style: { fontSize: '14px' } }),
+  'closeCircle': h('span', { class: 'material-symbols' }, 'cancel'),
+  'closeBox': h('span', { class: 'material-symbols' }, 'close'),
+  'close': MSCloseRounded,
+  'openInNew': h('span', { class: 'material-symbols' }, 'open_in_new'),
+  'passwordChange': h('span', { class: 'material-symbols' }, 'vpn_key'),
+  'mapMarker': h('span', { class: 'material-symbols' }, 'room'),
+  'currentLocation': h('span', { class: 'material-symbols' }, 'my_location'),
+  'plusThick': h('span', { class: 'material-symbols' }, 'add_box'),
+  'dragVertical': h('span', { class: 'material-symbols' }, 'drag_indicator'),
+  'databaseSync': h('span', { class: 'material-symbols' }, 'sync_alt'),
+  'fileUpload': h('span', { class: 'material-symbols' }, 'cloud_upload'),
+  'drag': MaterialSymbolsDragIndicator,
+  'comment': h('span', { class: 'material-symbols' }, 'comment'),
+  'doc': h('span', { class: 'material-symbols' }, 'menu_book'),
+  'menu': NcMenuIcon,
+  'move': MsMove,
+  'creditCard': NcCreditCard,
+  'heightShort': NcIconsRowHeightShort,
+  'heightMedium': NcIconsRowHeightMedium,
+  'heightTall': NcIconsRowHeightTall,
+  'heightExtra': NcIconsRowHeightExtraTall,
+  'databaseSearch': MdiDatabaseSearch,
+  'layers': NcLayers,
+  'ncDatabase': NcDatabaseIcon,
+  'magic': PhSparkleFill,
+  'magic1': MdiMagicStaff,
+  'workspace': h('span', { class: 'material-symbols' }, 'dataset'),
+  'notification': NcNotification,
+  'role_owner': Owner,
+  'role_creator': Creator,
+  'role_editor': Editor,
+  'role_commenter': Commentor,
+  'role_viewer': Viewer,
+  'role_inherit': NcLayers,
+  'role_super': SuperAdmin,
+  'role_no_access': NoAccess,
+  'commentHere': NcCommentHere,
+  'fileImage': FileImageIcon,
+  'paste': NcPaste,
+  'chevronDown': NcChevronDown,
+  'pencil': NcPencil,
+  'rename': NcRename,
+  'ncEdit': NcEdit,
+  'ncArrowUp': NcArrowUp,
+  'ncArrowDown': NcArrowDown,
+  'ncArrowLeft': NcArrowLeft,
+  'ncArrowRight': NcArrowRight,
+  'underline': NcUnderline,
+  'bold': NcBold,
+  'italic': NcItalic,
+  'phoneCall': NcPhoneCall,
+  'crop': NcCrop,
+  'circleCheck2': NcCircleCheck,
+  'ncDiscord': NcDiscord,
+  'ncReddit': NcReddit,
+  'ncTwitter': NcTwitter,
+  'file': NcFile,
+  'fileBig': NcFileBig,
+  'ncSettings': NcSettings,
+  'ncHelp': NcHelp,
+  'puzzle': MdiPuzzle,
+  'arrowDropUp': MaterialSymbolsArrowDropUp,
+  'arrowDropDown': MaterialSymbolsArrowDropDown,
+  'alertTriangle': NcAlertTriangle,
+  'audit': NcAudit,
+  'messageCircle': NcMessageCircle,
+  'ncKey': NcKey,
+  'minimize': NcMinimize,
+  'minimizeAll': NcMinimizeAll,
+  'maximize': NcMaximize,
+  'maximizeAll': NcMaximizeAll,
+  'ncDrag': NcDrag,
+  'refresh': NcRefresh,
+  'chevronUpDown': NcChevronUpDown,
+  'play': NcPlay,
+  'googleDocs': GoogleDocs,
+  'pdfFile': MdiPdf,
+  'globe': NcGlobe,
+  'integration': NcIntegration,
+  'gitCommit': NcGitCommit,
+  'circle': NcCircle,
+  'server1': NcServer1,
+  'thumbsUpOutline': NcThumbsUpOutline,
+  'appleSolid': NcAppleSolid,
+  'asana': NcAsana,
+  'box': NcBox,
+  'githubSolid': NcGithubSolid,
+  'chatwoot': h(NcChatwoot, { stroke: 'transparent' }),
+  'linear': NcLinear,
+  'gitlab': NcGitlab,
+  'googleCalendar': NcGoogleCalendar,
+  'googleSheet': NcGoogleSheet,
+  'googleDrive': NcGoogleDrive,
+  'hubspot': h(NcHubspot, { stroke: 'transparent' }),
+  'jira': NcJira,
+  'mailchimp': NcMailchimp,
+  'microsoftAccess': NcMicrosoftAccess,
+  'microsoftExcel': NcMicrosoftExcel,
+  'microsoftOutlook': NcMicrosoftOutlook,
+  'miro': NcMiro,
+  'salesforce': h(NcSalesforce, { stroke: 'transparent' }),
+  'snowflake': NcSnowflake,
+  'stripe': NcStripe,
+  'surveyMonkey': NcSurveyMonkey,
+  'tableau': h(NcTableau, { stroke: 'transparent' }),
+  'trello': NcTrello,
+  'typeform': NcTypeform,
+  'workday': NcWorkday,
+  'zendesk': NcZendesk,
+  'freshdesk': NcFreshdesk,
+  'bookOpen': NcBookOpen,
+  'circleCheckSolid': NcCircleCheckSolid,
+  'alertTriangleSolid': NcAlertTriangleSolid,
+  'mail': NcMail,
+  'slack': NcSlack,
+  'microsoftTeams': NcMicrosoftTeams,
+  'mattermost': NcMattermost,
+  'twilio': NcTwilio,
+  'whatsapp': NcWhatsapp,
+  'whatsappSolid': NcWhatsappSolid,
+  'viewGannt': NcViewGantt,
+  'dollerSign': NcDollerSign,
+  'multiFile': NcMultiFile,
+  'heart': NcHeart,
+  'ncSave': NcSave,
+  'mysql': NcMySql,
+  'postgreSql': NcPostgreSql,
+  'sqlServer': NcSqlServer,
+  'dataBricks': NcDataBricks,
+  'mssqlServer': NcMssqlServer,
+  'gmail': NcGmail,
+  'telegram': NcTelegram,
+  'microsoftDynamics365': NcMicrosoftDynamics365,
+  'pipedrive': NcPipedrive,
+  'zohoCrm': NcZohoCrm,
+  'greenhouse': NcGreenhouse,
+  'lever': h(NcLever, { stroke: 'transparent' }),
+  'bitBucket': NcBitBucket,
+  'bambooHR': NcLogoBambooHrColored,
+  'quickbooks': NcQuickbooks,
+  'intercom': NcIntercom,
+  'dropbox': NcDropbox,
+  'gift': NcIconsGift,
+  'openai': h(NcOpenai, { stroke: 'transparent' }),
+  'claude': h(NcClaude, { stroke: 'transparent' }),
+  'ollama': h(NcOllama, { stroke: 'transparent' }),
+  'groq': h(NcGroq, { stroke: 'transparent' }),
+  'posthog': h(NcPosthog, { stroke: 'transparent' }),
+  'nocodbPg': h(NcNocodbPg, { stroke: 'transparent' }),
+  'refreshCw': NcRefreshCW,
+  'iconReddit': NcRedditIcon,
+  'iconTwitter': NcTwitterIcon,
+  'iconDiscord': NcDiscordIcon,
+  'attachFile': MdiNcAttachFile,
+  'dashboards': NcDashboards,
 
   // Nc-IconsV2 Buttons
-  ncColumns: NcColumnsIcon,
-  ncUnderline: NcUnderlineIcon,
-  ncGrid: NcGridIcon,
-  ncTriangle: NcTriangleIcon,
-  ncSearch: NcSearchIcon,
-  ncVolume2: NcVolume2Icon,
-  ncArrowUpCircle: NcArrowUpCircleIcon,
-  ncPauseCircle: NcPauseCircleIcon,
-  ncCheckSquare: NcCheckSquareIcon,
-  ncArrowDown2: NcArrowDownIcon,
-  ncCornerRightUp: NcCornerRightUpIcon,
-  ncChevronsRight: NcChevronsRightIcon,
-  ncList: NcListIcon,
-  ncChevronsDown: NcChevronsDownIcon,
-  ncCornerUpRight: NcCornerUpRightIcon,
-  ncTarget: NcTargetIcon,
-  ncScissors: NcScissorsIcon,
-  ncMinimize2: NcMinimize2Icon,
-  ncPlayCircle: NcPlayCircleIcon,
-  ncCrosshair: NcCrosshairIcon,
-  ncAirplay: NcAirplayIcon,
-  ncXOctagon: NcXOctagonIcon,
-  ncRepeat: NcRepeatIcon,
-  ncEdit3: NcEdit3Icon,
-  ncVolume1: NcVolume1Icon,
-  ncToggleRight: NcToggleRightIcon,
-  ncUser: NcUserIcon,
-  ncFileMinus: NcFileMinusIcon,
-  ncXCircle: NcXCircleIcon,
-  ncCircle: NcCircleIcon,
-  ncPhoneMissed: NcPhoneMissedIcon,
-  ncEdit2: NcEdit2Icon,
-  ncCornerLeftUp: NcCornerLeftUpIcon,
-  ncHome: NcHomeIcon,
-  ncGitlab: NcGitlabIcon,
-  ncSmartphone: NcSmartphoneIcon,
-  ncMoreHorizontal: NcMoreHorizontalIcon,
-  ncSliders: NcSlidersIcon,
-  ncArrowUpLeft: NcArrowUpLeftIcon,
-  ncChevronDown: NcChevronDownIcon,
-  ncHexagon: NcHexagonIcon,
-  ncGithub: NcGithubIcon,
-  ncCrop: NcCropIcon,
-  ncBriefcase: NcBriefcaseIcon,
-  ncRotateCw: NcRotateCwIcon,
-  ncInbox: NcInboxIcon,
-  ncAlignJustify: NcAlignJustifyIcon,
-  ncPlusSquare: NcPlusSquareIcon,
-  ncPower: NcPowerIcon,
-  ncCameraOff: NcCameraOffIcon,
-  ncToggleLeft: NcToggleLeftIcon,
-  ncFile: NcFileIcon,
-  ncMessageCircle: NcMessageCircleIcon,
-  ncTerminal: NcTerminalIcon,
-  ncMove: NcMoveIcon,
-  ncMaximize: NcMaximizeIcon,
-  ncChevronUp: NcChevronUpIcon,
-  ncArrowDownLeft: NcArrowDownLeftIcon,
-  ncFileText: NcFileTextIcon,
-  ncDroplet: NcDropletIcon,
-  ncZapOff: NcZapOffIcon,
-  ncX: NcXIcon,
-  ncBarChart: NcBarChartIcon,
-  ncLock: NcLockIcon,
-  ncLogIn: NcLogInIcon,
-  ncRefreshCw: NcRefreshCwIcon,
-  ncChevronRight: NcChevronRightIcon,
-  ncClipboard: NcClipboardIcon,
-  ncPackage: NcPackageIcon,
-  ncInstagram: NcInstagramIcon,
-  ncLink: NcLinkIcon,
-  ncVideoOff: NcVideoOffIcon,
-  ncKey2: NcKeyIcon,
-  ncCornerDownRight: NcCornerDownRightIcon,
-  ncArrowRight2: NcArrowRightIcon,
-  ncStopCircle: NcStopCircleIcon,
-  ncLogOut: NcLogOutIcon,
-  ncArrowLeftCircle: NcArrowLeftCircleIcon,
-  ncBarChart2: NcBarChart2Icon,
-  ncGitPullRequest: NcGitPullRequestIcon,
-  ncMinimize: NcMinimizeIcon,
-  ncMinusSquare: NcMinusSquareIcon,
-  ncSettings2: NcSettingsIcon,
-  ncCloudSnow: NcCloudSnowIcon,
-  ncThumbsDown: NcThumbsDownIcon,
-  ncType: NcTypeIcon,
-  ncPhoneOutgoing: NcPhoneOutgoingIcon,
-  ncPocket: NcPocketIcon,
-  ncMail: NcMailIcon,
-  ncShield: NcShieldIcon,
-  ncDownload: NcDownloadIcon,
-  ncPhoneForwarded: NcPhoneForwardedIcon,
-  ncCornerRightDown: NcCornerRightDownIcon,
-  ncBookOpen: NcBookOpenIcon,
-  ncServer: NcServerIcon,
-  ncTv: NcTvIcon,
-  ncSkipForward: NcSkipForwardIcon,
-  ncVolume: NcVolumeIcon,
-  ncUserPlus: NcUserPlusIcon,
-  ncBatteryCharging: NcBatteryChargingIcon,
-  ncLayers: NcLayersIcon,
-  ncSlash: NcSlashIcon,
-  ncRadio: NcRadioIcon,
-  ncBook: NcBookIcon,
-  ncUserMinus: NcUserMinusIcon,
-  ncBell: NcBellIcon,
-  ncGitBranch: NcGitBranchIcon,
-  ncCode: NcCodeIcon,
-  ncCast: NcCastIcon,
-  ncFlag: NcFlagIcon,
-  ncEyeOff: NcEyeOffIcon,
-  ncBattery: NcBatteryIcon,
-  ncDisc: NcDiscIcon,
-  ncFrown: NcFrownIcon,
-  ncTool: NcToolIcon,
-  ncBold: NcBoldIcon,
-  ncHash: NcHashIcon,
-  ncShare2: NcShare2Icon,
-  ncPlus: NcPlusIcon,
-  ncCheck: NcCheckIcon,
-  ncRotateCcw: NcRotateCcwIcon,
-  ncHardDrive: NcHardDriveIcon,
-  ncBluetooth: NcBluetoothIcon,
-  ncPieChart: NcPieChartIcon,
-  ncRss: NcRssIcon,
-  ncWifi: NcWifiIcon,
-  ncCornerUpLeft: NcCornerUpLeftIcon,
-  ncInfo: NcInfoIcon,
-  ncUserX: NcUserXIcon,
-  ncLoader: NcLoaderIcon,
-  ncRefreshCcw: NcRefreshCcwIcon,
-  ncFolderPlus: NcFolderPlusIcon,
-  ncMic: NcMicIcon,
-  ncCopy: NcCopyIcon,
-  ncZoomIn: NcZoomInIcon,
-  ncArrowRightCircle: NcArrowRightCircleIcon,
-  ncAlignRight: NcAlignRightIcon,
-  ncImage: NcImageIcon,
-  ncMaximize2: NcMaximize2Icon,
-  ncCheckCircle: NcCheckCircleIcon,
-  ncSave2: NcSaveIcon,
-  ncSmile: NcSmileIcon,
-  ncNavigation: NcNavigationIcon,
-  ncPaperclip: NcPaperclipIcon,
-  ncFastForward: NcFastForwardIcon,
-  ncXSquare: NcXSquareIcon,
-  ncAward: NcAwardIcon,
-  ncZoomOut: NcZoomOutIcon,
-  ncBox: NcBoxIcon,
-  ncThumbsUp: NcThumbsUpIcon,
-  ncPercent: NcPercentIcon,
-  ncSidebar: NcSidebarIcon,
-  ncSquare: NcSquareIcon,
-  ncPlay: NcPlayIcon,
-  ncGitCommit: NcGitCommitIcon,
-  ncSend: NcSendIcon,
-  ncPhoneCall: NcPhoneCallIcon,
-  ncCamera: NcCameraIcon,
-  ncLink2: NcLink2Icon,
-  ncPrinter: NcPrinterIcon,
-  ncFolderMinus: NcFolderMinusIcon,
-  ncArrowUpRight: NcArrowUpRightIcon,
-  ncPenTool: NcPenToolIcon,
-  ncAtSign: NcAtSignIcon,
-  ncTrash: NcTrashIcon,
-  ncWifiOff: NcWifiOffIcon,
-  ncCornerLeftDown: NcCornerLeftDownIcon,
-  ncDollarSign: NcDollarSignIcon,
-  ncStar: NcStarIcon,
-  ncCloudOff: NcCloudOffIcon,
-  ncMessageSquare: NcMessageSquareIcon,
-  ncEDit2: NcEditIcon,
-  ncAlertCircle: NcAlertCircleIcon,
-  ncChevronsUp: NcChevronsUpIcon,
-  ncUploadCloud: NcUploadCloudIcon,
-  ncYoutube: NcYoutubeIcon,
-  ncUnlock: NcUnlockIcon,
-  ncCompass: NcCompassIcon,
-  ncPlusCircle: NcPlusCircleIcon,
-  ncCreditCard: NcCreditCardIcon,
-  ncTrash2: NcTrash2Icon,
-  ncSkipBack: NcSkipBackIcon,
-  ncFilePlus: NcFilePlusIcon,
-  ncDelete: NcDeleteIcon,
-  ncCommand: NcCommandIcon,
-  ncClock: NcClockIcon,
-  ncOctagon: NcOctagonIcon,
-  ncPhone: NcPhoneIcon,
-  ncEye: NcEyeIcon,
-  ncPhoneOff: NcPhoneOffIcon,
-  ncExternalLink: NcExternalLinkIcon,
-  ncZap: NcZapIcon,
-  ncMoreVertical: NcMoreVerticalIcon,
-  ncMicOff: NcMicOffIcon,
-  ncShare: NcShareIcon,
-  ncArrowUp2: NcArrowUpIcon,
-  ncBellOff: NcBellOffIcon,
-  ncLinkedin: NcLinkedinIcon,
-  ncVideo: NcVideoIcon,
-  ncActivity: NcActivityIcon,
-  ncMapPin: NcMapPinIcon,
-  ncFilter: NcFilterIcon,
-  ncPhoneIncoming: NcPhoneIncomingIcon,
-  ncItalic: NcItalicIcon,
-  ncChevronsLeft: NcChevronsLeftIcon,
-  ncCalendar: NcCalendarIcon,
-  ncGlobe: NcGlobeIcon,
-  ncArrowLeft2: NcArrowLeftIcon,
-  ncAlignCenter: NcAlignCenterIcon,
-  ncMinusCircle: NcMinusCircleIcon,
-  ncArrowDownRight: NcArrowDownRightIcon,
-  ncVolumeX: NcVolumeXIcon,
-  ncCloud: NcCloudIcon,
-  ncDownloadCloud: NcDownloadCloudIcon,
-  ncShuffle: NcShuffleIcon,
-  ncRewind: NcRewindIcon,
-  ncUpload: NcUploadIcon,
-  ncTrendingDown: NcTrendingDownIcon,
-  ncPause: NcPauseIcon,
-  ncArrowDownCircle: NcArrowDownCircleIcon,
-  ncBookmark: NcBookmarkIcon,
-  ncAlertTriangle: NcAlertTriangleIcon,
-  ncUserCheck: NcUserCheckIcon,
-  ncTablet: NcTabletIcon,
-  ncAlertOctagon: NcAlertOctagonIcon,
-  ncMenu: NcMenuIcon,
-  ncChrome: NcChromeIcon,
-  ncFolder: NcFolderIcon,
-  ncUsers: NcUsersIcon,
-  ncCornerDownLeft: NcCornerDownLeftIcon,
-  ncMonitor: NcMonitorIcon,
-  ncMinus: NcMinusIcon,
-  ncNavigation2: NcNavigation2Icon,
-  ncChevronLeft: NcChevronLeftIcon,
-  ncFilm: NcFilmIcon,
-  ncMoon: NcMoonIcon,
-  ncShieldOff: NcShieldOffIcon,
-  ncMousePointer: NcMousePointerIcon,
-  ncAlignLeft: NcAlignLeftIcon,
-  ncHeart: NcHeartIcon,
-  ncTrendingUp: NcTrendingUpIcon,
-  chevronUpSmall: NcChevronUpSmall,
-  chevronDownSmall: NcChevronDownSmall,
-  chevronUpDownSmall: NcChevronUpDownSmall,
-  langShell: NcLangShell,
-  langJavascript: NcLangJavascript,
-  langNode: NcLangNode,
-  langNocodbSdk: NcLangNocodbSdk,
-  langPhp: NcLangPhp,
-  langPython: NcLangPython,
-  langRuby: NcLangRuby,
-  langJava: NcLangJava,
-  langC: NcLangC,
-  ncPuzzleSolid: NcPuzzleSolid,
-  ncPuzzleOutline: NcPuzzleOutline,
-  ncInfoSolid: NcInfoSolid,
-  ncPlaceholderIcon: NcPlaceholderIcon,
-  ncSpanner: NcSpanner,
-  ncScript: NcScript,
-  youtube: NcYoutube2Icon,
+  'ncColumns': NcColumnsIcon,
+  'ncUnderline': NcUnderlineIcon,
+  'ncGrid': NcGridIcon,
+  'ncTriangle': NcTriangleIcon,
+  'ncSearch': NcSearchIcon,
+  'ncVolume2': NcVolume2Icon,
+  'ncArrowUpCircle': NcArrowUpCircleIcon,
+  'ncArrowUpCircleSolid': NcArrowUpCircleSolidIcon,
+  'ncPauseCircle': NcPauseCircleIcon,
+  'ncCheckSquare': NcCheckSquareIcon,
+  'ncArrowDown2': NcArrowDownIcon,
+  'ncCornerRightUp': NcCornerRightUpIcon,
+  'ncChevronsRight': NcChevronsRightIcon,
+  'ncList': NcListIcon,
+  'ncListEnd': NcListEndIcon,
+  'ncWandSparkles': NcWandSparklesIcon,
+  'ncNumberList': NcNumberListIcon,
+  'ncCheckList': NcCheckListIcon,
+  'ncChevronsDown': NcChevronsDownIcon,
+  'ncCornerUpRight': NcCornerUpRightIcon,
+  'ncTarget': NcTargetIcon,
+  'ncScissors': NcScissorsIcon,
+  'ncMinimize2': NcMinimize2Icon,
+  'ncPlayCircle': NcPlayCircleIcon,
+  'ncCrosshair': NcCrosshairIcon,
+  'ncAirplay': NcAirplayIcon,
+  'ncXOctagon': NcXOctagonIcon,
+  'ncRepeat': NcRepeatIcon,
+  'ncEdit3': NcEdit3Icon,
+  'ncVolume1': NcVolume1Icon,
+  'ncToggleRight': NcToggleRightIcon,
+  'ncUser': NcUserIcon,
+  'ncFileMinus': NcFileMinusIcon,
+  'ncXCircle': NcXCircleIcon,
+  'ncCircle': NcCircleIcon,
+  'ncPhoneMissed': NcPhoneMissedIcon,
+  'ncEdit2': NcEdit2Icon,
+  'ncCornerLeftUp': NcCornerLeftUpIcon,
+  'ncHome': NcHomeIcon,
+  'ncHomeFilled': h(NcHomeFilledIcon, { stroke: 'transparent' }),
+  'ncTableOutline': NcTableOutlineIcon,
+  'ncTableFilled': h(NcTableFilledIcon, { stroke: 'transparent' }),
+  'ncAutomationsFilled': h(NcAutomationsFilledIcon, { stroke: 'transparent' }),
+  'ncGitlab': NcGitlabIcon,
+  'ncSmartphone': NcSmartphoneIcon,
+  'ncMoreHorizontal': NcMoreHorizontalIcon,
+  'ncSliders': NcSlidersIcon,
+  'sliders': NcSlidersIcon,
+  'ncArrowUpLeft': NcArrowUpLeftIcon,
+  'ncChevronDown': NcChevronDownIcon,
+  'ncHexagon': NcHexagonIcon,
+  'ncGithub': NcGithubIcon,
+  'ncCrop': NcCropIcon,
+  'ncBriefcase': NcBriefcaseIcon,
+  'ncRotateCw': NcRotateCwIcon,
+  'ncInbox': NcInboxIcon,
+  'ncAlignJustify': NcAlignJustifyIcon,
+  'ncPlusSquare': NcPlusSquareIcon,
+  'ncPower': NcPowerIcon,
+  'ncCameraOff': NcCameraOffIcon,
+  'ncToggleLeft': NcToggleLeftIcon,
+  'ncFile': NcFileIcon,
+  'ncMessageCircle': NcMessageCircleIcon,
+  'ncTerminal': NcTerminalIcon,
+  'ncMove': NcMoveIcon,
+  'ncMoveHorizontal': NcMoveHorizontalIcon,
+  'ncMaximize': NcMaximizeIcon,
+  'ncChevronUp': NcChevronUpIcon,
+  'ncArrowDownLeft': NcArrowDownLeftIcon,
+  'ncFileText': NcFileTextIcon,
+  'ncFileTextSolid': NcFileTextSolidIcon,
+  'ncDroplet': NcDropletIcon,
+  'ncZapOff': NcZapOffIcon,
+  'ncX': NcXIcon,
+  'ncBarChart': NcBarChartIcon,
+  'ncLock': NcLockIcon,
+  'ncLogIn': NcLogInIcon,
+  'ncRefreshCw': NcRefreshCwIcon,
+  'ncChevronRight': NcChevronRightIcon,
+  'ncClipboard': NcClipboardIcon,
+  'ncPackage': NcPackageIcon,
+  'ncInstagram': NcInstagramIcon,
+  'ncLink': NcLinkIcon,
+  'ncVideoOff': NcVideoOffIcon,
+  'ncKey2': NcKeyIcon,
+  'ncCornerDownRight': NcCornerDownRightIcon,
+  'ncArrowRight2': NcArrowRightIcon,
+  'ncStopCircle2': NcStopCircleIcon,
+  'ncLogOut': NcLogOutIcon,
+  'ncArrowLeftCircle': NcArrowLeftCircleIcon,
+  'ncBarChart2': NcBarChart2Icon,
+  'ncGitPullRequest': NcGitPullRequestIcon,
+  'ncMinimize': NcMinimizeIcon,
+  'ncMinusSquare': NcMinusSquareIcon,
+  'ncSettings2': NcSettingsIcon,
+  'ncCloudSnow': NcCloudSnowIcon,
+  'ncThumbsDown': NcThumbsDownIcon,
+  'ncType': NcTypeIcon,
+  'ncPhoneOutgoing': NcPhoneOutgoingIcon,
+  'ncPocket': NcPocketIcon,
+  'ncMail': NcMailIcon,
+  'ncShield': NcShieldIcon,
+  'ncDownload': NcDownloadIcon,
+  'ncPhoneForwarded': NcPhoneForwardedIcon,
+  'ncCornerRightDown': NcCornerRightDownIcon,
+  'ncBookOpen': NcBookOpenIcon,
+  'ncServer': NcServerIcon,
+  'ncTv': NcTvIcon,
+  'ncSkipForward': NcSkipForwardIcon,
+  'ncVolume': NcVolumeIcon,
+  'ncUserPlus': NcUserPlusIcon,
+  'ncBatteryCharging': NcBatteryChargingIcon,
+  'ncLayers': NcLayersIcon,
+  'ncSlash': NcSlashIcon,
+  'ncRadio': NcRadioIcon,
+  'ncBook': NcBookIcon,
+  'ncUserMinus': NcUserMinusIcon,
+  'ncBell': NcBellIcon,
+  'ncGitBranch': NcGitBranchIcon,
+  'ncCode': NcCodeIcon,
+  'ncCodeBlock': NcCodeBlockIcon,
+  'ncCast': NcCastIcon,
+  'ncFlag': NcFlagIcon,
+  'ncEyeOff': NcEyeOffIcon,
+  'ncBattery': NcBatteryIcon,
+  'ncDisc': NcDiscIcon,
+  'ncFrown': NcFrownIcon,
+  'ncTool': NcToolIcon,
+  'ncBold': NcBoldIcon,
+  'ncHash': NcHashIcon,
+  'ncShare2': NcShare2Icon,
+  'ncPlus': NcPlusIcon,
+  'ncCheck': NcCheckIcon,
+  'ncRotateCcw': NcRotateCcwIcon,
+  'ncHardDrive': NcHardDriveIcon,
+  'ncBluetooth': NcBluetoothIcon,
+  'ncPieChart': NcPieChartIcon,
+  'ncRss': NcRssIcon,
+  'ncWifi': NcWifiIcon,
+  'ncCornerUpLeft': NcCornerUpLeftIcon,
+  'ncInfo': NcInfoIcon,
+  'ncUserX': NcUserXIcon,
+  'ncLoader': NcLoaderIcon,
+  'ncRefreshCcw': NcRefreshCcwIcon,
+  'ncFolderPlus': NcFolderPlusIcon,
+  'ncMic': NcMicIcon,
+  'ncCopy': NcCopyIcon,
+  'ncZoomIn': NcZoomInIcon,
+  'ncArrowRightCircle': NcArrowRightCircleIcon,
+  'ncAlignRight': NcAlignRightIcon,
+  'ncImage': NcImageIcon,
+  'ncMaximize2': NcMaximize2Icon,
+  'ncCheckCircle': NcCheckCircleIcon,
+  'ncSave2': NcSaveIcon,
+  'ncSmile': NcSmileIcon,
+  'ncNavigation': NcNavigationIcon,
+  'ncPaperclip': NcPaperclipIcon,
+  'ncFastForward': NcFastForwardIcon,
+  'ncXSquare': NcXSquareIcon,
+  'ncAward': NcAwardIcon,
+  'ncZoomOut': NcZoomOutIcon,
+  'ncBox': NcBoxIcon,
+  'ncThumbsUp': NcThumbsUpIcon,
+  'ncPercent': NcPercentIcon,
+  'ncSidebar': NcSidebarIcon,
+  'ncSquare': NcSquareIcon,
+  'ncPlay': NcPlayIcon,
+  'ncGitCommit': NcGitCommitIcon,
+  'ncSend': NcSendIcon,
+  'ncPhoneCall': NcPhoneCallIcon,
+  'ncCamera': NcCameraIcon,
+  'ncLink2': NcLink2Icon,
+  'ncPrinter': NcPrinterIcon,
+  'ncFolderMinus': NcFolderMinusIcon,
+  'ncArrowUpRight': NcArrowUpRightIcon,
+  'ncPenTool': NcPenToolIcon,
+  'ncAtSign': NcAtSignIcon,
+  'ncTrash': NcTrashIcon,
+  'ncWifiOff': NcWifiOffIcon,
+  'ncCornerLeftDown': NcCornerLeftDownIcon,
+  'ncDollarSign': NcDollarSignIcon,
+  'ncStar': NcStarIcon,
+  'ncCloudOff': NcCloudOffIcon,
+  'ncMessageSquare': NcMessageSquareIcon,
+  'ncMessageSquare1Outline': NcMessageSquare1OutlineIcon,
+  'ncMessageSquare1Solid': NcMessageSquare1SolidIcon,
+  'ncEDit2': NcEditIcon,
+  'ncAlertCircle': NcAlertCircleIcon,
+  'ncAlertCircleFilled': NcAlertCircleFilledIcon,
+  'ncChevronsUp': NcChevronsUpIcon,
+  'ncUploadCloud': NcUploadCloudIcon,
+  'ncYoutube': NcYoutubeIcon,
+  'ncUnlock': h(NcUnlockIcon, { stroke: 'transparent' }),
+  'ncCompass': NcCompassIcon,
+  'ncPlusCircle': NcPlusCircleIcon,
+  'ncCreditCard': NcCreditCardIcon,
+  'ncTrash2': NcTrash2Icon,
+  'ncSkipBack': NcSkipBackIcon,
+  'ncFilePlus': NcFilePlusIcon,
+  'ncDelete': NcDeleteIcon,
+  'ncCommand': NcCommandIcon,
+  'ncClock': NcClockIcon,
+  'ncOctagon': NcOctagonIcon,
+  'ncPhone': NcPhoneIcon,
+  'ncEye': NcEyeIcon,
+  'ncPhoneOff': NcPhoneOffIcon,
+  'ncExternalLink': NcExternalLinkIcon,
+  'ncZap': NcZapIcon,
+  'ncAgent': h(NcAgentIcon, { stroke: 'transparent' }),
+  'ncTable': h(NcTableIcon, { stroke: 'transparent' }),
+  'ncMoreVertical': NcMoreVerticalIcon,
+  'ncMicOff': NcMicOffIcon,
+  'ncShare': NcShareIcon,
+  'ncArrowUp2': NcArrowUpIcon,
+  'ncArrowUpDown': NcArrowUpDownIcon,
+  'ncBellOff': NcBellOffIcon,
+  'ncLinkedin': NcLinkedinIcon,
+  'ncVideo': NcVideoIcon,
+  'ncActivity': NcActivityIcon,
+  'ncMapPin': NcMapPinIcon,
+  'ncPin': NcPinIcon,
+  'ncPinOff': NcPinOffIcon,
+  'ncFilter': NcFilterIcon,
+  'ncPhoneIncoming': NcPhoneIncomingIcon,
+  'ncItalic': NcItalicIcon,
+  'ncChevronsLeft': NcChevronsLeftIcon,
+  'ncCalendar': NcCalendarIcon,
+  'ncGlobe': NcGlobeIcon,
+  'ncArrowLeft2': NcArrowLeftIcon,
+  'ncAlignCenter': NcAlignCenterIcon,
+  'ncMinusCircle': NcMinusCircleIcon,
+  'ncArrowDownRight': NcArrowDownRightIcon,
+  'ncVolumeX': NcVolumeXIcon,
+  'ncCloud': NcCloudIcon,
+  'ncDownloadCloud': NcDownloadCloudIcon,
+  'ncShuffle': NcShuffleIcon,
+  'ncRewind': NcRewindIcon,
+  'ncUpload': NcUploadIcon,
+  'ncTrendingDown': NcTrendingDownIcon,
+  'ncPause': NcPauseIcon,
+  'ncArrowDownCircle': NcArrowDownCircleIcon,
+  'ncBookmark': NcBookmarkIcon,
+  'ncAlertTriangle': NcAlertTriangleIcon,
+  'ncUserCheck': NcUserCheckIcon,
+  'ncTablet': NcTabletIcon,
+  'ncAlertOctagon': NcAlertOctagonIcon,
+  'ncMenu': NcMenuIcon,
+  'ncChrome': NcChromeIcon,
+  'ncFolder': NcFolderIcon,
+  'ncFolderClosed': NcFolderClosedIcon,
+  'ncFolderOpen': NcFolderOpenIcon,
+  'ncPalette': NcPaletteIcon,
+  'ncUsers': NcUsersIcon,
+  'ncCornerDownLeft': NcCornerDownLeftIcon,
+  'ncMonitor': NcMonitorIcon,
+  'ncMinus': NcMinusIcon,
+  'ncNavigation2': NcNavigation2Icon,
+  'ncChevronLeft': NcChevronLeftIcon,
+  'ncFilm': NcFilmIcon,
+  'ncMoon': NcMoonIcon,
+  'ncShieldOff': NcShieldOffIcon,
+  'ncMousePointer': NcMousePointerIcon,
+  'ncAlignLeft': NcAlignLeftIcon,
+  'ncInsertColumnLeft': NcInsertColumnLeftIcon,
+  'ncInsertColumnRight': NcInsertColumnRightIcon,
+  'ncInsertRowAbove': NcInsertRowAboveIcon,
+  'ncInsertRowBelow': NcInsertRowBelowIcon,
+  'ncMoveRowUp': NcMoveRowUpIcon,
+  'ncMoveRowDown': NcMoveRowDownIcon,
+  'ncMoveColumnLeft': NcMoveColumnLeftIcon,
+  'ncMoveColumnRight': NcMoveColumnRightIcon,
+  'ncVerticalAlignTop': NcVerticalAlignTop,
+  'ncVerticalAlignCenter': NcVerticalAlignCenter,
+  'ncVerticalAlignBottom': NcVerticalAlignBottom,
+  'ncAngleRotateCw': NcAngleRotateCw,
+  'ncHeart': NcHeartIcon,
+  'ncTrendingUp': NcTrendingUpIcon,
+  'chevronUpSmall': NcChevronUpSmall,
+  'chevronDownSmall': NcChevronDownSmall,
+  'chevronUpDownSmall': NcChevronUpDownSmall,
+  'langShell': NcLangShell,
+  'langJavascript': NcLangJavascript,
+  'langNode': NcLangNode,
+  'langNocodbSdk': NcLangNocodbSdk,
+  'langPhp': NcLangPhp,
+  'langPython': NcLangPython,
+  'langRuby': NcLangRuby,
+  'langJava': NcLangJava,
+  'langC': NcLangC,
+  'ncPuzzleSolid': NcPuzzleSolid,
+  'ncPuzzleOutline': NcPuzzleOutline,
+  'ncInfoSolid': NcInfoSolid,
+  'ncPlaceholderIcon': NcPlaceholderIcon,
+  'ncImagePlaceholderIcon': h(NcImagePlaceholderIcon, { stroke: 'transparent' }),
+  'ncSpanner': NcSpanner,
+  'ncScript': NcScript,
+  'youtube': NcYoutube2Icon,
+  'ncEnter': NcEnter,
+  'NcAmazonAws': h(NcAmazonAws, { stroke: 'transparent' }),
+  'ncAutoAwesome': h(NcAutoAwesome, { stroke: 'transparent' }),
+  'ncPlusAi': h(NcPlusAi, { stroke: 'transparent' }),
+  'ncPlusMultiple': NcPlusMultiple,
+  'ncPlusSquareSolid': h(NcPlusSquareSolid, { stroke: 'transparent' }),
+  'ncFileTypeCsv': h(NcFileTypeCsv, { stroke: 'transparent' }),
+  'ncFileTypeCsvSmall': h(NcFileTypeCsvSmall, { stroke: 'transparent' }),
+  'ncFileTypeExcel': h(NcFileTypeExcel, { stroke: 'transparent' }),
+  'ncFileTypePdf': h(NcFileTypePdf, { stroke: 'transparent' }),
+  'ncFileTypeWord': h(NcFileTypeWord, { stroke: 'transparent' }),
+  'ncFileTypePresentation': h(NcFileTypePresentation, { stroke: 'transparent' }),
+  'ncFileTypeVideo': h(NcFileTypeVideo, { stroke: 'transparent' }),
+  'ncFileTypeAudio': h(NcFileTypeAudio, { stroke: 'transparent' }),
+  'ncFileTypeImage': h(NcFileTypeImage, { stroke: 'transparent' }),
+  'ncFileTypeZip': h(NcFileTypeZip, { stroke: 'transparent' }),
+  'ncFileTypeUnknown': h(NcFileTypeUnknown, { stroke: 'transparent' }),
+  'ncFileSearch': h(NcFileSearch, { stroke: 'transparent' }),
+  'ncFileTypeJson': h(NcFileTypeJson, { stroke: 'transparent' }),
+  'ncErd': h(NcErd, { stroke: 'transparent' }),
+  'ncPenLine': h(NcPenLine, { stroke: 'transparent' }),
+  'ncNode': h(NcNode, { stroke: 'transparent' }),
+  'importAirtable': h(NcImportAirtable, { stroke: 'transparent' }),
+  'importCsv': h(NcImportCsv, { stroke: 'transparent' }),
+  'importJson': h(NcImportJson, { stroke: 'transparent' }),
+  'importExcel': h(NcImportExcel, { stroke: 'transparent' }),
+  'importSheets': h(NcImportSheets, { stroke: 'transparent' }),
+  'importSalesforce': h(NcImportSalesforce, { stroke: 'transparent' }),
+  'importMonday': h(NcImportMonday, { stroke: 'transparent' }),
+  'ncHeading1': NcHeading1,
+  'ncHeading2': NcHeading2,
+  'ncHeading3': NcHeading3,
+  'ncQuote': NcQuote,
+  'ncAutomation': AutomationIcon,
+  'ncWebhook': NcWebhook,
+  'ncMessageCircleFilled': NcMessageCircleFilled,
+  'ncLogoAsanaColored': h(NcLogoAsanaColored, { stroke: 'transparent' }),
+  'ncLogoAsana': h(NcLogoAsana, { stroke: 'transparent' }),
+  'ncLogoBitbucketColored': h(NcLogoBitbucketColored, { stroke: 'transparent' }),
+  'ncLogoBitbucket': h(NcLogoBitbucket, { stroke: 'transparent' }),
+  'ncLogoBoxLogoColored': h(NcLogoBoxLogoColored, { stroke: 'transparent' }),
+  'ncLogoBoxLogo': h(NcLogoBoxLogo, { stroke: 'transparent' }),
+  'ncLogoChromeColored': h(NcLogoChromeColored, { stroke: 'transparent' }),
+  'ncLogoClaudeAiColored': h(NcLogoClaudeAiColored, { stroke: 'transparent' }),
+  'ncLogoClaudeAi': h(NcLogoClaudeAi, { stroke: 'transparent' }),
+  'ncLogoDiscord': h(NcLogoDiscord, { stroke: 'transparent' }),
+  'ncLogoDiscordColored': h(NcLogoDiscordColored, { stroke: 'transparent' }),
+  'ncLogoDropboxColored': h(NcLogoDropboxColored, { stroke: 'transparent' }),
+  'ncLogoDropbox': h(NcLogoDropbox, { stroke: 'transparent' }),
+  'ncLogoFacebookColored': h(NcLogoFacebookColored, { stroke: 'transparent' }),
+  'ncLogoFacebook': h(NcLogoFacebook, { stroke: 'transparent' }),
+  'ncLogoFigmaColored': h(NcLogoFigmaColored, { stroke: 'transparent' }),
+  'ncLogoFigma': h(NcLogoFigma, { stroke: 'transparent' }),
+  'ncLogoFramerColored': h(NcLogoFramerColored, { stroke: 'transparent' }),
+  'ncLogoFramer': h(NcLogoFramer, { stroke: 'transparent' }),
+  'ncLogoFreshdeskColored': h(NcLogoFreshdeskColored, { stroke: 'transparent' }),
+  'ncLogoFreshdesk': h(NcLogoFreshdesk, { stroke: 'transparent' }),
+  'ncLogoGeminiAiColored': h(NcLogoGeminiAiColored, { stroke: 'transparent' }),
+  'ncLogoGeminiAi': h(NcLogoGeminiAi, { stroke: 'transparent' }),
+  'ncLogoGithubColored': h(NcLogoGithubColored, { stroke: 'transparent' }),
+  'ncLogoGitlabColored': h(NcLogoGitlabColored, { stroke: 'transparent' }),
+  'ncLogoGmailColored': h(NcLogoGmailColored, { stroke: 'transparent' }),
+  'ncLogoGmail': h(NcLogoGmail, { stroke: 'transparent' }),
+  'ncLogoGoogleDriveColored': h(NcLogoGoogleDriveColored, { stroke: 'transparent' }),
+  'ncLogoGoogleDrive': h(NcLogoGoogleDrive, { stroke: 'transparent' }),
+  'ncLogoGreenhouseColored': h(NcLogoGreenhouseColored, { stroke: 'transparent' }),
+  'ncLogoGoogleMapColored': h(NcLogoGoogleMapColored, { stroke: 'transparent' }),
+  'ncLogoOpenStreetMapColored': h(NcLogoOpenStreetMapColored, { stroke: 'transparent' }),
+  'ncLogoGreenhouse': h(NcLogoGreenhouse, { stroke: 'transparent' }),
+  'ncLogoGroqAiColored': h(NcLogoGroqAiColored, { stroke: 'transparent' }),
+  'ncLogoGroqAi': h(NcLogoGroqAi, { stroke: 'transparent' }),
+  'ncLogoHubspotColored': h(NcLogoHubspotColored, { stroke: 'transparent' }),
+  'ncLogoHubspot': h(NcLogoHubspot, { stroke: 'transparent' }),
+  'ncLogoInstagramColored': h(NcLogoInstagramColored, { stroke: 'transparent' }),
+  'ncLogoIntercomColored': h(NcLogoIntercomColored, { stroke: 'transparent' }),
+  'ncLogoIntercom': h(NcLogoIntercom, { stroke: 'transparent' }),
+  'ncLogoJiraColored': h(NcLogoJiraColored, { stroke: 'transparent' }),
+  'ncLogoJira': h(NcLogoJira, { stroke: 'transparent' }),
+  'ncLogoLeverColored': h(NcLogoLeverColored, { stroke: 'transparent' }),
+  'ncLogoLever': h(NcLogoLever, { stroke: 'transparent' }),
+  'ncLogoLinkedinColored': h(NcLogoLinkedinColored, { stroke: 'transparent' }),
+  'ncLogoMailchimpColored': h(NcLogoMailchimpColored, { stroke: 'transparent' }),
+  'ncLogoMailchimp': h(NcLogoMailchimp, { stroke: 'transparent' }),
+  'ncLogoMiroColored': h(NcLogoMiroColored, { stroke: 'transparent' }),
+  'ncLogoMiro': h(NcLogoMiro, { stroke: 'transparent' }),
+  'ncLogoMondayColored': h(NcLogoMondayColored, { stroke: 'transparent' }),
+  'ncLogoMsDynamicsColored': h(NcLogoMsDynamicsColored, { stroke: 'transparent' }),
+  'ncLogoMsDynamics': h(NcLogoMsDynamics, { stroke: 'transparent' }),
+  'ncLogoOllamaColored': h(NcLogoOllamaColored, { stroke: 'transparent' }),
+  'ncLogoOllama': h(NcLogoOllama, { stroke: 'transparent' }),
+  'ncLogoOpenAiColored': h(NcLogoOpenAiColored, { stroke: 'transparent' }),
+  'ncLogoOpenAi': h(NcLogoOpenAi, { stroke: 'transparent' }),
+  'ncLogoOutlookColored': h(NcLogoOutlookColored, { stroke: 'transparent' }),
+  'ncLogoOutlook': h(NcLogoOutlook, { stroke: 'transparent' }),
+  'ncLogoPipedriveColored': h(NcLogoPipedriveColored, { stroke: 'transparent' }),
+  'ncLogoPipedrive': h(NcLogoPipedrive, { stroke: 'transparent' }),
+  'ncLogoQuickbooksColored': h(NcLogoQuickbooksColored, { stroke: 'transparent' }),
+  'ncLogoQuickbooks': h(NcLogoQuickbooks, { stroke: 'transparent' }),
+  'ncLogoSalesforceColored': h(NcLogoSalesforceColored, { stroke: 'transparent' }),
+  'ncLogoSalesforce': h(NcLogoSalesforce, { stroke: 'transparent' }),
+  'ncLogoSlackColored': h(NcLogoSlackColored, { stroke: 'transparent' }),
+  'ncLogoSlack': h(NcLogoSlack, { stroke: 'transparent' }),
+  'ncLogoStripeColored': h(NcLogoStripeColored, { stroke: 'transparent' }),
+  'ncLogoStripe': h(NcLogoStripe, { stroke: 'transparent' }),
+  'ncLogoSurveyMonkeyColored': h(NcLogoSurveyMonkeyColored, { stroke: 'transparent' }),
+  'ncLogoSurveyMonkey': h(NcLogoSurveyMonkey, { stroke: 'transparent' }),
+  'ncLogoTeamsColored': h(NcLogoTeamsColored, { stroke: 'transparent' }),
+  'ncLogoTeams': h(NcLogoTeams, { stroke: 'transparent' }),
+  'ncLogoTelegramColored': h(NcLogoTelegramColored, { stroke: 'transparent' }),
+  'ncLogoTelegram': h(NcLogoTelegram, { stroke: 'transparent' }),
+  'ncLogoTrelloColored': h(NcLogoTrelloColored, { stroke: 'transparent' }),
+  'ncLogoTrello': h(NcLogoTrello, { stroke: 'transparent' }),
+  'ncLogoTwilioColored': h(NcLogoTwilioColored, { stroke: 'transparent' }),
+  'ncLogoTwilio': h(NcLogoTwilio, { stroke: 'transparent' }),
+  'ncLogoTwitchColored': h(NcLogoTwitchColored, { stroke: 'transparent' }),
+  'ncLogoTwitch': h(NcLogoTwitch, { stroke: 'transparent' }),
+  'ncLogoTwitterColored': h(NcLogoTwitterColored, { stroke: 'transparent' }),
+  'ncLogoTwitter': h(NcLogoTwitter, { stroke: 'transparent' }),
+  'ncLogoTypeformColored': h(NcLogoTypeformColored, { stroke: 'transparent' }),
+  'ncLogoTypeform': h(NcLogoTypeform, { stroke: 'transparent' }),
+  'ncLogoWhatsappColored': h(NcLogoWhatsappColored, { stroke: 'transparent' }),
+  'ncLogoWhatsapp': h(NcLogoWhatsapp, { stroke: 'transparent' }),
+  'ncLogoWorkdayColored': h(NcLogoWorkdayColored, { stroke: 'transparent' }),
+  'ncLogoWorkdayColoredOutline': h(NcLogoWorkdayColoredOutline, { stroke: 'transparent' }),
+  'ncLogoWorkday': h(NcLogoWorkday, { stroke: 'transparent' }),
+  'ncLogoZendeskColored': h(NcLogoZendeskColored, { stroke: 'transparent' }),
+  'ncLogoZendesk': h(NcLogoZendesk, { stroke: 'transparent' }),
+  'ncLogoZohoColored': h(NcLogoZohoColored, { stroke: 'transparent' }),
+  'ncLogoZoho': h(NcLogoZoho, { stroke: 'transparent' }),
+  'ncLogoBaserowColored': h(NcLogoBaserowColored, { stroke: 'transparent' }),
+  'ncLogoSoftrColored': h(NcLogoSoftrColored, { stroke: 'transparent' }),
+  'ncLogoNotionColored': h(NcLogoNotionColored, { stroke: 'transparent' }),
+  'ncLogoCodaColored': h(NcLogoCodaColored, { stroke: 'transparent' }),
+  'ncLogoRetoolColored': h(NcLogoRetoolColored, { stroke: 'transparent' }),
+  'ncLogoN8nColored': h(NcLogoN8nColored, { stroke: 'transparent' }),
+  'ncLogoZapierColored': h(NcLogoZapierColored, { stroke: 'transparent' }),
+  'ncLogoMakeColored': h(NcLogoMakeColored, { stroke: 'transparent' }),
+  'ncLogoCrewAi': h(NcLogoCrewAi, { stroke: 'transparent' }),
+  'ncLogoManusIm': h(NcLogoManusIm, { stroke: 'transparent' }),
+  'ncLogoHuggingface': h(NcLogoHuggingface, { stroke: 'transparent' }),
+  'ncLogoReplitAi': h(NcLogoReplitAi, { stroke: 'transparent' }),
+  'ncLogoLangchain': h(NcLogoLangchain, { stroke: 'transparent' }),
+  'ncLogoBambooHrColored': h(NcLogoBambooHrColored, { stroke: 'transparent' }),
+  'ncLogoDockerColored': h(NcLogoDockerColored, { stroke: 'transparent' }),
+  'ncLogoHootsuiteColored': h(NcLogoHootsuiteColored, { stroke: 'transparent' }),
+  'ncLogoGongColored': h(NcLogoGongColored, { stroke: 'transparent' }),
+  'ncLogoProductBoardColored': h(NcLogoProductBoardColored, { stroke: 'transparent' }),
+  'ncLogoXeroColored': h(NcLogoXeroColored, { stroke: 'transparent' }),
+  'ncLogoSketchColored': h(NcLogoSketchColored, { stroke: 'transparent' }),
+  'ncLogoLookerColored': h(NcLogoLookerColored, { stroke: 'transparent' }),
+  'ncLogoPowerLogoColored': h(NcLogoPowerLogoColored, { stroke: 'transparent' }),
+  'ncLogoClickupColored': h(NcLogoClickupColored, { stroke: 'transparent' }),
+
+  'ncSendAlt': h(NcSendAlt, { stroke: 'transparent' }),
+  'ncSendHorizontal': NcSendHorizontal,
+  'ncStopCircle': h(NcStopCircle, { stroke: 'transparent' }),
+  'ncAiPlay': AiPlayIcon,
+  'ncPaintRoller': NcPaintRoller,
+  'ncConditions': NcConditions,
+  'mdi-check-bold': MdiNcCropSquare,
+  'mdi-crop-square': MdiNcCheckBold,
+  'mdi-check-circle-outline': MdiNcCheckCircleOutline,
+  'mdi-checkbox-blank-circle-outline': MdiNcCheckboxBlankCircleOutline,
+  'mdi-star': MdiNcStar,
+  'mdi-star-outline': MdiNcStarOutline,
+  'mdi-heart': MdiNcHeart,
+  'mdi-heart-outline': MdiNcHeartOutline,
+  'mdi-moon-full': MdiNcMoonFull,
+  'mdi-moon-new': MdiNcMoonNew,
+  'mdi-thumb-up': MdiNcThumbUp,
+  'mdi-thumb-up-outline': MdiNcThumbUpOutline,
+  'mdi-flag': MdiNcFlag,
+  'mdi-flag-outline': MdiNcFlagOutline,
+  'sso': MdiCloudKeyOutline,
+  'mcp': NcMCP,
+  'ncBaseOutline': NcBaseOutline,
+  'ncBasePrivate': NcBasePrivate,
+  'ncBaseOutlineDuo': NcBaseOutlineDuo,
+  'ncSearchDuo': NcSearchDuo,
+  'ncSettingsDuo': NcSettingsDuo,
+  'ncIntegrationDuo': NcIntegrationDuo,
+  'ncMegaPhoneDuo': NcMegaPhoneDuo,
+  'ncNotificationDuo': NcNotificationDuo,
+  'ncLayout': NcLayout,
+  'ncPlusCircleSolid': h(NcPlusCircleSolid, { stroke: 'transparent' }),
+  'ncDiscordForum': NcDiscordForum,
+  'ncHeadphone': NcHeadphone,
+  'ncCrown': NcCrown,
+  'ncMultiCircle': NcMultiCircle,
+  'ncChartScatterPlot': h(NcChartScatterPlot, { stroke: 'transparent' }),
+  'ncChartBar': h(NcChartBar, { stroke: 'transparent' }),
+  'ncChartLine': h(NcChartLine, { stroke: 'transparent' }),
+  'ncChartDonut': h(NcChartDonut, { stroke: 'transparent' }),
+  'ncChartPie': h(NcChartPie, { stroke: 'transparent' }),
+  'ncGaugeWidget': h(NcGaugeWidget, { stroke: 'transparent' }),
+  'ncSun': NcSun,
+  'ncSunMoon': NcSunMoon,
+  'ncGraduationCap': NcGraduationCap,
+  'ncSupportAgent': h(NcSupportAgent, { stroke: 'transparent' }),
+  'ncBuilding': NcBuilding,
+  'ncRecordCreate': NcRecordCreate,
+  'ncRecordUpdate': NcRecordUpdate,
+  'ncRecordDelete': NcRecordDelete,
+  'ncRecordFind': NcAuditNew,
+  'ncFormResponse': NcFormResponse,
+  'ncIfElse': NcIfElse,
+  'ncRecordEntersView': NcRecordEntersView,
+  'ncExtUrlPreviewEmptyState': h(NcExtUrlPreviewEmptyState, { stroke: 'transparent' }),
+  'ncClipboardType': NcClipboardType,
+  'ncKeyboard': NcKeyboardIcon,
 }
 
 export const getMdiIcon = (type: string): any => {
@@ -2867,6 +3411,9 @@ export const emojiIcons = [
   'globe-with-meridians',
 ]
 
+/**
+ * keywords - add proper keywords which align with the icon name
+ */
 export const searchableMap = {
   ncColumns: { icon: NcColumnsIcon, keywords: ['Grid', 'Layout', 'Structure', 'Organization', 'Architecture'] },
   ncUnderline: { icon: NcUnderlineIcon, keywords: ['text', 'formatting', 'highlight', 'emphasis', 'typography'] },
@@ -2880,7 +3427,9 @@ export const searchableMap = {
   ncArrowDown2: { icon: NcArrowDownIcon, keywords: ['down', 'arrow', 'direction', 'navigation', 'dropdown'] },
   ncCornerRightUp: { icon: NcCornerRightUpIcon, keywords: ['Arrow', 'Direction', 'Navigation', 'Pointer', 'Upward'] },
   ncChevronsRight: { icon: NcChevronsRightIcon, keywords: ['next', 'forward', 'arrow', 'direction', 'navigation'] },
-  ncList: { icon: NcListIcon, keywords: ['menu', 'catalog', 'index', 'directory', 'checklist'] },
+  ncList: { icon: NcListIcon, keywords: ['menu', 'catalog', 'index', 'directory', 'checklist', 'bulletlist'] },
+  ncNumberList: { icon: NcNumberListIcon, keywords: ['menu', 'catalog', 'index', 'directory', 'numberlist'] },
+  ncCheckList: { icon: NcCheckListIcon, keywords: ['menu', 'catalog', 'index', 'directory', 'checklist'] },
   ncChevronsDown: { icon: NcChevronsDownIcon, keywords: ['down', 'arrow', 'chevron', 'direction', 'expand'] },
   ncCornerUpRight: { icon: NcCornerUpRightIcon, keywords: ['Arrow', 'Direction', 'Navigation', 'Pointer', 'Upward'] },
   ncTarget: { icon: NcTargetIcon, keywords: ['Aim', 'Bullseye', 'Goal', 'Focus', 'Precision'] },
@@ -3166,6 +3715,10 @@ export const searchableMap = {
     icon: NcCodeIcon,
     keywords: ['programming', 'development', 'coding', 'software', 'script'],
   },
+  ncCodeBlock: {
+    icon: NcCodeBlockIcon,
+    keywords: ['programming', 'development', 'coding', 'software', 'script'],
+  },
   ncCast: {
     icon: NcCastIcon,
     keywords: ['Chromecast', 'streaming', 'media', 'broadcast', 'television'],
@@ -3426,6 +3979,10 @@ export const searchableMap = {
     icon: NcAlertCircleIcon,
     keywords: ['Warning', 'Notification', 'Caution', 'Error', 'Alert'],
   },
+  ncAlertCircleFilled: {
+    icon: NcAlertCircleFilledIcon,
+    keywords: ['Warning', 'Notification', 'Caution', 'Error', 'Alert'],
+  },
   ncChevronsUp: {
     icon: NcChevronsUpIcon,
     keywords: ['Up arrow', 'Increase', 'Expand', 'Rise', 'Ascend'],
@@ -3439,7 +3996,7 @@ export const searchableMap = {
     keywords: ['video', 'social media', 'streaming', 'entertainment', 'online'],
   },
   ncUnlock: {
-    icon: NcUnlockIcon,
+    icon: h(NcUnlockIcon, { stroke: 'transparent' }),
     keywords: ['password', 'security', 'access', 'open', 'authorization'],
   },
   ncCompass: {
@@ -3502,6 +4059,14 @@ export const searchableMap = {
     icon: NcZapIcon,
     keywords: ['Lightning', 'Electricity', 'Energy', 'Shock', 'Bolt'],
   },
+  ncAgent: {
+    icon: h(NcAgentIcon, { stroke: 'transparent' }),
+    keywords: ['Robot', 'Agent', 'AI', 'Bot', 'Automation'],
+  },
+  ncTable: {
+    icon: h(NcTableIcon, { stroke: 'transparent' }),
+    keywords: ['Table', 'Grid', 'Data', 'Spreadsheet', 'Database'],
+  },
   ncMoreVertical: {
     icon: NcMoreVerticalIcon,
     keywords: ['dots', 'menu', 'vertical', 'ellipsis', 'options'],
@@ -3517,6 +4082,10 @@ export const searchableMap = {
   ncArrowUp: {
     icon: NcArrowUpIcon,
     keywords: ['Up', 'Direction', 'Navigation', 'Ascending', 'Increase'],
+  },
+  ncArrowUpDown: {
+    icon: NcArrowUpDownIcon,
+    keywords: ['Sort', 'Up', 'Down', 'Arrow', 'Reorder', 'Swap'],
   },
   ncBellOff: {
     icon: NcBellOffIcon,
@@ -3537,6 +4106,14 @@ export const searchableMap = {
   ncMapPin: {
     icon: NcMapPinIcon,
     keywords: ['location', 'navigation', 'marker', 'geography', 'pinpoint'],
+  },
+  ncPin: {
+    icon: NcPinIcon,
+    keywords: ['pin', 'attach', 'stick', 'thumbtack', 'pushpin'],
+  },
+  ncPinOff: {
+    icon: NcPinOffIcon,
+    keywords: ['unpin', 'detach', 'remove pin', 'unstick'],
   },
   ncFilter: {
     icon: NcFilterIcon,
@@ -3646,6 +4223,14 @@ export const searchableMap = {
     icon: NcFolderIcon,
     keywords: ['directory', 'file', 'storage', 'organize', 'documents'],
   },
+  ncFolderClosed: {
+    icon: NcFolderClosedIcon,
+    keywords: ['directory', 'file', 'storage', 'organize', 'collapsed'],
+  },
+  ncFolderOpen: {
+    icon: NcFolderOpenIcon,
+    keywords: ['directory', 'file', 'storage', 'organize', 'expanded'],
+  },
   ncUsers: {
     icon: NcUsersIcon,
     keywords: ['people', 'profiles', 'accounts', 'members', 'team'],
@@ -3698,6 +4283,441 @@ export const searchableMap = {
     icon: NcTrendingUpIcon,
     keywords: ['Growth', 'Increase', 'Success', 'Chart', 'Upward'],
   },
+  ncAutoAwesome: {
+    icon: h(NcAutoAwesome, { stroke: 'transparent' }),
+    keywords: ['Magic', 'ai', 'autoAwesome', 'awesome'],
+  },
+  ncHeading1: {
+    icon: NcHeading1,
+    keywords: ['heading', 'h1'],
+  },
+  ncHeading2: {
+    icon: NcHeading2,
+    keywords: ['heading', 'h2'],
+  },
+  ncHeading3: {
+    icon: NcHeading3,
+    keywords: ['heading', 'h3'],
+  },
+  ncQuote: {
+    icon: NcQuote,
+    keywords: ['quotes'],
+  },
+  ncFileSearch: {
+    icon: h(NcFileSearch, { stroke: 'transparent' }),
+    keywords: ['search', 'file', 'document'],
+  },
+  ncWebhook: {
+    icon: NcWebhook,
+    keywords: ['webhook'],
+  },
+  ncLogoAsana: {
+    icon: h(NcLogoAsana, { stroke: 'transparent' }),
+    keywords: ['project management', 'task tracking', 'collaboration', 'productivity', 'workflows'],
+  },
+  ncLogoBitbucket: {
+    icon: h(NcLogoBitbucket, { stroke: 'transparent' }),
+    keywords: ['git', 'version control', 'code repository', 'devops', 'collaboration'],
+  },
+  ncLogoBoxLogo: {
+    icon: h(NcLogoBoxLogo, { stroke: 'transparent' }),
+    keywords: ['cloud storage', 'file sharing', 'collaboration', 'document management', 'storage'],
+  },
+  ncLogoClaudeAi: {
+    icon: h(NcLogoClaudeAi, { stroke: 'transparent' }),
+    keywords: ['ai assistant', 'natural language', 'chatbot', 'anthropic', 'artificial intelligence'],
+  },
+  ncLogoDiscord: {
+    icon: h(NcLogoDiscord, { stroke: 'transparent' }),
+    keywords: ['chat', 'communication', 'community', 'voice chat', 'messaging'],
+  },
+  ncLogoDropbox: {
+    icon: h(NcLogoDropbox, { stroke: 'transparent' }),
+    keywords: ['cloud storage', 'file sharing', 'backup', 'sync', 'collaboration'],
+  },
+  ncLogoFacebook: {
+    icon: h(NcLogoFacebook, { stroke: 'transparent' }),
+    keywords: ['social media', 'networking', 'communication', 'marketing', 'meta'],
+  },
+  ncLogoFigma: {
+    icon: h(NcLogoFigma, { stroke: 'transparent' }),
+    keywords: ['design', 'ui/ux', 'collaboration', 'prototyping', 'interface'],
+  },
+  ncLogoFramer: {
+    icon: h(NcLogoFramer, { stroke: 'transparent' }),
+    keywords: ['prototyping', 'animation', 'design', 'interface', 'web design'],
+  },
+  ncLogoFreshdesk: {
+    icon: h(NcLogoFreshdesk, { stroke: 'transparent' }),
+    keywords: ['customer support', 'helpdesk', 'ticketing', 'service desk', 'support'],
+  },
+  ncLogoGeminiAi: {
+    icon: h(NcLogoGeminiAi, { stroke: 'transparent' }),
+    keywords: ['ai', 'machine learning', 'google ai', 'artificial intelligence', 'language model'],
+  },
+  ncLogoGmail: {
+    icon: h(NcLogoGmail, { stroke: 'transparent' }),
+    keywords: ['email', 'communication', 'google', 'messaging', 'mail'],
+  },
+  ncLogoGoogleDrive: {
+    icon: h(NcLogoGoogleDrive, { stroke: 'transparent' }),
+    keywords: ['cloud storage', 'file sharing', 'collaboration', 'google', 'documents'],
+  },
+  ncLogoGreenhouse: {
+    icon: h(NcLogoGreenhouse, { stroke: 'transparent' }),
+    keywords: ['recruiting', 'hiring', 'ats', 'talent', 'hr'],
+  },
+  ncLogoGroqAi: {
+    icon: h(NcLogoGroqAi, { stroke: 'transparent' }),
+    keywords: ['ai', 'machine learning', 'inference', 'artificial intelligence', 'compute'],
+  },
+  ncLogoHubspot: {
+    icon: h(NcLogoHubspot, { stroke: 'transparent' }),
+    keywords: ['crm', 'marketing', 'sales', 'customer service', 'automation'],
+  },
+  ncLogoIntercom: {
+    icon: h(NcLogoIntercom, { stroke: 'transparent' }),
+    keywords: ['customer messaging', 'support', 'chat', 'engagement', 'communication'],
+  },
+  ncLogoJira: {
+    icon: h(NcLogoJira, { stroke: 'transparent' }),
+    keywords: ['project management', 'agile', 'issue tracking', 'workflow', 'atlassian'],
+  },
+  ncLogoLever: {
+    icon: h(NcLogoLever, { stroke: 'transparent' }),
+    keywords: ['recruiting', 'hiring', 'talent acquisition', 'ats', 'hr'],
+  },
+  ncLogoMailchimp: {
+    icon: h(NcLogoMailchimp, { stroke: 'transparent' }),
+    keywords: ['email marketing', 'automation', 'campaigns', 'newsletters', 'crm'],
+  },
+  ncLogoMiro: {
+    icon: h(NcLogoMiro, { stroke: 'transparent' }),
+    keywords: ['whiteboard', 'collaboration', 'brainstorming', 'visual', 'planning'],
+  },
+  ncLogoMsDynamics: {
+    icon: h(NcLogoMsDynamics, { stroke: 'transparent' }),
+    keywords: ['crm', 'erp', 'business software', 'microsoft', 'enterprise'],
+  },
+  ncLogoOllama: {
+    icon: h(NcLogoOllama, { stroke: 'transparent' }),
+    keywords: ['ai', 'local models', 'machine learning', 'llm', 'artificial intelligence'],
+  },
+  ncLogoOpenAi: {
+    icon: h(NcLogoOpenAi, { stroke: 'transparent' }),
+    keywords: ['ai', 'gpt', 'machine learning', 'chatgpt', 'artificial intelligence'],
+  },
+  ncLogoOutlook: {
+    icon: h(NcLogoOutlook, { stroke: 'transparent' }),
+    keywords: ['email', 'calendar', 'microsoft', 'communication', 'scheduling'],
+  },
+  ncLogoPipedrive: {
+    icon: h(NcLogoPipedrive, { stroke: 'transparent' }),
+    keywords: ['crm', 'sales', 'pipeline', 'lead management', 'deals'],
+  },
+  ncLogoQuickbooks: {
+    icon: h(NcLogoQuickbooks, { stroke: 'transparent' }),
+    keywords: ['accounting', 'bookkeeping', 'finance', 'invoicing', 'payroll'],
+  },
+  ncLogoSalesforce: {
+    icon: h(NcLogoSalesforce, { stroke: 'transparent' }),
+    keywords: ['crm', 'sales', 'customer service', 'cloud', 'enterprise'],
+  },
+  ncLogoSlack: {
+    icon: h(NcLogoSlack, { stroke: 'transparent' }),
+    keywords: ['chat', 'communication', 'collaboration', 'messaging', 'teams'],
+  },
+  ncLogoStripe: {
+    icon: h(NcLogoStripe, { stroke: 'transparent' }),
+    keywords: ['payments', 'billing', 'ecommerce', 'financial', 'processing'],
+  },
+  ncLogoSurveyMonkey: {
+    icon: h(NcLogoSurveyMonkey, { stroke: 'transparent' }),
+    keywords: ['surveys', 'feedback', 'forms', 'research', 'data collection'],
+  },
+  ncLogoTeams: {
+    icon: h(NcLogoTeams, { stroke: 'transparent' }),
+    keywords: ['communication', 'collaboration', 'microsoft', 'chat', 'video conferencing'],
+  },
+  ncLogoTelegram: {
+    icon: h(NcLogoTelegram, { stroke: 'transparent' }),
+    keywords: ['messaging', 'chat', 'communication', 'social', 'instant messaging'],
+  },
+  ncLogoTrello: {
+    icon: h(NcLogoTrello, { stroke: 'transparent' }),
+    keywords: ['project management', 'kanban', 'tasks', 'collaboration', 'organization'],
+  },
+  ncLogoTwilio: {
+    icon: h(NcLogoTwilio, { stroke: 'transparent' }),
+    keywords: ['communications', 'sms', 'voice', 'api', 'messaging'],
+  },
+  ncLogoTwitch: {
+    icon: h(NcLogoTwitch, { stroke: 'transparent' }),
+    keywords: ['streaming', 'gaming', 'live content', 'entertainment', 'video'],
+  },
+  ncLogoTwitter: {
+    icon: h(NcLogoTwitter, { stroke: 'transparent' }),
+    keywords: ['social media', 'microblogging', 'news', 'communication', 'x'],
+  },
+  ncLogoTypeform: {
+    icon: h(NcLogoTypeform, { stroke: 'transparent' }),
+    keywords: ['forms', 'surveys', 'feedback', 'data collection', 'questionnaire'],
+  },
+  ncLogoWhatsapp: {
+    icon: h(NcLogoWhatsapp, { stroke: 'transparent' }),
+    keywords: ['messaging', 'chat', 'communication', 'social', 'mobile'],
+  },
+  ncLogoWorkday: {
+    icon: h(NcLogoWorkday, { stroke: 'transparent' }),
+    keywords: ['hr', 'finance', 'enterprise', 'hcm', 'management'],
+  },
+  ncLogoZendesk: {
+    icon: h(NcLogoZendesk, { stroke: 'transparent' }),
+    keywords: ['customer service', 'support', 'helpdesk', 'ticketing', 'crm'],
+  },
+  ncLogoZoho: {
+    icon: h(NcLogoZoho, { stroke: 'transparent' }),
+    keywords: ['crm', 'business apps', 'collaboration', 'productivity', 'enterprise'],
+  },
+  ncLogoBaserowColored: {
+    icon: h(NcLogoBaserowColored, { stroke: 'transparent' }),
+    keywords: ['baserow', 'nocode', 'database', 'table', 'collaboration', 'open-source'],
+  },
+  ncLogoSoftrColored: {
+    icon: h(NcLogoSoftrColored, { stroke: 'transparent' }),
+    keywords: ['softr', 'nocode', 'website', 'app', 'frontend', 'builder'],
+  },
+  ncLogoNotionColored: {
+    icon: h(NcLogoNotionColored, { stroke: 'transparent' }),
+    keywords: ['notion', 'docs', 'wiki', 'notes', 'productivity', 'database', 'collaboration'],
+  },
+  ncLogoCodaColored: {
+    icon: h(NcLogoCodaColored, { stroke: 'transparent' }),
+    keywords: ['coda', 'docs', 'automation', 'spreadsheet', 'teamwork', 'collaboration'],
+  },
+  ncLogoRetoolColored: {
+    icon: h(NcLogoRetoolColored, { stroke: 'transparent' }),
+    keywords: ['retool', 'internal-tools', 'builder', 'frontend', 'admin', 'dashboard', 'crud'],
+  },
+  ncLogoN8nColored: {
+    icon: h(NcLogoN8nColored, { stroke: 'transparent' }),
+    keywords: ['n8n', 'workflow', 'automation', 'integration', 'open-source', 'pipeline'],
+  },
+  ncLogoZapierColored: {
+    icon: h(NcLogoZapierColored, { stroke: 'transparent' }),
+    keywords: ['zapier', 'automation', 'integration', 'workflow', 'task', 'connect'],
+  },
+  ncLogoMakeColored: {
+    icon: h(NcLogoMakeColored, { stroke: 'transparent' }),
+    keywords: ['make', 'automation', 'workflow', 'integration', 'connect', 'nocode'],
+  },
+  ncLogoCrewAi: {
+    icon: h(NcLogoCrewAi, { stroke: 'transparent' }),
+    keywords: [
+      'crew',
+      'crew.ai',
+      'workflow automation',
+      'AI agents',
+      'team collaboration',
+      'autonomous agents',
+      'ai',
+      'nocode',
+      'integration',
+    ],
+  },
+  ncLogoManusIm: {
+    icon: h(NcLogoManusIm, { stroke: 'transparent' }),
+    keywords: [
+      'manus',
+      'manus.im',
+      'automation',
+      'AI workflows',
+      'business automation',
+      'nocode',
+      'workflow builder',
+      'integration',
+    ],
+  },
+  ncLogoHuggingface: {
+    icon: h(NcLogoHuggingface, { stroke: 'transparent' }),
+    keywords: [
+      'huggingface',
+      'transformers',
+      'nlp',
+      'ai models',
+      'ml',
+      'machine learning',
+      'text generation',
+      'open source',
+      'integration',
+    ],
+  },
+  ncLogoReplitAi: {
+    icon: h(NcLogoReplitAi, { stroke: 'transparent' }),
+    keywords: [
+      'replit',
+      'replit.ai',
+      'code',
+      'cloud IDE',
+      'developer tools',
+      'generative AI',
+      'ai coding',
+      'automation',
+      'nocode',
+      'integration',
+    ],
+  },
+  ncLogoLangchain: {
+    icon: h(NcLogoLangchain, { stroke: 'transparent' }),
+    keywords: [
+      'langchain',
+      'ai agents',
+      'llm orchestration',
+      'prompt chaining',
+      'generative AI',
+      'framework',
+      'openai',
+      'rag',
+      'nocode',
+      'workflow',
+      'integration',
+    ],
+  },
+  ncLogoBambooHrColored: {
+    icon: h(NcLogoBambooHrColored, { stroke: 'transparent' }),
+    keywords: [
+      'bamboohr',
+      'hr software',
+      'human resources',
+      'employee management',
+      'performance',
+      'time tracking',
+      'hr automation',
+      'workflow',
+      'integration',
+    ],
+  },
+  ncLogoDockerColored: {
+    icon: h(NcLogoDockerColored, { stroke: 'transparent' }),
+    keywords: ['docker', 'containerization', 'devops', 'cloud', 'infrastructure'],
+  },
+  ncLogoHootsuiteColored: {
+    icon: h(NcLogoHootsuiteColored, { stroke: 'transparent' }),
+    keywords: ['hootsuite', 'social', 'marketing', 'automation'],
+  },
+  ncLogoGongColored: {
+    icon: h(NcLogoGongColored, { stroke: 'transparent' }),
+    keywords: ['gong', 'revenue', 'analytics', 'sales'],
+  },
+  ncLogoProductBoardColored: {
+    icon: h(NcLogoProductBoardColored, { stroke: 'transparent' }),
+    keywords: ['productboard', 'roadmap', 'feedback', 'planning'],
+  },
+  ncLogoXeroColored: {
+    icon: h(NcLogoXeroColored, { stroke: 'transparent' }),
+    keywords: ['xero', 'accounting', 'finance', 'invoicing'],
+  },
+  ncLogoSketchColored: {
+    icon: h(NcLogoSketchColored, { stroke: 'transparent' }),
+    keywords: ['sketch', 'design', 'ui', 'prototype'],
+  },
+  ncLogoLookerColored: {
+    icon: h(NcLogoLookerColored, { stroke: 'transparent' }),
+    keywords: ['looker', 'analytics', 'data', 'visualization'],
+  },
+  ncLogoPowerLogoColored: {
+    icon: h(NcLogoPowerLogoColored, { stroke: 'transparent' }),
+    keywords: ['power', 'design', 'logo', 'branding'],
+  },
+  ncLogoClickupColored: {
+    icon: h(NcLogoClickupColored, { stroke: 'transparent' }),
+    keywords: ['clickup', 'tasks', 'collaboration', 'productivity'],
+  },
+
+  ncBaseOutline: {
+    icon: NcBaseOutline,
+    keywords: ['base', 'database', 'storage', 'db'],
+  },
+  ncBasePrivate: {
+    icon: NcBasePrivate,
+    keywords: ['base', 'database', 'storage', 'db', 'private', 'locked', 'secure'],
+  },
+  ncBaseOutlineDuo: {
+    icon: NcBaseOutlineDuo,
+    keywords: ['base', 'database', 'storage', 'db'],
+  },
+  ncSearchDuo: {
+    icon: NcSearchDuo,
+    keywords: ['search'],
+  },
+  ncSettingsDuo: {
+    icon: NcSettingsDuo,
+    keywords: ['settings'],
+  },
+  ncIntegrationDuo: {
+    icon: NcIntegrationDuo,
+    keywords: ['integration', 'settings'],
+  },
+  ncMegaPhoneDuo: {
+    icon: NcMegaPhoneDuo,
+    keywords: ['megaphone', 'horn'],
+  },
+  ncNotificationDuo: {
+    icon: NcNotificationDuo,
+    keywords: ['notification', 'bell'],
+  },
+  ncLayout: {
+    icon: NcLayout,
+    keywords: ['layout', 'table'],
+  },
+  ncHeadphone: {
+    icon: NcHeadphone,
+    keywords: ['headphone', 'call'],
+  },
+  ncPaintRoller: {
+    icon: NcPaintRoller,
+    keywords: ['paint', 'roller', 'color', 'paintbrush'],
+  },
+  ncConditions: {
+    icon: NcConditions,
+    keywords: ['conditions', 'filter', 'rule'],
+  },
+  ncCrown: {
+    icon: NcCrown,
+    keywords: ['crown', 'badge', 'award', 'achievement', 'honor', 'paid'],
+  },
+  ncMultiCircle: {
+    icon: NcMultiCircle,
+    keywords: ['multi', 'circle', 'multi-circle', 'multi-circle-outline'],
+  },
+  ncSun: {
+    icon: NcSun,
+    keywords: ['sun', 'sunny', 'weather', 'light', 'day', 'morning', 'summer', 'warm', 'warmth'],
+  },
+  ncSunMoon: {
+    icon: NcSunMoon,
+    keywords: ['sun', 'moon', 'dark', 'light', 'theme', 'auto theme', 'system theme', 'appearance'],
+  },
+  ncGraduationCap: {
+    icon: NcGraduationCap,
+    keywords: ['graduation', 'cap', 'school', 'education', 'academic'],
+  },
+  ncSupportAgent: {
+    icon: h(NcSupportAgent, { stroke: 'transparent' }),
+    keywords: ['support', 'agent', 'help', 'customer', 'service'],
+  },
+  ncBuilding: {
+    icon: NcBuilding,
+    keywords: ['building', 'office', 'building-outline'],
+  },
+  ncClipboardType: {
+    icon: NcClipboardType,
+    keywords: ['clipboard', 'type', 'copy', 'paste'],
+  },
+  ncKeyboard: {
+    icon: NcKeyboardIcon,
+    keywords: ['keyboard', 'type', 'input', 'keys', 'shortcut'],
+  },
 }
 
 export const searchIcons = (searchTerm: string) => {
@@ -3724,3 +4744,5 @@ export const searchIcons = (searchTerm: string) => {
       keywords: iconData.keywords,
     }))
 }
+
+export type IconMapKey = keyof typeof iconMap

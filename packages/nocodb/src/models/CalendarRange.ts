@@ -43,16 +43,19 @@ export default class CalendarRange implements CalendarRangeType {
     );
 
     await NocoCache.deepDel(
+      context,
       `${CacheScope.CALENDAR_VIEW_RANGE}:${insertData.fk_view_id}:list`,
       CacheDelDirection.PARENT_TO_CHILD,
     );
 
     await NocoCache.set(
+      context,
       `${CacheScope.CALENDAR_VIEW_RANGE}:${insertData.id}`,
       insertData,
     );
 
     await NocoCache.appendToList(
+      context,
       CacheScope.CALENDAR_VIEW_RANGE,
       [insertData.fk_view_id],
       `${CacheScope.CALENDAR_VIEW_RANGE}:${insertData.id}`,
@@ -66,9 +69,11 @@ export default class CalendarRange implements CalendarRangeType {
     fk_view_id: string,
     ncMeta = Noco.ncMeta,
   ) {
-    const cachedList = await NocoCache.getList(CacheScope.CALENDAR_VIEW_RANGE, [
-      fk_view_id,
-    ]);
+    const cachedList = await NocoCache.getList(
+      context,
+      CacheScope.CALENDAR_VIEW_RANGE,
+      [fk_view_id],
+    );
     let { list: ranges } = cachedList;
     const { isNoneList } = cachedList;
     if (!isNoneList && !ranges.length) {
@@ -79,6 +84,7 @@ export default class CalendarRange implements CalendarRangeType {
         { condition: { fk_view_id } },
       );
       await NocoCache.setList(
+        context,
         CacheScope.CALENDAR_VIEW_RANGE,
         [fk_view_id],
         ranges.map(({ created_at, updated_at, ...others }) => others),
@@ -92,6 +98,43 @@ export default class CalendarRange implements CalendarRangeType {
           ),
         }
       : null;
+  }
+
+  public static async delete(
+    rangeId: string,
+    context: NcContext,
+    ncMeta = Noco.ncMeta,
+  ) {
+    const range = await ncMeta.metaGet2(
+      context.workspace_id,
+      context.base_id,
+      MetaTable.CALENDAR_VIEW_RANGE,
+      {
+        id: rangeId,
+      },
+    );
+
+    if (!range) return false;
+
+    await ncMeta.metaDelete(
+      context.workspace_id,
+      context.base_id,
+      MetaTable.CALENDAR_VIEW_RANGE,
+      rangeId,
+    );
+
+    await NocoCache.deepDel(
+      context,
+      `${CacheScope.CALENDAR_VIEW_RANGE}:${range.fk_view_id}:list`,
+      CacheDelDirection.PARENT_TO_CHILD,
+    );
+
+    await NocoCache.del(
+      context,
+      `${CacheScope.CALENDAR_VIEW_RANGE}:${rangeId}`,
+    );
+
+    return true;
   }
 
   public static async find(
@@ -116,25 +159,21 @@ export default class CalendarRange implements CalendarRangeType {
     columnId: string,
     ncMeta = Noco.ncMeta,
   ) {
-    return (
-      (
-        await ncMeta.metaList2(
-          context.workspace_id,
-          context.base_id,
-          MetaTable.CALENDAR_VIEW_RANGE,
-          {
-            xcCondition: {
-              _or: [
-                {
-                  fk_from_column_id: {
-                    eq: columnId,
-                  },
-                },
-              ],
+    return await ncMeta.metaList2(
+      context.workspace_id,
+      context.base_id,
+      MetaTable.CALENDAR_VIEW_RANGE,
+      {
+        xcCondition: {
+          _or: [
+            {
+              fk_from_column_id: {
+                eq: columnId,
+              },
             },
-          },
-        )
-      ).length > 0
+          ],
+        },
+      },
     );
   }
 }

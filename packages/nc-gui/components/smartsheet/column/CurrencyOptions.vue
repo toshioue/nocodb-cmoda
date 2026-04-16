@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import { UITypes } from 'nocodb-sdk'
-
-interface Option {
-  label: string
-  value: string
-}
+import { ColumnHelper, UITypes } from 'nocodb-sdk'
 
 const props = defineProps<{
   value: any
@@ -15,6 +10,8 @@ const emit = defineEmits(['update:value'])
 const { t } = useI18n()
 
 const vModel = useVModel(props, 'value', emit)
+
+const precisionFormatsDisplay = makePrecisionFormatsDiplay(t)
 
 const validators = {
   'meta.currency_locale': [
@@ -43,10 +40,15 @@ const validators = {
   ],
 }
 
-const { setAdditionalValidations, validateInfos, isPg } = useColumnCreateStoreOrThrow()
+const { setAdditionalValidations, setAvoidShowingToastMsgForValidations, validateInfos, isPg } = useColumnCreateStoreOrThrow()
 
 setAdditionalValidations({
   ...validators,
+})
+
+setAvoidShowingToastMsgForValidations({
+  'meta.currency_locale': true,
+  'meta.currency_code': true,
 })
 
 const currencyList = currencyCodes || []
@@ -60,19 +62,26 @@ const message = computed(() => {
   return ''
 })
 
-function filterOption(input: string, option: Option) {
-  return option.value.toUpperCase().includes(input.toUpperCase())
+function filterOption(input: string, option: { value: string; key: string }) {
+  return searchCompare([option.value, option.key], input)
 }
 
 // set default value
 vModel.value.meta = {
-  ...columnDefaultMeta[UITypes.Currency],
+  ...ColumnHelper.getColumnDefaultMeta(UITypes.Currency),
   ...(vModel.value.meta || {}),
 }
 
 currencyLocales().then((locales) => {
   currencyLocaleList.value.push(...locales)
 })
+
+// update datatype precision when precision is less than the new value
+// avoid downgrading precision if the new value is less than the current precision
+// to avoid fractional part data loss(eg. 1.2345 -> 1.23)
+const onPrecisionChange = (value: number) => {
+  vModel.value.dtxs = Math.max(value, vModel.value.dtxs)
+}
 </script>
 
 <template>
@@ -87,9 +96,9 @@ currencyLocales().then((locales) => {
           :disabled="isMoney && isPg"
           dropdown-class-name="nc-dropdown-currency-cell-locale"
         >
-          <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-gray-700" /> </template>
+          <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-nc-content-gray-subtle" /> </template>
 
-          <a-select-option v-for="(currencyLocale, i) of currencyLocaleList" :key="i" :value="currencyLocale.value">
+          <a-select-option v-for="currencyLocale of currencyLocaleList" :key="currencyLocale.text" :value="currencyLocale.value">
             <div class="flex gap-2 w-full truncate items-center">
               <NcTooltip show-on-truncate-only class="flex-1 truncate">
                 <template #title>{{ currencyLocale.text }}</template>
@@ -118,7 +127,7 @@ currencyLocales().then((locales) => {
           :disabled="isMoney && isPg"
           dropdown-class-name="nc-dropdown-currency-cell-code"
         >
-          <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-gray-700" /> </template>
+          <template #suffixIcon> <GeneralIcon icon="arrowDown" class="text-nc-content-gray-subtle" /> </template>
 
           <a-select-option v-for="(currencyCode, i) of currencyList" :key="i" :value="currencyCode">
             <div class="flex gap-2 w-full justify-between items-center">
@@ -126,6 +135,33 @@ currencyLocales().then((locales) => {
               <component
                 :is="iconMap.check"
                 v-if="vModel.meta.currency_code === currencyCode"
+                id="nc-selected-item-icon"
+                class="text-primary w-4 h-4"
+              />
+            </div>
+          </a-select-option>
+        </a-select>
+      </a-form-item>
+    </a-col>
+
+    <a-col :span="24" class="mt-4">
+      <a-form-item :label="$t('placeholder.precision')">
+        <a-select
+          v-if="vModel.meta?.precision || vModel.meta?.precision === 0"
+          v-model:value="vModel.meta.precision"
+          :disabled="isMoney && isPg"
+          dropdown-class-name="nc-dropdown-currency-precision-format"
+          @change="onPrecisionChange"
+        >
+          <template #suffixIcon>
+            <GeneralIcon icon="arrowDown" class="text-nc-content-gray-subtle" />
+          </template>
+          <a-select-option v-for="(format, i) of precisionFormats" :key="i" :value="format">
+            <div class="flex gap-2 w-full justify-between items-center">
+              {{ (precisionFormatsDisplay as any)[format] }}
+              <component
+                :is="iconMap.check"
+                v-if="vModel.meta.precision === format"
                 id="nc-selected-item-icon"
                 class="text-primary w-4 h-4"
               />

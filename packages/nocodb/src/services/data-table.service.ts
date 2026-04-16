@@ -1,19 +1,31 @@
-import { Injectable } from '@nestjs/common';
-import { isLinksOrLTAR, RelationTypes, ViewTypes } from 'nocodb-sdk';
+import { Injectable, Logger } from '@nestjs/common';
+import {
+  isBtLikeV2Junction,
+  isLinksOrLTAR,
+  isMMOrMMLike,
+  ncIsNumber,
+  RelationTypes,
+  ViewTypes,
+} from 'nocodb-sdk';
 import { validatePayload } from 'src/helpers';
+import type { NcApiVersion, NcRequest } from 'nocodb-sdk';
 import type { LinkToAnotherRecordColumn } from '~/models';
 import type { NcContext } from '~/interface/config';
-import { nocoExecute } from '~/utils';
+import { validateV1V2DataPayloadLimit } from '~/helpers/dataHelpers';
 import { Column, Model, Source, View } from '~/models';
+import { nocoExecute, processConcurrently } from '~/utils';
 import { DatasService } from '~/services/datas.service';
 import { NcError } from '~/helpers/catchError';
 import getAst from '~/helpers/getAst';
 import { PagedResponseImpl } from '~/helpers/PagedResponse';
 import NcConnectionMgrv2 from '~/utils/common/NcConnectionMgrv2';
+import { dataWrapper } from '~/helpers/dbHelpers';
+import { Profiler } from '~/helpers/profiler';
 
 @Injectable()
 export class DataTableService {
   constructor(protected datasService: DatasService) {}
+  logger = new Logger(DataTableService.name);
 
   async dataList(
     context: NcContext,
@@ -23,15 +35,25 @@ export class DataTableService {
       query: any;
       viewId?: string;
       ignorePagination?: boolean;
+      apiVersion?: NcApiVersion;
+      includeSortAndFilterColumns?: boolean;
+      user?: any;
     },
   ) {
-    const { modelId, viewId, baseId, ...rest } = param;
+    const { modelId, viewId, baseId, user, ...rest } = param;
     const { model, view } = await this.getModelAndView(context, {
       modelId,
       viewId,
       baseId,
+      user,
     });
-    return await this.datasService.dataList(context, { ...rest, model, view });
+    return await this.datasService.dataList(context, {
+      ...rest,
+      model,
+      view,
+      apiVersion: param.apiVersion,
+      includeSortAndFilterColumns: param?.includeSortAndFilterColumns,
+    });
   }
 
   async dataRead(
@@ -42,6 +64,8 @@ export class DataTableService {
       rowId: string;
       viewId?: string;
       query: any;
+      apiVersion?: NcApiVersion;
+      user?: any;
     },
   ) {
     const { model, view } = await this.getModelAndView(context, param);
@@ -57,10 +81,11 @@ export class DataTableService {
 
     const row = await baseModel.readByPk(param.rowId, false, param.query, {
       throwErrorIfInvalidParams: true,
+      apiVersion: param.apiVersion,
     });
 
     if (!row) {
-      NcError.recordNotFound(param.rowId);
+      NcError.get(context).recordNotFound(param.rowId);
     }
 
     return row;
@@ -73,6 +98,7 @@ export class DataTableService {
       modelId: string;
       viewId?: string;
       query: any;
+      user?: any;
     },
   ) {
     const { model, view } = await this.getModelAndView(context, param);
@@ -86,8 +112,10 @@ export class DataTableService {
       source,
     });
 
-    if (view.type !== ViewTypes.GRID) {
-      NcError.badRequest('Aggregation is only supported on grid views');
+    if (view && view.type !== ViewTypes.GRID) {
+      NcError.get(context).badRequest(
+        'Aggregation is only supported on grid views',
+      );
     }
 
     const listArgs: any = { ...param.query };
@@ -113,8 +141,17 @@ export class DataTableService {
       modelId: string;
       body: any;
       cookie: any;
+      undo?: boolean;
+      apiVersion?: NcApiVersion;
+      internalFlags?: {
+        allowSystemColumn?: boolean;
+        skipHooks?: boolean;
+      };
+      user?: any;
     },
   ) {
+    validateV1V2DataPayloadLimit(context, param);
+
     const { model, view } = await this.getModelAndView(context, param);
     const source = await Source.get(context, model.source_id);
 
@@ -131,10 +168,45 @@ export class DataTableService {
         cookie: param.cookie,
         insertOneByOneAsFallback: true,
         isSingleRecordInsertion: !Array.isArray(param.body),
+        typecast: (param.cookie?.query?.typecast ?? '') === 'true',
+        undo: param.undo,
+        apiVersion: param.apiVersion,
+        allowSystemColumn: param.internalFlags?.allowSystemColumn,
+        skip_hooks: param.internalFlags?.skipHooks,
       },
     );
 
     return Array.isArray(param.body) ? result : result[0];
+  }
+
+  async dataMove(
+    context: NcContext,
+    param: {
+      baseId?: string;
+      modelId: string;
+      rowId: string;
+      cookie: any;
+      beforeRowId?: string;
+      user?: any;
+    },
+  ) {
+    const { model, view } = await this.getModelAndView(context, param);
+
+    const source = await Source.get(context, model.source_id);
+
+    const baseModel = await Model.getBaseModelSQL(context, {
+      id: model.id,
+      viewId: view?.id,
+      dbDriver: await NcConnectionMgrv2.get(source),
+    });
+
+    await baseModel.moveRecord({
+      cookie: param.cookie,
+      rowId: param.rowId,
+      beforeRowId: param.beforeRowId,
+    });
+
+    return true;
   }
 
   async dataUpdate(
@@ -146,11 +218,21 @@ export class DataTableService {
       // rowId: string;
       body: any;
       cookie: any;
+      apiVersion?: NcApiVersion;
+      internalFlags?: {
+        allowSystemColumn?: boolean;
+        skipHooks?: boolean;
+      };
+      user?: any;
     },
   ) {
-    const { model, view } = await this.getModelAndView(context, param);
+    validateV1V2DataPayloadLimit(context, param);
 
+    const profiler = Profiler.start(`data-table/dataUpdate`);
+    const { model, view } = await this.getModelAndView(context, param);
+    profiler.log('getModelAndView done');
     await this.checkForDuplicateRow(context, { rows: param.body, model });
+    profiler.log('checkForDuplicateRow done');
 
     const source = await Source.get(context, model.source_id);
 
@@ -165,11 +247,17 @@ export class DataTableService {
       {
         cookie: param.cookie,
         throwExceptionIfNotExist: true,
+        typecast: (param.cookie?.query?.typecast ?? '') === 'true',
         isSingleRecordUpdation: !Array.isArray(param.body),
+        apiVersion: param.apiVersion,
+        allowSystemColumn: param.internalFlags?.allowSystemColumn,
+        skip_hooks: param.internalFlags?.skipHooks,
       },
     );
-
-    return this.extractIdObj(context, { body: param.body, model });
+    profiler.log('extractIdObj');
+    const result = this.extractIdObj(context, { body: param.body, model });
+    profiler.end();
+    return result;
   }
 
   async dataDelete(
@@ -181,8 +269,11 @@ export class DataTableService {
       // rowId: string;
       cookie: any;
       body: any;
+      user?: any;
     },
   ) {
+    validateV1V2DataPayloadLimit(context, param);
+
     const { model, view } = await this.getModelAndView(context, param);
 
     await this.checkForDuplicateRow(context, { rows: param.body, model });
@@ -213,6 +304,8 @@ export class DataTableService {
       viewId?: string;
       modelId: string;
       query: any;
+      apiVersion?: NcApiVersion;
+      user?: any;
     },
   ) {
     const { model, view } = await this.getModelAndView(context, param);
@@ -235,30 +328,33 @@ export class DataTableService {
     return { count };
   }
 
-  protected async getModelAndView(
+  async getModelAndView(
     context: NcContext,
     param: {
       baseId?: string;
       viewId?: string;
       modelId: string;
+      user?: any;
     },
   ) {
     const model = await Model.get(context, param.modelId);
-
     if (!model) {
-      NcError.tableNotFound(param.modelId);
+      NcError.get(context).tableNotFound(param.modelId);
     }
 
     if (param.baseId && model.base_id !== param.baseId) {
-      throw new Error('Table not belong to base');
+      NcError.get(context).tableNotFound(param.modelId);
     }
+
+    // Table visibility permission is checked in extract-ids middleware
+    // No need to check here to avoid circular dependency
 
     let view: View;
 
     if (param.viewId) {
       view = await View.get(context, param.viewId);
       if (!view || (view.fk_model_id && view.fk_model_id !== param.modelId)) {
-        NcError.viewNotFound(param.viewId);
+        NcError.get(context).viewNotFound(param.viewId);
       }
     }
 
@@ -281,7 +377,7 @@ export class DataTableService {
 
     const result = (Array.isArray(body) ? body : [body]).map((row) => {
       return pkColumns.reduce((acc, col) => {
-        acc[col.title] = row[col.title] ?? row[col.column_name];
+        acc[col.title] = row[col.title] ?? row[col.column_name] ?? row[col.id];
         return acc;
       }, {});
     });
@@ -309,25 +405,32 @@ export class DataTableService {
 
     for (const row of rows) {
       let pk;
+      // TODO: refactor to extractPkValues of baseModelSqlV2
+
       // if only one primary key then extract the value
       if (model.primaryKeys.length === 1)
-        pk = row[model.primaryKey.title] ?? row[model.primaryKey.column_name];
+        pk =
+          row[model.primaryKey.title] ??
+          row[model.primaryKey.column_name] ??
+          row[model.primaryKey.id];
       // if composite primary key then join the values with ___
       else
         pk = model.primaryKeys
           .map((pk) =>
-            (row[pk.title] ?? row[pk.column_name])
+            (row[pk.title] ?? row[pk.column_name] ?? row[pk.id])
               ?.toString?.()
               ?.replaceAll('_', '\\_'),
           )
           .join('___');
       // if duplicate then throw error
       if (keys.has(pk)) {
-        NcError.unprocessableEntity('Duplicate record with id ' + pk);
+        NcError.get(context).unprocessableEntity(
+          'Duplicate record with id ' + pk,
+        );
       }
 
       if (pk === undefined || pk === null) {
-        NcError.unprocessableEntity('Primary key is required');
+        NcError.get(context).unprocessableEntity('Primary key is required');
       }
       keys.add(pk);
     }
@@ -341,6 +444,8 @@ export class DataTableService {
       query: any;
       rowId: string | string[] | number | number[];
       columnId: string;
+      apiVersion?: NcApiVersion;
+      user?: any;
     },
   ) {
     const { model, view } = await this.getModelAndView(context, param);
@@ -353,7 +458,7 @@ export class DataTableService {
     });
 
     if (!(await baseModel.exist(param.rowId))) {
-      NcError.recordNotFound(`${param.rowId}`);
+      NcError.get(context).recordNotFound(`${param.rowId}`);
     }
 
     const column = await this.getColumn(context, param);
@@ -377,14 +482,35 @@ export class DataTableService {
     try {
       listArgs.sortArr = JSON.parse(listArgs.sortArrJson);
     } catch (e) {}
-
+    if (
+      ncIsNumber(Number(param.query.limit)) &&
+      Number(param.query.limit) > 0
+    ) {
+      listArgs.nestedLimit = param.query.limit;
+    }
     let data: any[];
     let count: number;
-    if (colOptions.type === RelationTypes.MANY_TO_MANY) {
+
+    // V2 single-target relations (MO/OO) — junction table with LIMIT 1
+    if (isBtLikeV2Junction(column)) {
+      data = await baseModel.mmRead(
+        {
+          colId: column.id,
+          parentId: param.rowId,
+        },
+        listArgs as any,
+      );
+      data = await nocoExecute(ast, data, {}, listArgs);
+      return data;
+    }
+
+    // V2 multi-target (OM/MM) and V1 MM — array via junction table
+    if (isMMOrMMLike(column)) {
       data = await baseModel.mmList(
         {
           colId: column.id,
           parentId: param.rowId,
+          apiVersion: param.apiVersion,
         },
         listArgs as any,
       );
@@ -400,6 +526,7 @@ export class DataTableService {
         {
           colId: column.id,
           id: param.rowId,
+          apiVersion: param.apiVersion,
         },
         listArgs as any,
       );
@@ -410,11 +537,24 @@ export class DataTableService {
         },
         param.query,
       )) as number;
+    } else if (
+      colOptions.type !== RelationTypes.BELONGS_TO &&
+      !column.meta?.bt
+    ) {
+      data = await baseModel.ooRead(
+        {
+          colId: column.id,
+          id: param.rowId,
+          apiVersion: param.apiVersion,
+        },
+        param.query as any,
+      );
     } else {
       data = await baseModel.btRead(
         {
           colId: column.id,
           id: param.rowId,
+          apiVersion: param.apiVersion,
         },
         param.query as any,
       );
@@ -430,18 +570,19 @@ export class DataTableService {
     });
   }
 
-  private async getColumn(
+  async getColumn(
     context: NcContext,
     param: { modelId: string; columnId: string },
   ) {
     const column = await Column.get(context, { colId: param.columnId });
 
-    if (!column) NcError.fieldNotFound(param.columnId);
+    if (!column) NcError.get(context).fieldNotFound(param.columnId);
 
     if (column.fk_model_id !== param.modelId)
-      NcError.badRequest('Column not belong to model');
+      NcError.get(context).badRequest('Column not belong to model');
 
-    if (!isLinksOrLTAR(column)) NcError.badRequest('Column is not LTAR');
+    if (!isLinksOrLTAR(column))
+      NcError.get(context).badRequest('Column is not LTAR');
     return column;
   }
 
@@ -461,9 +602,10 @@ export class DataTableService {
         | Record<string, any>
         | Record<string, any>[];
       rowId: string;
+      user?: any;
     },
   ) {
-    this.validateIds(param.refRowIds);
+    this.validateIds(context, param.refRowIds);
 
     const { model, view } = await this.getModelAndView(context, param);
 
@@ -485,7 +627,6 @@ export class DataTableService {
       rowId: param.rowId,
       cookie: param.cookie,
     });
-
     return true;
   }
 
@@ -499,12 +640,13 @@ export class DataTableService {
       query: any;
       refRowIds: string | string[] | number | number[] | Record<string, any>;
       rowId: string;
+      user?: any;
     },
   ) {
-    this.validateIds(param.refRowIds);
+    this.validateIds(context, param.refRowIds);
 
     const { model, view } = await this.getModelAndView(context, param);
-    if (!model) NcError.tableNotFound(param.modelId);
+    if (!model) NcError.get(context).tableNotFound(param.modelId);
 
     const source = await Source.get(context, model.source_id);
 
@@ -543,6 +685,7 @@ export class DataTableService {
         columnId: string;
         fk_related_model_id: string;
       }[];
+      user?: any;
     },
   ) {
     validatePayload(
@@ -571,7 +714,7 @@ export class DataTableService {
       operationMap.copy.fk_related_model_id !==
         operationMap.paste.fk_related_model_id
     ) {
-      throw new Error(
+      NcError.get(context).badRequest(
         'The operation is not supported on different fk_related_model_id',
       );
     }
@@ -590,7 +733,7 @@ export class DataTableService {
       operationMap.deleteAll &&
       !(await baseModel.exist(operationMap.deleteAll.rowId))
     ) {
-      NcError.recordNotFound(operationMap.deleteAll.rowId);
+      NcError.get(context).recordNotFound(operationMap.deleteAll.rowId);
     } else if (operationMap.copy && operationMap.paste) {
       const [existsCopyRow, existsPasteRow] = await Promise.all([
         baseModel.exist(operationMap.copy.rowId),
@@ -598,13 +741,13 @@ export class DataTableService {
       ]);
 
       if (!existsCopyRow && !existsPasteRow) {
-        NcError.recordNotFound(
+        NcError.get(context).recordNotFound(
           `'${operationMap.copy.rowId}' and '${operationMap.paste.rowId}'`,
         );
       } else if (!existsCopyRow) {
-        NcError.recordNotFound(operationMap.copy.rowId);
+        NcError.get(context).recordNotFound(operationMap.copy.rowId);
       } else if (!existsPasteRow) {
-        NcError.recordNotFound(operationMap.paste.rowId);
+        NcError.get(context).recordNotFound(operationMap.paste.rowId);
       }
     }
 
@@ -612,12 +755,15 @@ export class DataTableService {
     const colOptions = await column.getColOptions<LinkToAnotherRecordColumn>(
       context,
     );
-    const relatedModel = await colOptions.getRelatedTable(context);
-    await relatedModel.getColumns(context);
 
-    if (colOptions.type !== RelationTypes.MANY_TO_MANY) return;
+    const { refContext } = await colOptions.getParentChildContext(context);
 
-    const { dependencyFields } = await getAst(context, {
+    const relatedModel = await colOptions.getRelatedTable(refContext);
+    await relatedModel.getColumns(refContext);
+
+    if (!colOptions.fk_mm_model_id) return;
+
+    const { dependencyFields } = await getAst(refContext, {
       model: relatedModel,
       query: param.query,
       extractOnlyPrimaries: !(param.query?.f || param.query?.fields),
@@ -646,7 +792,9 @@ export class DataTableService {
       if (deleteCellNestedList && Array.isArray(deleteCellNestedList)) {
         await baseModel.removeLinks({
           colId: column.id,
-          childIds: deleteCellNestedList,
+          childIds: deleteCellNestedList.map((nestedList) =>
+            dataWrapper(nestedList).extractPksValue(relatedModel),
+          ),
           rowId: operationMap.deleteAll.rowId,
           cookie: param.cookie,
         });
@@ -687,43 +835,87 @@ export class DataTableService {
       const filteredRowsToLink = this.filterAndMapRows(
         copiedCellNestedList,
         pasteCellNestedList,
-        relatedModel.primaryKeys,
+        relatedModel,
       );
 
       const filteredRowsToUnlink = this.filterAndMapRows(
         pasteCellNestedList,
         copiedCellNestedList,
-        relatedModel.primaryKeys,
+        relatedModel,
       );
 
-      await Promise.all([
-        filteredRowsToLink.length &&
-          baseModel.addLinks({
-            colId: column.id,
-            childIds: filteredRowsToLink,
-            rowId: operationMap.paste.rowId,
-            cookie: param.cookie,
-          }),
-        filteredRowsToUnlink.length &&
-          baseModel.removeLinks({
-            colId: column.id,
-            childIds: filteredRowsToUnlink,
-            rowId: operationMap.paste.rowId,
-            cookie: param.cookie,
-          }),
-      ]);
+      if (filteredRowsToUnlink.length) {
+        await baseModel.removeLinks({
+          colId: column.id,
+          childIds: filteredRowsToUnlink,
+          rowId: operationMap.paste.rowId,
+          cookie: param.cookie,
+        });
+      }
+      if (filteredRowsToLink.length) {
+        await baseModel.addLinks({
+          colId: column.id,
+          childIds: filteredRowsToLink,
+          rowId: operationMap.paste.rowId,
+          cookie: param.cookie,
+        });
+      }
 
       return { link: filteredRowsToLink, unlink: filteredRowsToUnlink };
     }
   }
 
-  private validateIds(rowIds: any[] | any) {
+  async nestedListBulkCopyPasteOrDeleteAll(
+    context: NcContext,
+    param: {
+      cookie: any;
+      viewId: string;
+      modelId: string;
+      query: any;
+      data: {
+        columnId: string;
+        data: {
+          operation: 'copy' | 'paste' | 'deleteAll';
+          rowId: string;
+          columnId: string;
+          fk_related_model_id: string;
+        }[];
+      }[];
+      user?: any;
+    },
+  ) {
+    if (!Array.isArray(param.data) || !param.data.length) {
+      NcError.get(context).badRequest('Invalid bulk operation payload');
+    }
+
+    const results: { link: any[]; unlink: any[] }[] = [];
+
+    for (const entry of param.data) {
+      if (!entry.columnId || !Array.isArray(entry.data)) {
+        NcError.get(context).badRequest(
+          'Each bulk entry must have columnId and data array',
+        );
+      }
+
+      const result = await this.nestedListCopyPasteOrDeleteAll(context, {
+        ...param,
+        columnId: entry.columnId,
+        data: entry.data,
+      });
+
+      results.push(result ?? { link: [], unlink: [] });
+    }
+
+    return results;
+  }
+
+  validateIds(context: NcContext, rowIds: any[] | any) {
     if (Array.isArray(rowIds)) {
       const map = new Map<string, boolean>();
       const set = new Set<string>();
       for (const rowId of rowIds) {
         if (rowId === undefined || rowId === null)
-          NcError.recordNotFound(rowId);
+          NcError.get(context).recordNotFound(rowId);
         if (map.has(rowId)) {
           set.add(rowId);
         } else {
@@ -731,22 +923,22 @@ export class DataTableService {
         }
       }
 
-      if (set.size > 0) NcError.duplicateRecord([...set]);
+      if (set.size > 0) NcError.get(context).duplicateRecord([...set]);
     } else if (rowIds === undefined || rowIds === null) {
-      NcError.recordNotFound(rowIds);
+      NcError.get(context).recordNotFound(rowIds);
     }
   }
 
   private filterAndMapRows(
     sourceList: Record<string, any>[],
     targetList: Record<string, any>[],
-    primaryKeys: Column<any>[],
-  ): Record<string, any>[] {
+    relatedModel: Model,
+  ): (string | number)[] {
     return sourceList
       .filter(
         (sourceRow: Record<string, any>) =>
           !targetList.some((targetRow: Record<string, any>) =>
-            primaryKeys.every(
+            relatedModel.primaryKeys.every(
               (key) =>
                 sourceRow[key.title || key.column_name] ===
                 targetRow[key.title || key.column_name],
@@ -754,11 +946,7 @@ export class DataTableService {
           ),
       )
       .map((item: Record<string, any>) =>
-        primaryKeys.reduce((acc, key) => {
-          acc[key.title || key.column_name] =
-            item[key.title || key.column_name];
-          return acc;
-        }, {} as Record<string, any>),
+        dataWrapper(item).extractPksValue(relatedModel, true),
       );
   }
 
@@ -770,6 +958,7 @@ export class DataTableService {
       viewId?: string;
       query: any;
       body: any;
+      user?: any;
     },
   ) {
     const { model, view } = await this.getModelAndView(context, param);
@@ -781,26 +970,29 @@ export class DataTableService {
     } catch (e) {}
 
     if (!bulkFilterList?.length) {
-      NcError.badRequest('Invalid bulkFilterList');
+      NcError.get(context).badRequest('Invalid bulkFilterList');
     }
 
-    const dataListResults = await bulkFilterList.reduce(
-      async (accPromise, dF: any) => {
-        const acc = await accPromise;
-        const result = await this.datasService.dataList(context, {
-          query: {
-            ...dF,
-          },
+    const results = await processConcurrently(
+      bulkFilterList,
+      async (dF: any) => {
+        const data = await this.datasService.dataList(context, {
+          query: { ...dF },
           model,
           view,
+          includeRowColorColumns: dF.include_row_color === 'true',
+          includeButtonFilterColumns:
+            dF.include_button_filter_columns === 'true',
         });
-        acc[dF.alias] = result;
-        return acc;
+        return { alias: dF.alias, data };
       },
-      Promise.resolve({}),
+      5,
     );
 
-    return dataListResults;
+    return results.reduce((acc, { alias, data }) => {
+      acc[alias] = data;
+      return acc;
+    }, {});
   }
 
   async bulkGroupBy(
@@ -811,6 +1003,7 @@ export class DataTableService {
       viewId?: string;
       query: any;
       body: any;
+      user?: any;
     },
   ) {
     const { model, view } = await this.getModelAndView(context, param);
@@ -835,7 +1028,7 @@ export class DataTableService {
     } catch (e) {}
 
     if (!bulkFilterList?.length) {
-      NcError.badRequest('Invalid bulkFilterList');
+      NcError.get(context).badRequest('Invalid bulkFilterList');
     }
 
     const [data, count] = await Promise.all([
@@ -864,5 +1057,84 @@ export class DataTableService {
     });
 
     return data;
+  }
+
+  async bulkAggregate(
+    context: NcContext,
+    param: {
+      baseId?: string;
+      modelId: string;
+      viewId?: string;
+      query: any;
+      body: any;
+    },
+  ) {
+    const { model, view } = await this.getModelAndView(context, param);
+
+    const source = await Source.get(context, model.source_id);
+
+    const baseModel = await Model.getBaseModelSQL(context, {
+      id: model.id,
+      viewId: view?.id,
+      dbDriver: await NcConnectionMgrv2.get(source),
+    });
+
+    if (view && view.type !== ViewTypes.GRID) {
+      NcError.badRequest('Aggregation is only supported on grid views');
+    }
+
+    const listArgs: any = { ...param.query };
+
+    let bulkFilterList = param.body;
+
+    try {
+      listArgs.filterArr = JSON.parse(listArgs.filterArrJson);
+    } catch (e) {}
+
+    try {
+      listArgs.aggregation = JSON.parse(listArgs.aggregation);
+    } catch (e) {}
+
+    try {
+      bulkFilterList = JSON.parse(bulkFilterList);
+    } catch (e) {}
+
+    return await baseModel.bulkAggregate(listArgs, bulkFilterList, view);
+  }
+
+  async getLinkedDataList(
+    context: NcContext,
+    params: {
+      req: NcRequest;
+      linkColumnId: string;
+    },
+  ): Promise<any> {
+    const { req, linkColumnId } = params;
+
+    const relationColumn = await Column.get(context, { colId: linkColumnId });
+
+    if (!relationColumn || !isLinksOrLTAR(relationColumn)) {
+      NcError.get(context).fieldNotFound(linkColumnId);
+    }
+
+    const { refContext } = (
+      relationColumn.colOptions as LinkToAnotherRecordColumn
+    ).getRelContext(context);
+
+    return this.dataList(refContext, {
+      query: {
+        ...req.query,
+        columnId: undefined,
+        linkColumnId,
+        linkBaseId: context.base_id,
+      },
+      modelId: (relationColumn.colOptions as LinkToAnotherRecordColumn)
+        .fk_related_model_id,
+      viewId: (relationColumn.colOptions as LinkToAnotherRecordColumn)
+        .fk_target_view_id,
+      includeSortAndFilterColumns:
+        req.query.includeSortAndFilterColumns === 'true',
+      user: req.user,
+    });
   }
 }

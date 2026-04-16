@@ -10,7 +10,6 @@ const { api, isLoading, error } = useApi()
 const { t } = useI18n()
 
 const route = useRoute()
-const navigator = useRouter()
 
 const form = reactive({
   password: '',
@@ -37,7 +36,7 @@ async function resetPassword() {
     await api.auth.passwordReset(route.params.id as string, {
       password: form.password,
     })
-    navigator.push(`/#/sigin`)
+    navigateTo('/signin')
   } catch (e: any) {
     message.error(await extractSdkResponseErrorMsg(e))
   }
@@ -55,7 +54,7 @@ function resetError() {
         class="md:bg-primary signin bg-opacity-5 forgot-password h-full min-h-[600px] flex flex-col justify-center items-center"
       >
         <div
-          class="bg-white mt-[60px] relative flex flex-col justify-center gap-2 w-full max-w-[500px] mx-auto p-8 md:(rounded-lg border-1 border-gray-200 shadow-xl)"
+          class="bg-nc-bg-default md:mt-[60px] relative flex flex-col justify-center gap-2 w-full max-w-[500px] mx-auto p-8 md:(rounded-lg border-1 border-nc-border-gray-medium shadow-xl)"
         >
           <LazyGeneralNocoIcon class="color-transition hover:(ring ring-accent ring-opacity-100)" :animate="isLoading" />
 

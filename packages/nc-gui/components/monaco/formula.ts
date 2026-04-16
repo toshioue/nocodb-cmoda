@@ -27,6 +27,29 @@ const theme: editor.IStandaloneThemeData = {
   },
 }
 
+const themeDark: editor.IStandaloneThemeData = {
+  base: 'vs-dark',
+  inherit: true,
+  rules: [
+    { token: 'string', foreground: '#4dd6c6', fontStyle: 'bold' }, // teal-ish bright
+    { token: 'keyword', foreground: '#4cd964', fontStyle: 'bold' }, // green
+    { token: 'number', foreground: '#d7a84b', fontStyle: 'bold' }, // amber
+    { token: 'operator', foreground: '#ffffff' },
+    { token: 'identifier', foreground: '#b68cff', fontStyle: 'bold' }, // purple tint
+    { token: 'delimiter.parenthesis', foreground: '#cccccc', fontStyle: 'bold' },
+    { token: 'delimiter.brace', foreground: '#b68cff', fontStyle: 'bold' },
+    { token: 'invalid', foreground: '#ffffff' },
+  ],
+
+  colors: {
+    'editor.foreground': '#EDEDED',
+    'editor.background': '#171717',
+    'editorCursor.foreground': '#79a8ff',
+    'editor.selectionBackground': '#3A3D41',
+    'focusBorder': '#1E1E1E',
+  },
+}
+
 const generateLanguageDefinition = (identifiers: string[]) => {
   identifiers = identifiers.map((identifier) => `{${identifier}}`)
 
@@ -43,7 +66,17 @@ const generateLanguageDefinition = (identifiers: string[]) => {
         [/"/, { token: 'string.quote', bracket: '@open', next: '@dblString' }],
         [/'/, { token: 'string.quote', bracket: '@open', next: '@sglString' }],
         [
-          new RegExp(`\\{(${identifiers.join('|').replace(/[{}]/g, '')})\\}`),
+          new RegExp(
+            `\\{(${identifiers
+              .map((identifier) =>
+                identifier
+                  // remove curly braces wrapping the identifier
+                  .replace(/^\{([\s\S]+)\}$/, '$1')
+                  // escape special characters
+                  .replace(/[.*+?^${}()|[\]\\-]/g, '\\$&'),
+              )
+              .join('|')})\\}`,
+          ),
           {
             cases: {
               '@identifiers': 'identifier',
@@ -99,6 +132,7 @@ const languageConfiguration: languages.LanguageConfiguration = {
 export default {
   name: 'formula',
   theme,
+  themeDark,
   generateLanguageDefinition,
   languageConfiguration,
 }

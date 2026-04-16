@@ -29,6 +29,7 @@ import { MetaTable, RootScopes } from '~/utils/globals';
 import { NcError } from '~/helpers/catchError';
 import { deepMerge, isEE } from '~/utils';
 import Noco from '~/Noco';
+import { DataApiLimiterGuard } from '~/guards/data-api-limiter.guard';
 
 @Controller()
 export class UtilsController {
@@ -146,8 +147,9 @@ export class UtilsController {
     return await this.utilsService.appHealth();
   }
 
-  @UseGuards(PublicApiLimiterGuard)
+  @UseGuards(DataApiLimiterGuard, GlobalGuard)
   @Post(['/api/v1/db/meta/axiosRequestMake', '/api/v2/meta/axiosRequestMake'])
+  @Acl('fetchViaUrl')
   @HttpCode(200)
   async axiosRequestMake(@Body() body: any) {
     return await this.utilsService.axiosRequestMake({ body });
@@ -173,6 +175,12 @@ export class UtilsController {
   @Get('/api/v2/feed')
   async feed(@Request() req: NcRequest) {
     return await this.utilsService.feed(req);
+  }
+
+  @UseGuards(PublicApiLimiterGuard)
+  @Get('/api/v2/cloud-features')
+  async cloudFeatures(@Request() req: NcRequest) {
+    return await this.utilsService.cloudFeatures(req);
   }
 
   @UseGuards(PublicApiLimiterGuard)

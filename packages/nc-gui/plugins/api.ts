@@ -1,6 +1,16 @@
+import type { Api } from 'nocodb-sdk'
+
 const apiPlugin = (nuxtApp) => {
+  const { api } = useApi()
+
   /** injects a global api instance */
-  nuxtApp.provide('api', useApi().api)
+  nuxtApp.provide('api', api)
+}
+
+declare module _NuxtApp {
+  interface NuxtApp {
+    $api: Api<any>
+  }
 }
 
 export { apiPlugin }

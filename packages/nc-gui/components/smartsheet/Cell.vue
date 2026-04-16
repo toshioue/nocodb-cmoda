@@ -11,11 +11,13 @@ interface Props {
   rowIndex?: number
   active?: boolean
   virtual?: boolean
+  path?: Array<number>
+  isAllowed?: boolean
 }
 
 const props = defineProps<Props>()
 
-const emit = defineEmits(['update:modelValue', 'save', 'navigate', 'update:editEnabled', 'update:cdf'])
+const emit = defineEmits(['update:modelValue', 'save', 'navigate', 'update:editEnabled', 'update:cdf', 'saveWithState'])
 
 const column = toRef(props, 'column')
 
@@ -23,11 +25,17 @@ const meta = inject(MetaInj, ref())
 
 const active = toRef(props, 'active', false)
 
+const path = toRef(props, 'path', [])
+
 const readOnly = toRef(props, 'readOnly', false)
+
+const isAllowed = toRef(props, 'isAllowed', true)
 
 provide(ColumnInj, column)
 
 const editEnabled = useVModel(props, 'editEnabled', emit)
+
+const localEditEnabled = ref(false)
 
 provide(EditModeInj, editEnabled)
 
@@ -35,7 +43,15 @@ provide(ActiveCellInj, active)
 
 provide(ReadonlyInj, readOnly)
 
+provide(IsAllowedInj, isAllowed)
+
 const isForm = inject(IsFormInj, ref(false))
+
+const isUnderLTAR = inject(IsUnderLTARInj, ref(false))
+
+const isUnderLookup = inject(IsUnderLookupInj, ref(false))
+
+const isLinkRecordDropdown = inject(IsLinkRecordDropdownInj, ref(false))
 
 const isGrid = inject(IsGridInj, ref(false))
 
@@ -49,24 +65,60 @@ const isEditColumnMenu = inject(EditColumnInj, ref(false))
 
 const isExpandedFormOpen = inject(IsExpandedFormOpenInj, ref(false))
 
-const { currentRow } = useSmartsheetRowStoreOrThrow()
+const { currentRow, state } = useSmartsheetRowStoreOrThrow()
 
-const { sqlUis } = storeToRefs(useBase())
+const baseStore = useBase()
 
-const sourceId = meta.value?.source_id || column.value?.source_id
+const { generatingRows, generatingColumns } = useNocoAi()
 
-const sqlUi = ref(sourceId && sqlUis.value[sourceId] ? sqlUis.value[sourceId] : Object.values(sqlUis.value)[0])
+const { showNull } = useGlobal()
 
-const abstractType = computed(() => column.value && sqlUi.value.getAbstractType(column.value))
+const pk = computed(() => {
+  if (!meta.value?.columns) return
+  return extractPkFromRow(currentRow.value?.row, meta.value.columns)
+})
+
+const isGenerating = computed(
+  () =>
+    pk.value && column.value.id && generatingRows.value.includes(pk.value) && generatingColumns.value.includes(column.value.id),
+)
+
+const sqlUi = computed(() => baseStore.getSqlUiBySourceId(meta.value?.source_id || column.value?.source_id))
+
+const abstractType = computed(() => column.value && sqlUi.value?.getAbstractType(column.value))
+
+const emitSave = () => {
+  emit('save', [currentRow.value, column.value.title, state.value, undefined, undefined, path.value])
+}
 
 const syncValue = useDebounceFn(
   () => {
     currentRow.value.rowMeta.changed = false
-    emit('save')
+    emitSave()
   },
   500,
   { maxWait: 2000 },
 )
+
+const isRlsEnabled = computed(() => parseProp(meta.value?.meta)?.is_rls_enabled === true)
+
+const isCanvasInjected = inject(IsCanvasInjectionInj, false)
+
+onBeforeUnmount(() => {
+  if (!isCanvasInjected) return
+  if (currentRow.value.oldRow?.[column.value.title] === currentRow.value.row?.[column.value.title]) return
+  currentRow.value.rowMeta.changed = false
+  emitSave()
+})
+
+// Non-canvas RLS: save on blur (when editEnabled goes true → false)
+watch(editEnabled, (newVal, oldVal) => {
+  if (!isRlsEnabled.value || isCanvasInjected) return
+  if (oldVal && !newVal && currentRow.value.rowMeta.changed) {
+    currentRow.value.rowMeta.changed = false
+    emitSave()
+  }
+})
 
 let saveTimer: number
 
@@ -75,7 +127,7 @@ const updateWhenEditCompleted = () => {
     if (saveTimer) clearTimeout(saveTimer)
     saveTimer = window.setTimeout(updateWhenEditCompleted, 500)
   } else {
-    emit('save')
+    emitSave()
   }
 }
 
@@ -88,19 +140,41 @@ const vModel = computed({
       emit('update:cdf', val)
     } else if (val !== props.modelValue) {
       currentRow.value.rowMeta.changed = true
+
+      // Clear error on value change
+      if (currentRow.value.rowMeta.errors?.[column.value.title]) {
+        delete currentRow.value.rowMeta.errors[column.value.title]
+      }
+
       emit('update:modelValue', val)
+
+      // For Date/DateTime cells, directly update the row data so it's in sync
+      // even if the parent can't process the emit (e.g. during canvas unmount when editEnabled is null)
+      if (
+        (isDate(column.value, abstractType.value) || isDateTime(column.value, abstractType.value)) &&
+        currentRow.value.row &&
+        column.value.title
+      ) {
+        currentRow.value.row[column.value.title] = val
+      }
+
       if (column.value.pk || column.value.unique) {
         updateWhenEditCompleted()
+      } else if (isAutoSaved(column.value) && isRlsEnabled.value) {
+        // RLS enabled: skip debounced auto-save to prevent row disappearing mid-edit.
+        // Save will happen on blur (editEnabled watcher) or cell unmount (canvas).
       } else if (isAutoSaved(column.value)) {
         syncValue()
       } else if (!isManualSaved(column.value)) {
-        emit('save')
+        emitSave()
       }
     }
   },
 })
 
 const navigate = (dir: NavigateDir, e: KeyboardEvent) => {
+  if (e.isComposing) return
+
   if (isJSON(column.value)) return
 
   if (currentRow.value.rowMeta.changed || currentRow.value.rowMeta.new) {
@@ -134,84 +208,316 @@ const showCurrentDateOption = computed(() => {
 const currentDate = () => {
   vModel.value = sqlUi.value?.getCurrentDateDefault?.(column.value)
 }
+
+const isPrimaryCol = computed(() => isPrimary(column.value))
+
+const isPrimaryKeyCol = computed(() => isPrimaryKey(column.value))
+
+const cellType = computed(() => {
+  if (isAI(column.value)) return 'ai'
+  if (isTextArea(column.value)) return 'textarea'
+  if (isGeoData(column.value)) return 'geoData'
+  if (isUUID(column.value)) return 'uuid'
+  if (isAutoNumber(column.value)) return 'integer'
+  if (isBoolean(column.value, abstractType.value)) return 'checkbox'
+  if (isAttachment(column.value)) return 'attachment'
+  if (isSingleSelect(column.value)) return 'singleSelect'
+  if (isMultiSelect(column.value)) return 'multiSelect'
+  if (isDate(column.value, abstractType.value)) return 'datePicker'
+  if (isYear(column.value, abstractType.value)) return 'yearPicker'
+  if (isDateTime(column.value, abstractType.value)) return 'dateTimePicker'
+  if (isTime(column.value, abstractType.value)) return 'timePicker'
+  if (isRating(column.value)) return 'rating'
+  if (isDuration(column.value)) return 'duration'
+  if (isEmail(column.value)) return 'email'
+  if (isURL(column.value)) return 'url'
+  if (isPhoneNumber(column.value)) return 'phoneNumber'
+  if (isPercent(column.value)) return 'percent'
+  if (isCurrency(column.value)) return 'currency'
+  if (isColour(column.value)) return 'colour'
+  if (isUser(column.value)) return 'user'
+  if (isDecimal(column.value)) return 'decimal'
+  if (isInt(column.value, abstractType.value)) return 'integer'
+  if (isFloat(column.value, abstractType.value)) return 'float'
+  if (isString(column.value, abstractType.value)) return 'text'
+  if (isJSON(column.value)) return 'json'
+  return 'text'
+})
+
+const showNullComponent = computed(() => {
+  return (readOnly.value || !editEnabled.value) && vModel.value === null && isShowNullField(column.value) && showNull.value
+})
+
+const showReadonlyField = computed(() => {
+  if (column.value.readonly) return true
+
+  // AutoNumber values are always read-only (DB-managed sequence)
+  if (isAutoNumber(column.value)) return true
+
+  switch (cellType.value) {
+    case 'currency': {
+      return !((!readOnly.value && editEnabled.value) || (isForm && !isEditColumnMenu.value && editEnabled.value))
+    }
+
+    case 'percent': {
+      if (isUnderLookup.value && !isLinkRecordDropdown.value) return true
+
+      return !(
+        (!readOnly.value && editEnabled.value) ||
+        (isExpandedFormOpen.value && (localEditEnabled.value || parseProp(column.value?.meta).is_progress))
+      )
+    }
+
+    case 'checkbox':
+    case 'rating': {
+      return readOnly.value
+    }
+
+    case 'uuid': {
+      return true // UUID is always read-only
+    }
+
+    case 'singleSelect':
+    case 'multiSelect':
+    case 'user': {
+      return readOnly.value || !(active.value || editEnabled.value || isForm.value)
+    }
+
+    case 'datePicker':
+    case 'dateTimePicker':
+    case 'timePicker':
+    case 'yearPicker': {
+      return readOnly.value || !(active.value || editEnabled.value)
+    }
+
+    default: {
+      return readOnly.value || !editEnabled.value
+    }
+  }
+})
+
+const showLockedOverlay = computed(() => {
+  /**
+   * We have to show lock overlay only on root level of the cell
+   * else overlay will cover area of rendered cell and actual value will not be visible
+   */
+  return (
+    !isUnderLookup.value &&
+    !isUnderLTAR.value &&
+    ((isPublic.value && readOnly.value && !isForm.value) || isSystemColumn(column.value)) &&
+    cellType.value !== 'attachment' &&
+    cellType.value !== 'textarea' &&
+    cellType.value !== 'ai' &&
+    cellType.value !== 'json' &&
+    cellType.value !== 'geoData'
+  )
+})
+
+const cellClassName = computed(() => {
+  let className = `nc-cell-${(column.value?.uidt || 'default').toLowerCase()}`
+
+  if (isPrimaryCol.value && !props.virtual && !isForm.value && !isCalendar.value) {
+    className += ' nc-display-value-cell'
+  }
+
+  if (
+    isGrid.value &&
+    isNumericField.value &&
+    !isEditColumnMenu.value &&
+    !isForm.value &&
+    !isExpandedFormOpen.value &&
+    cellType.value !== 'rating' &&
+    cellType.value !== 'yearPicker'
+  ) {
+    className += ' nc-grid-numeric-cell-right'
+  }
+
+  if (
+    !isEditColumnMenu.value &&
+    isForm.value &&
+    !props.virtual &&
+    cellType.value !== 'attachment' &&
+    cellType.value !== 'textarea' &&
+    cellType.value !== 'ai'
+  ) {
+    className += ' h-10'
+  }
+
+  if ((isForm.value && isNumericField.value && isExpandedFormOpen.value) || isEditColumnMenu.value) {
+    className += ' nc-grid-numeric-cell-left'
+  }
+
+  if (cellType.value === 'textarea' && (isForm.value || isSurveyForm.value) && !isUnderLTAR.value && !isUnderLookup.value) {
+    className += ' !min-h-30'
+  }
+
+  if (cellType.value === 'ai') {
+    className += ' nc-cell-longtext-ai'
+  }
+
+  return className
+})
 </script>
 
 <template>
   <div
-    :class="[
-      `nc-cell-${(column?.uidt || 'default').toLowerCase()}`,
-      {
-        'nc-display-value-cell': isPrimary(column) && !props.virtual && !isForm && !isCalendar,
-        'nc-grid-numeric-cell-right':
-          isGrid &&
-          isNumericField &&
-          !isEditColumnMenu &&
-          !isForm &&
-          !isExpandedFormOpen &&
-          !isRating(column) &&
-          !isYear(column, abstractType),
-        'h-10': !isEditColumnMenu && isForm && !isAttachment(column) && !isTextArea(column) && !isJSON(column) && !props.virtual,
-        'nc-grid-numeric-cell-left': (isForm && isNumericField && isExpandedFormOpen) || isEditColumnMenu,
-        '!min-h-30': isTextArea(column) && (isForm || isSurveyForm),
-      },
-    ]"
+    :class="[cellClassName, { 'nc-under-ltar': isUnderLTAR }]"
     class="nc-cell w-full h-full relative"
     @contextmenu="onContextmenu"
     @keydown.enter.exact="navigate(NavigateDir.NEXT, $event)"
     @keydown.shift.enter.exact="navigate(NavigateDir.PREV, $event)"
   >
     <template v-if="column">
-      <LazyCellTextArea v-if="isTextArea(column)" v-model="vModel" :virtual="props.virtual" />
-      <LazyCellGeoData v-else-if="isGeoData(column)" v-model="vModel" />
-      <LazyCellCheckbox v-else-if="isBoolean(column, abstractType)" v-model="vModel" />
-      <LazyCellAttachment v-else-if="isAttachment(column)" v-model="vModel" :row-index="props.rowIndex" />
-      <LazyCellSingleSelect
-        v-else-if="isSingleSelect(column)"
+      <div v-if="isGenerating" class="nc-cell-field flex items-center gap-2 w-full">
+        <GeneralLoader />
+        <NcTooltip class="truncate max-w-[calc(100%_-_24px)]" show-on-truncate-only>
+          <template #title> {{ $t('general.generating') }} </template>
+          {{ $t('general.generating') }}
+        </NcTooltip>
+      </div>
+      <CellNull v-else-if="showNullComponent" />
+      <CellAI v-else-if="cellType === 'ai'" v-model="vModel" @save="emitSave" />
+      <CellTextArea v-else-if="cellType === 'textarea'" v-model="vModel" :virtual="props.virtual" />
+
+      <CellGeoData v-else-if="cellType === 'geoData'" v-model="vModel" />
+
+      <CellUUID v-else-if="cellType === 'uuid'" v-model="vModel" />
+
+      <template v-else-if="cellType === 'checkbox'">
+        <CellCheckboxReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellCheckboxEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'yearPicker'">
+        <CellYearReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellYearEditor v-else v-model="vModel" :is-pk="isPrimaryKeyCol" />
+      </template>
+
+      <template v-else-if="cellType === 'datePicker'">
+        <CellDateReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellDateEditor
+          v-else
+          v-model="vModel"
+          :is-pk="isPrimaryKeyCol"
+          :show-current-date-option="showCurrentDateOption"
+          @current-date="currentDate"
+        />
+      </template>
+
+      <template v-else-if="cellType === 'dateTimePicker'">
+        <CellDateTimeReadonly
+          v-if="showReadonlyField"
+          :model-value="vModel"
+          :is-updated-from-copy-n-paste="currentRow.rowMeta.isUpdatedFromCopyNPaste"
+        />
+        <CellDateTimeEditor
+          v-else
+          v-model="vModel"
+          :is-pk="isPrimaryKeyCol"
+          :is-updated-from-copy-n-paste="currentRow.rowMeta.isUpdatedFromCopyNPaste"
+          :show-current-date-option="showCurrentDateOption"
+          @current-date="currentDate"
+        />
+      </template>
+
+      <LazyCellAttachment
+        v-else-if="cellType === 'attachment'"
+        ref="attachmentCell"
         v-model="vModel"
-        :disable-option-creation="!!isEditColumnMenu"
         :row-index="props.rowIndex"
       />
-      <LazyCellMultiSelect
-        v-else-if="isMultiSelect(column)"
+
+      <CellSingleSelect
+        v-else-if="cellType === 'singleSelect'"
         v-model="vModel"
-        :disable-option-creation="!!isEditColumnMenu"
+        :disable-option-creation="isEditColumnMenu"
         :row-index="props.rowIndex"
+        :show-readonly-field="showReadonlyField"
       />
-      <LazyCellDatePicker
-        v-else-if="isDate(column, abstractType)"
+
+      <CellMultiSelect
+        v-else-if="cellType === 'multiSelect'"
         v-model="vModel"
-        :is-pk="isPrimaryKey(column)"
-        :show-current-date-option="showCurrentDateOption"
-        @current-date="currentDate"
+        :disable-option-creation="isEditColumnMenu"
+        :row-index="props.rowIndex"
+        :show-readonly-field="showReadonlyField"
       />
-      <LazyCellYearPicker v-else-if="isYear(column, abstractType)" v-model="vModel" :is-pk="isPrimaryKey(column)" />
-      <LazyCellDateTimePicker
-        v-else-if="isDateTime(column, abstractType)"
+
+      <template v-else-if="cellType === 'timePicker'">
+        <CellTimeReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellTimeEditor v-else v-model="vModel" :is-pk="isPrimaryKeyCol" />
+      </template>
+
+      <template v-else-if="cellType === 'rating'">
+        <CellRatingReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellRatingEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'duration'">
+        <CellDurationReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellDurationEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'email'">
+        <CellEmailReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellEmailEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'url'">
+        <CellUrlReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellUrlEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'phoneNumber'">
+        <CellPhoneNumberReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellPhoneNumberEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'percent'">
+        <CellPercentReadonly v-if="showReadonlyField" v-model:local-edit-enabled="localEditEnabled" :model-value="vModel" />
+        <CellPercentEditor v-else v-model="vModel" v-model:local-edit-enabled="localEditEnabled" />
+      </template>
+
+      <template v-else-if="cellType === 'currency'">
+        <CellCurrencyReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellCurrencyEditor v-else v-model="vModel" @save="emitSave" />
+      </template>
+
+      <template v-else-if="cellType === 'colour'">
+        <CellColourReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellColourEditor v-else v-model="vModel" />
+      </template>
+
+      <LazyCellUser
+        v-else-if="cellType === 'user'"
         v-model="vModel"
-        :is-pk="isPrimaryKey(column)"
-        :is-updated-from-copy-n-paste="currentRow.rowMeta.isUpdatedFromCopyNPaste"
-        :show-current-date-option="showCurrentDateOption"
-        @current-date="currentDate"
+        :row-index="props.rowIndex"
+        :show-readonly-field="showReadonlyField"
       />
-      <LazyCellTimePicker v-else-if="isTime(column, abstractType)" v-model="vModel" :is-pk="isPrimaryKey(column)" />
-      <LazyCellRating v-else-if="isRating(column)" v-model="vModel" />
-      <LazyCellDuration v-else-if="isDuration(column)" v-model="vModel" />
-      <LazyCellEmail v-else-if="isEmail(column)" v-model="vModel" />
-      <LazyCellUrl v-else-if="isURL(column)" v-model="vModel" />
-      <LazyCellPhoneNumber v-else-if="isPhoneNumber(column)" v-model="vModel" />
-      <LazyCellPercent v-else-if="isPercent(column)" v-model="vModel" />
-      <LazyCellCurrency v-else-if="isCurrency(column)" v-model="vModel" @save="emit('save')" />
-      <LazyCellUser v-else-if="isUser(column)" v-model="vModel" :row-index="props.rowIndex" />
-      <LazyCellDecimal v-else-if="isDecimal(column)" v-model="vModel" />
-      <LazyCellFloat v-else-if="isFloat(column, abstractType)" v-model="vModel" />
-      <LazyCellText v-else-if="isString(column, abstractType)" v-model="vModel" />
-      <LazyCellInteger v-else-if="isInt(column, abstractType)" v-model="vModel" />
-      <LazyCellJson v-else-if="isJSON(column)" v-model="vModel" />
-      <LazyCellText v-else v-model="vModel" />
-      <div
-        v-if="((isPublic && readOnly && !isForm) || isSystemColumn(column)) && !isAttachment(column) && !isTextArea(column)"
-        class="nc-locked-overlay"
-      />
+
+      <template v-else-if="cellType === 'decimal'">
+        <CellDecimalReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellDecimalEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'float'">
+        <CellFloatReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellFloatEditor v-else v-model="vModel" />
+      </template>
+
+      <template v-else-if="cellType === 'integer'">
+        <CellIntegerReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellIntegerEditor v-else v-model="vModel" />
+      </template>
+
+      <CellJson v-else-if="cellType === 'json'" v-model="vModel" />
+
+      <template v-else>
+        <CellTextReadonly v-if="showReadonlyField" :model-value="vModel" />
+        <CellTextEditor v-else v-model="vModel" />
+      </template>
+
+      <div v-if="showLockedOverlay" class="nc-locked-overlay" />
     </template>
   </div>
 </template>
@@ -231,25 +537,27 @@ const currentDate = () => {
 }
 
 .nc-cell {
-  @apply text-sm text-gray-600;
+  @apply text-sm text-nc-content-gray-subtle2;
   font-weight: 500;
 
   :deep(.nc-cell-field),
   :deep(input),
   :deep(textarea),
   :deep(.nc-cell-field-link) {
-    @apply !text-sm;
-    font-weight: 500;
+    &:not(.ant-select-selection-search-input) {
+      @apply !text-sm;
+      font-weight: 500;
+    }
   }
 
   :deep(input::placeholder),
   :deep(textarea::placeholder) {
-    @apply text-gray-400;
+    @apply text-nc-content-gray-disabled;
     font-weight: 300;
   }
 
   &.nc-display-value-cell {
-    @apply !text-brand-500 !font-semibold;
+    @apply !text-nc-content-brand !font-semibold;
 
     :deep(.nc-cell-field),
     :deep(input),
@@ -275,6 +583,10 @@ const currentDate = () => {
 
   :deep(.nc-cell-field) {
     @apply px-0;
+  }
+
+  &:has(.nc-currency-code) {
+    @apply !py-0 !pl-0 flex items-stretch;
   }
 }
 </style>

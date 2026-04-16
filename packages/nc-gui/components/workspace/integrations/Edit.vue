@@ -1,5 +1,6 @@
 <script lang="ts" setup>
-const { pageMode, IntegrationsPageMode, activeIntegration, categories, activeCategory } = useIntegrationStore()
+const { pageMode, IntegrationsPageMode, activeIntegration, activeIntegrationItem, categories, activeCategory } =
+  useIntegrationStore()
 </script>
 
 <template>
@@ -10,10 +11,10 @@ const { pageMode, IntegrationsPageMode, activeIntegration, categories, activeCat
           <GeneralIcon icon="arrowLeft" />
           Back
         </div>
-        <WorkspaceIntegrationsIcon :integration-type="activeIntegration.type" size="sm" />
+        <WorkspaceIntegrationsIcon :integration-item="activeIntegrationItem" size="sm" />
         <div class="text-md font-bold">New {{ activeIntegration.title }}</div>
       </div>
-      <div class="border-b-1 border-gray-200 mx-4"></div>
+      <div class="border-b-1 border-nc-border-gray-medium mx-4"></div>
     </div>
     <div class="panel-view">
       <div class="panel-indices">
@@ -35,7 +36,7 @@ const { pageMode, IntegrationsPageMode, activeIntegration, categories, activeCat
 
 <style lang="scss" scoped>
 .logo-wrapper {
-  @apply bg-gray-200 p-2 mr-2 rounded-lg flex items-center justify-center;
+  @apply bg-nc-bg-gray-medium p-2 mr-2 rounded-lg flex items-center justify-center;
   width: 32px;
   height: 32px;
   font-size: 2rem;

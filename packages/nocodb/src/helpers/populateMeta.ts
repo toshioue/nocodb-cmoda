@@ -1,14 +1,17 @@
-import { ModelTypes, UITypes, ViewTypes } from 'nocodb-sdk';
-import { isVirtualCol, RelationTypes } from 'nocodb-sdk';
+import { isLTARType, ModelTypes, UITypes, ViewTypes } from 'nocodb-sdk';
+import { isMMOrMMLike, isVirtualCol, RelationTypes } from 'nocodb-sdk';
 import { pluralize, singularize } from 'inflection';
 import { isLinksOrLTAR } from 'nocodb-sdk';
 import { getUniqueColumnAliasName, getUniqueColumnName } from './getUniqueName';
+import type { UserType } from 'nocodb-sdk';
 import type { RollupColumn } from '~/models';
 import type LinkToAnotherRecordColumn from '~/models/LinkToAnotherRecordColumn';
 import type Source from '~/models/Source';
 import type Base from '~/models/Base';
 import type PGClient from '~/db/sql-client/lib/pg/PgClient';
 import type { NcContext } from '~/interface/config';
+import { META_COL_NAME } from '~/constants';
+import { normalizeDr } from '~/helpers/dbHelpers';
 import mapDefaultDisplayValue from '~/helpers/mapDefaultDisplayValue';
 import getColumnUiType from '~/helpers/getColumnUiType';
 import getTableNameAlias, { getColumnNameAlias } from '~/helpers/getTableName';
@@ -56,13 +59,13 @@ async function isMMRelationExist(
   const colChildOpt =
     await belongsToCol.getColOptions<LinkToAnotherRecordColumn>(context);
   for (const col of await model.getColumns(context)) {
-    if (col.uidt === UITypes.LinkToAnotherRecord) {
+    if (isLTARType(col)) {
       const colOpt = await col.getColOptions<LinkToAnotherRecordColumn>(
         context,
       );
       if (
         colOpt &&
-        colOpt.type === RelationTypes.MANY_TO_MANY &&
+        isMMOrMMLike(col) &&
         colOpt.fk_mm_model_id === assocModel.id &&
         colOpt.fk_child_column_id === colChildOpt.fk_parent_column_id &&
         colOpt.fk_mm_child_column_id === colChildOpt.fk_child_column_id
@@ -205,9 +208,17 @@ export async function extractAndGenerateManyToManyRelations(
 
 export async function populateMeta(
   context: NcContext,
-  source: Source,
-  base: Base,
-  logger?: (message: string) => void,
+  {
+    source,
+    base,
+    logger,
+    user,
+  }: {
+    source: Source;
+    base: Base;
+    logger?: (message: string) => void;
+    user: UserType;
+  },
 ): Promise<any> {
   const info = {
     type: 'rest',
@@ -271,7 +282,20 @@ export async function populateMeta(
     };
   }
 
+  const userId = user?.id;
+
   // await this.syncRelations();
+
+  // Detect NocoDB-created tables by presence of all 6 system columns.
+  // If all are found together, remap them to their proper UITypes and mark as system.
+  const NC_SYSTEM_COL_UIDT: Record<string, UITypes> = {
+    created_at: UITypes.CreatedTime,
+    updated_at: UITypes.LastModifiedTime,
+    created_by: UITypes.CreatedBy,
+    updated_by: UITypes.LastModifiedBy,
+    nc_order: UITypes.Order,
+    [META_COL_NAME]: UITypes.Meta,
+  };
 
   const tableMetasInsert = tables.map((table) => {
     return async () => {
@@ -301,6 +325,21 @@ export async function populateMeta(
         table.type === 'view'
           ? []
           : tableRelations.filter((r) => r.tn === table.tn);
+
+      const columnNameSet = new Set(columns.map((c) => c.cn));
+      const isNcCreatedTable = Object.keys(NC_SYSTEM_COL_UIDT).every((name) =>
+        columnNameSet.has(name),
+      );
+
+      for (const column of columns) {
+        // Remap NocoDB system columns to their proper UITypes
+        if (isNcCreatedTable && NC_SYSTEM_COL_UIDT[column.cn]) {
+          column.uidt = NC_SYSTEM_COL_UIDT[column.cn];
+          column.system = true;
+        } else if (!column.uidt) {
+          column.uidt = getColumnUiType(source, column);
+        }
+      }
 
       mapDefaultDisplayValue(columns);
 
@@ -347,6 +386,7 @@ export async function populateMeta(
           title: table.title,
           type: table.type || 'table',
           order: table.order,
+          user_id: userId,
         },
       );
 
@@ -419,7 +459,9 @@ export async function populateMeta(
               fk_parent_column_id: ref_rel_column_id,
               fk_index_name: rel.cstn,
               ur: rel.ur,
-              dr: rel.dr,
+              // persist raw ON DELETE rule from DB
+              // (e.g. 'NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL', 'SET DEFAULT')
+              dr: normalizeDr(rel.dr),
               order: colOrder++,
               fk_related_model_id: column.hm ? tnId : rtnId,
               system: column.system,
@@ -489,6 +531,7 @@ export async function populateMeta(
           // todo: sanitize
           type: ModelTypes.VIEW,
           order: table.order,
+          user_id: userId,
         },
       );
 

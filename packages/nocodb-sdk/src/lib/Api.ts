@@ -10,6 +10,3909 @@
  */
 
 /**
+ * Workflow execution with full details
+ */
+export interface WorkflowExecutionGetResponseV3Type {
+  /** Unique identifier for the execution */
+  id: string;
+  /** Unique identifier for the workflow */
+  workflow_id: string;
+  /** Execution status */
+  status:
+    | 'running'
+    | 'waiting'
+    | 'completed'
+    | 'error'
+    | 'cancelled'
+    | 'skipped';
+  /** Full execution state including node results, loops, and pause/resume data */
+  execution_data?: WorkflowExecutionDataV3Type;
+  /**
+   * Timestamp when the execution started
+   * @format date-time
+   */
+  started_at?: string | null;
+  /**
+   * Timestamp when the execution finished
+   * @format date-time
+   */
+  finished_at?: string | null;
+  /**
+   * Timestamp when the execution record was created
+   * @format date-time
+   */
+  created_at?: string;
+}
+
+export interface WorkflowExecutionListV3Type {
+  list: {
+    /** Unique identifier for the execution */
+    id: string;
+    /** Unique identifier for the workflow */
+    workflow_id: string;
+    /** Execution status */
+    status:
+      | 'running'
+      | 'waiting'
+      | 'completed'
+      | 'error'
+      | 'cancelled'
+      | 'skipped';
+    /**
+     * Timestamp when the execution started
+     * @format date-time
+     */
+    started_at?: string | null;
+    /**
+     * Timestamp when the execution finished
+     * @format date-time
+     */
+    finished_at?: string | null;
+    /**
+     * Timestamp when the execution record was created
+     * @format date-time
+     */
+    created_at?: string;
+  }[];
+}
+
+/**
+ * Update an existing workflow node
+ */
+export interface WorkflowNodeUpdateReqV3Type {
+  /** Node type identifier. */
+  type?: string;
+  /** Position of the node on the canvas. */
+  position?: {
+    /** X coordinate. */
+    x?: number;
+    /** Y coordinate. */
+    y?: number;
+  };
+  /** Node configuration and metadata. */
+  data?: {
+    /** Node-specific configuration. */
+    config?: object;
+    /** Display title for the node. */
+    title?: string;
+    /** Optional description. */
+    description?: string | null;
+  };
+  /** Position of the incoming connection handle. */
+  targetPosition?: 'top' | 'bottom' | 'left' | 'right';
+  /** Position of the outgoing connection handle. */
+  sourcePosition?: 'top' | 'bottom' | 'left' | 'right';
+}
+
+/**
+ * Create a new workflow node
+ */
+export interface WorkflowNodeCreateReqV3Type {
+  /** Node type identifier. */
+  type: string;
+  /** Position of the node on the canvas. */
+  position: {
+    /** X coordinate. */
+    x: number;
+    /** Y coordinate. */
+    y: number;
+  };
+  /** Node configuration and metadata. */
+  data: {
+    /** Node-specific configuration. */
+    config?: object;
+    /** Display title for the node. */
+    title?: string;
+    /** Optional description. */
+    description?: string | null;
+  };
+  /** Position of the incoming connection handle. Defaults to 'top'. */
+  targetPosition?: 'top' | 'bottom' | 'left' | 'right';
+  /** Position of the outgoing connection handle. Defaults to 'bottom'. */
+  sourcePosition?: 'top' | 'bottom' | 'left' | 'right';
+  /** Optional edges to add along with the node. */
+  edges?: WorkflowEdgeV3Type[];
+}
+
+/**
+ * List of workflow nodes and edges
+ */
+export interface WorkflowNodeListResponseV3Type {
+  /** Workflow nodes. */
+  nodes?: WorkflowNodeGetResponseV3Type[];
+  /** Connections between nodes. */
+  edges?: WorkflowEdgeV3Type[];
+}
+
+/**
+ * A single workflow node
+ */
+export interface WorkflowNodeGetResponseV3Type {
+  /** Unique identifier for the node. */
+  id: string;
+  /** Node type identifier. */
+  type: string;
+  /** Position of the node on the canvas. */
+  position: {
+    /** X coordinate. */
+    x: number;
+    /** Y coordinate. */
+    y: number;
+  };
+  /** Node configuration and metadata. */
+  data: WorkflowNodeDataV3Type;
+  /** Position of the incoming connection handle. */
+  targetPosition?: 'top' | 'bottom' | 'left' | 'right';
+  /** Position of the outgoing connection handle. */
+  sourcePosition?: 'top' | 'bottom' | 'left' | 'right';
+}
+
+/**
+ * Workflow test node request body
+ */
+export interface WorkflowTestNodeReqV3Type {
+  /** Unique identifier of the node to test. */
+  node_id: string;
+  /** Optional test data to pass to the node. */
+  test_trigger_data?: object;
+  /** Test mode. Defaults to sample_data if not specified. */
+  test_mode?: 'sample_data' | 'listen_webhook' | 'trigger_event';
+}
+
+/**
+ * Workflow execute request body
+ */
+export interface WorkflowExecuteReqV3Type {
+  /** Data to pass to the workflow trigger. */
+  trigger_data?: object;
+}
+
+/**
+ * Workflow with full details including nodes and edges
+ */
+export interface WorkflowGetResponseV3Type {
+  /** Unique identifier for the workflow */
+  id: string;
+  /** Title of the workflow */
+  title: string;
+  /** Description of the workflow */
+  description?: string | null;
+  /** Unique identifier for the base */
+  base_id: string;
+  /** Unique identifier for the workspace */
+  workspace_id: string;
+  /** Whether the workflow is enabled */
+  enabled?: boolean;
+  /** Published workflow node definitions */
+  nodes?: WorkflowNodeV3Type[];
+  /** Published connections between workflow nodes */
+  edges?: WorkflowEdgeV3Type[];
+  /** Draft configuration with unpublished changes. Null when no draft exists. */
+  draft?: WorkflowDraftV3Type;
+  /** Workflow options including execution configuration and display settings */
+  options?: WorkflowOptionsV3Type;
+  /**
+   * Timestamp when the workflow was created
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the workflow was last updated
+   * @format date-time
+   */
+  updated_at: string;
+  /** User ID of the creator */
+  created_by?: string;
+  /** User ID of the last updater */
+  updated_by?: string;
+}
+
+/**
+ * Workflow options including execution configuration and display settings
+ */
+export interface WorkflowOptionsV3Type {
+  /** Execution identity — determines the permissions context under which the workflow runs */
+  run_as?: {
+    /** Identity type. 'service_account' runs as a system user with creator role, 'role' runs with a specified role, 'user' runs as a specific user */
+    type: 'service_account' | 'role' | 'user';
+    /** Role name (when type='role') or user ID (when type='user'). Not required for 'service_account' */
+    value?: string;
+  };
+  /** Custom emoji icon for the workflow */
+  icon?: string;
+}
+
+/**
+ * Draft version of workflow nodes and edges for create/update requests. Node data does not accept testResult.
+ */
+export interface WorkflowDraftRequestV3Type {
+  /** Draft workflow node definitions */
+  nodes?: WorkflowNodeRequestV3Type[];
+  /** Draft connections between nodes */
+  edges?: WorkflowEdgeV3Type[];
+}
+
+/**
+ * A workflow node in create/update requests. Same as WorkflowNode but node data does not accept testResult.
+ */
+export interface WorkflowNodeRequestV3Type {
+  /** Unique identifier for this node within the workflow */
+  id: string;
+  /** Node type identifier determining behavior and available configuration. */
+  type: string;
+  /** Position of the node on the workflow canvas */
+  position: {
+    /** X coordinate */
+    x: number;
+    /** Y coordinate */
+    y: number;
+  };
+  /** Data payload for a workflow node in create/update requests. Does not accept testResult — that field is server-managed. */
+  data: WorkflowNodeDataRequestV3Type;
+  /** Position of the incoming connection handle */
+  targetPosition?: 'top' | 'bottom' | 'left' | 'right';
+  /** Position of the outgoing connection handle */
+  sourcePosition?: 'top' | 'bottom' | 'left' | 'right';
+}
+
+/**
+ * Data payload for a workflow node in create/update requests. Does not accept testResult — that field is server-managed.
+ */
+export interface WorkflowNodeDataRequestV3Type {
+  /** Display title of the node */
+  title: string;
+  /** Description of the node */
+  description?: string;
+  /** Node-specific configuration. Structure varies by node type — e.g. table ID for record triggers, conditions array for If nodes, duration/unit for Delay nodes, array expression for Iterate nodes */
+  config: object;
+  /** Input variable definitions for this node */
+  inputVariables?: WorkflowVariableDefinitionV3Type[];
+  /** Output variable definitions produced by this node */
+  outputVariables?: WorkflowVariableDefinitionV3Type[];
+}
+
+/**
+ * Draft version of workflow nodes and edges with unpublished changes. Must be published via the publish endpoint for changes to take effect.
+ */
+export interface WorkflowDraftV3Type {
+  /** Draft workflow node definitions */
+  nodes?: WorkflowNodeV3Type[];
+  /** Draft connections between nodes */
+  edges?: WorkflowEdgeV3Type[];
+}
+
+/**
+ * Full execution state of a workflow run, including all node results, loop data, and pause/resume information
+ */
+export interface WorkflowExecutionDataV3Type {
+  /** Execution state ID */
+  id: string;
+  /** ID of the workflow being executed */
+  workflowId: string;
+  /** Overall execution status */
+  status:
+    | 'running'
+    | 'waiting'
+    | 'completed'
+    | 'error'
+    | 'cancelled'
+    | 'skipped';
+  /** Execution start time (Unix timestamp in milliseconds) */
+  startTime: number;
+  /** Execution end time (Unix timestamp in milliseconds) */
+  endTime?: number;
+  /** Ordered list of node execution results */
+  nodeResults: WorkflowNodeExecutionResultV3Type[];
+  /** ID of the currently executing node (when status is 'running') */
+  currentNodeId?: string;
+  /** Data that triggered the workflow execution */
+  triggerData?: object;
+  /** Title of the trigger node */
+  triggerNodeTitle?: string;
+  /** Loop execution data keyed by iterate node ID */
+  loops?: Record<string, WorkflowLoopDataV3Type>;
+  /** Timestamp when execution was paused (for delay/wait-until nodes) */
+  pausedAt?: number;
+  /** Timestamp when execution should resume */
+  resumeAt?: number;
+  /** ID of the node to resume execution from */
+  nextNodeId?: string;
+}
+
+/**
+ * Execution data for a single iterate/loop node across all its iterations
+ */
+export interface WorkflowLoopDataV3Type {
+  /** ID of the iterate node */
+  nodeId: string;
+  /** Title of the iterate node */
+  nodeTitle: string;
+  /** Total number of iterations executed */
+  totalIterations: number;
+  /** Map of iteration index to iteration data. Each iteration contains its own nodeResults and optional nested childLoops. */
+  iterations?: Record<
+    string,
+    {
+      /** 0-based iteration index */
+      iterationIndex?: number;
+      /** Node execution results within this iteration */
+      nodeResults?: WorkflowNodeExecutionResultV3Type[];
+      /** Nested loop data for loops-within-loops */
+      childLoops?: Record<string, WorkflowLoopDataV3Type>;
+    }
+  >;
+}
+
+/**
+ * Result of executing a single workflow node
+ */
+export interface WorkflowNodeExecutionResultV3Type {
+  /** ID of the node that was executed */
+  nodeId: string;
+  /** Title of the node at execution time */
+  nodeTitle: string;
+  /** Execution status of the node */
+  status: 'pending' | 'running' | 'success' | 'error' | 'skipped';
+  /** Interpolated input data passed to the node */
+  input?: object;
+  /** Output data produced by the node */
+  output?: object;
+  /** Error message if the node failed */
+  error?: string;
+  /** Execution start time (Unix timestamp in milliseconds) */
+  startTime: number;
+  /** Execution end time (Unix timestamp in milliseconds) */
+  endTime?: number;
+  /** Explicit next node title for routing (used by conditional nodes) */
+  nextNode?: string;
+  /** Execution log entries from the node */
+  logs?: {
+    /** Log level */
+    level: 'info' | 'warn' | 'error';
+    /** Log message */
+    message: string;
+    /** Timestamp of the log entry */
+    ts?: number;
+    /** Additional structured log data */
+    data?: object;
+  }[];
+  /** Execution metrics (e.g. execution time, condition count) */
+  metrics?: object;
+  /** Input variable definitions at execution time */
+  inputVariables?: WorkflowVariableDefinitionV3Type[];
+  /** Output variable definitions at execution time */
+  outputVariables?: WorkflowVariableDefinitionV3Type[];
+  /** Loop context for iterate nodes — contains loop state, body port, and exit port */
+  loopContext?: {
+    /** Serializable loop state */
+    state?: {
+      /** Array of items being iterated */
+      items?: any[];
+      /** Current iteration index (0-based) */
+      currentIndex?: number;
+      /** Total number of items to iterate */
+      totalItems?: number;
+    };
+    /** Port ID for the loop body (e.g. 'body') */
+    bodyPort?: string;
+    /** Port ID for the loop exit (e.g. 'output') */
+    exitPort?: string;
+  };
+  /** Whether this test result is stale (node config changed since last test) */
+  isStale?: boolean;
+}
+
+/**
+ * A directed connection between two workflow nodes defining execution flow. For conditional/loop nodes, sourcePortId determines which branch is followed.
+ */
+export interface WorkflowEdgeV3Type {
+  /** Unique identifier for this edge */
+  id: string;
+  /** ID of the source node */
+  source: string;
+  /** ID of the target node */
+  target: string;
+  /** Whether the edge should be animated in the UI */
+  animated?: boolean;
+  /** Display label on the edge (e.g. 'True', 'False', 'For Each Item') */
+  label?: string;
+  /** Output port ID on the source node. Used for branching — e.g. 'true'/'false' for If nodes, 'body'/'output' for Iterate nodes */
+  sourcePortId?: string;
+  /** Input port ID on the target node */
+  targetPortId?: string;
+}
+
+/**
+ * A node in the workflow graph representing a trigger, action, or flow control operation. Node type IDs follow the pattern '{provider}.{category}.{name}' (e.g. 'nocodb.trigger.after_insert', 'core.flow.if', 'slack.send_message').
+ */
+export interface WorkflowNodeV3Type {
+  /** Unique identifier for this node within the workflow */
+  id: string;
+  /** Node type identifier determining behavior and available configuration. Categories: trigger (start events), action (operations), flow (control flow). Examples: 'nocodb.trigger.after_insert', 'core.action.http', 'core.flow.if', 'core.flow.iterate', 'core.flow.delay', 'slack.send_message', 'ai.action.generate-text' */
+  type: string;
+  /** Position of the node on the workflow canvas */
+  position: {
+    /** X coordinate */
+    x: number;
+    /** Y coordinate */
+    y: number;
+  };
+  /** Data payload of a workflow node containing its configuration and metadata */
+  data: WorkflowNodeDataV3Type;
+  /** Position of the incoming connection handle */
+  targetPosition?: 'top' | 'bottom' | 'left' | 'right';
+  /** Position of the outgoing connection handle */
+  sourcePosition?: 'top' | 'bottom' | 'left' | 'right';
+}
+
+/**
+ * Data payload of a workflow node containing its configuration and metadata
+ */
+export interface WorkflowNodeDataV3Type {
+  /** Display title of the node */
+  title: string;
+  /** Description of the node */
+  description?: string;
+  /** Node-specific configuration. Structure varies by node type — e.g. table ID for record triggers, conditions array for If nodes, duration/unit for Delay nodes, array expression for Iterate nodes */
+  config: object;
+  /** Result from the most recent test execution of this node (only present on draft nodes) */
+  testResult?: WorkflowNodeExecutionResultV3Type;
+  /** Input variable definitions for this node */
+  inputVariables?: WorkflowVariableDefinitionV3Type[];
+  /** Output variable definitions produced by this node */
+  outputVariables?: WorkflowVariableDefinitionV3Type[];
+}
+
+/**
+ * Variable definition describing an input or output of a workflow node
+ */
+export interface WorkflowVariableDefinitionV3Type {
+  /** Expression reference key (e.g. 'fields.Title', 'meta.id') */
+  key: string;
+  /** Human-readable display name */
+  name: string;
+  /** Data type of the variable */
+  type:
+    | 'string'
+    | 'number'
+    | 'integer'
+    | 'boolean'
+    | 'object'
+    | 'array'
+    | 'date'
+    | 'datetime';
+  /** Grouping category — 'meta' for system fields, 'fields' for user data, 'iteration' for loop variables */
+  groupKey?: 'meta' | 'fields' | 'iteration';
+  /** Whether this variable represents an array of values */
+  isArray?: boolean;
+  /** Additional metadata (entity references, icons, UI type hints) */
+  extra?: {
+    /** ID of the referenced entity (column, table, or view) */
+    entity_id?: string;
+    /** Type of the referenced entity */
+    entity?: 'column' | 'table' | 'view';
+    /** Icon identifier for display */
+    icon?: string;
+    /** UI data type hint */
+    uiType?: string;
+    /** Description of the variable */
+    description?: string;
+    /** Port ID this variable belongs to (for multi-port nodes like If/Iterate) */
+    port?: string;
+  };
+  /** Nested variable definitions for object/array types */
+  children?: WorkflowVariableDefinitionV3Type[];
+}
+
+/**
+ * Port definition for a workflow node (input/output connection point)
+ */
+export interface WorkflowNodePortV3Type {
+  /** Unique port identifier within the node (e.g. 'true', 'false', 'body', 'output') */
+  id: string;
+  /** Display label for the port (e.g. 'True', 'False', 'For Each Item') */
+  label?: string;
+  /** Whether this port accepts incoming or outgoing connections */
+  direction: 'input' | 'output';
+  /** Display order of the port */
+  order?: number;
+}
+
+export interface WorkflowListV3Type {
+  list: {
+    /** Unique identifier for the workflow */
+    id: string;
+    /** Title of the workflow */
+    title: string;
+    /** Description of the workflow */
+    description?: string | null;
+    /** Unique identifier for the base */
+    base_id: string;
+    /** Unique identifier for the workspace */
+    workspace_id: string;
+    /** Whether the workflow is enabled */
+    enabled?: boolean;
+    /**
+     * Timestamp when the workflow was created
+     * @format date-time
+     */
+    created_at?: string;
+    /**
+     * Timestamp when the workflow was last updated
+     * @format date-time
+     */
+    updated_at?: string;
+    /** User ID of the creator */
+    created_by?: string;
+    /** User ID of the last updater */
+    updated_by?: string;
+  }[];
+}
+
+/**
+ * Validator configuration for a form field.
+ */
+export interface FormFieldValidatorV3Type {
+  /** Type of validation to apply. */
+  type?:
+    | 'required'
+    | 'regex'
+    | 'minValue'
+    | 'maxValue'
+    | 'minLength'
+    | 'maxLength'
+    | 'email'
+    | 'url'
+    | 'custom';
+  /** Validator parameter value (e.g., min/max number, pattern string). */
+  value?: string | number | null;
+  /** Custom error message for validation failure. */
+  message?: string;
+  /** Regular expression pattern (for regex validator type). */
+  regex?: string;
+}
+
+/**
+ * Form-specific configuration for a field.
+ */
+export interface FormFieldConfigV3Type {
+  /** Display label override for the field. */
+  alias?: string;
+  /** Help text shown below the field. */
+  description?: string;
+  /** Whether the field is required. */
+  required?: boolean;
+  /** Whether to show QR/barcode scanner input. */
+  allow_scanner_input?: boolean;
+  /** Whether to display as list layout. */
+  is_list?: boolean;
+  /** Whether to limit selectable options. */
+  is_limit_option?: boolean;
+  /** List of validators for the field. */
+  validators?: FormFieldValidatorV3Type[];
+}
+
+/**
+ * List of comments for a record.
+ */
+export interface CommentListResponseV3Type {
+  list: CommentV3Type[];
+}
+
+/**
+ * Request body for updating a comment.
+ */
+export interface CommentUpdateRequestV3Type {
+  /**
+   * Updated comment text.
+   * @example Updated comment
+   */
+  comment: string;
+}
+
+/**
+ * Request body for creating a comment.
+ */
+export interface CommentCreateRequestV3Type {
+  /**
+   * Comment text (supports markdown).
+   * @example This is a comment
+   */
+  comment: string;
+}
+
+/**
+ * A comment on a record.
+ */
+export interface CommentV3Type {
+  /**
+   * Unique comment ID.
+   * @example cmt_abc123
+   */
+  id?: string;
+  /**
+   * Record ID this comment belongs to.
+   * @example 1
+   */
+  record_id?: string;
+  /**
+   * Table ID this comment belongs to.
+   * @example mrc5unwjdov67vr
+   */
+  table_id?: string;
+  /**
+   * Comment text (supports markdown).
+   * @example This is a comment
+   */
+  comment?: string;
+  /**
+   * User ID of the comment creator.
+   * @example usr_abc123
+   */
+  created_by?: string;
+  /**
+   * User ID who resolved this comment (null if not resolved).
+   * @example null
+   */
+  resolved_by?: string | null;
+  /**
+   * Parent comment ID for threaded comments.
+   * @example null
+   */
+  parent_comment_id?: string | null;
+  /**
+   * Creation timestamp.
+   * @format date-time
+   * @example 2024-01-15T10:30:00.000Z
+   */
+  created_at?: string;
+  /**
+   * Last update timestamp.
+   * @format date-time
+   * @example 2024-01-15T10:30:00.000Z
+   */
+  updated_at?: string;
+}
+
+/**
+ * List of documents.
+ */
+export interface DocumentListResponseV3Type {
+  list: DocumentListItemV3Type[];
+}
+
+/**
+ * Document summary returned in list responses. Excludes the `content` field.
+ */
+export interface DocumentListItemV3Type {
+  id: string;
+  base_id: string;
+  title: string;
+  meta?: object;
+  order: number;
+  parent_id: string | null;
+  has_children: boolean;
+  version: number;
+  comment_count?: number;
+  created_by?: string;
+  updated_by?: string;
+  /** @format date-time */
+  created_at: string;
+  /** @format date-time */
+  updated_at: string;
+}
+
+/**
+ * Full document response (includes content).
+ */
+export interface DocumentV3Type {
+  /** Unique document identifier. */
+  id: string;
+  /** Base this document belongs to. */
+  base_id: string;
+  /** Document title. */
+  title: string;
+  /** rich-text JSON document content. */
+  content: object;
+  /** Document metadata (icon, cover, lock, settings). */
+  meta?: object;
+  /** Sort order among siblings. */
+  order: number;
+  /** Parent document ID. null for root documents. */
+  parent_id: string | null;
+  /** Whether this document has child documents. */
+  has_children: boolean;
+  /** Optimistic concurrency version counter. */
+  version: number;
+  /** Number of comments on this document. */
+  comment_count?: number;
+  /** User ID of the document creator. */
+  created_by?: string;
+  /** User ID of the last editor. */
+  updated_by?: string;
+  /**
+   * Creation timestamp.
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Last update timestamp.
+   * @format date-time
+   */
+  updated_at: string;
+}
+
+/**
+ * Request body for reordering or moving a document. At least one of order or parent_id must be provided.
+ */
+export interface DocumentReorderV3Type {
+  /** New sort order value (float). Compute midpoint between neighbors for fractional ordering. */
+  order?: number;
+  /** New parent document ID. null to move to root. Omit to keep current parent. */
+  parent_id?: string | null;
+}
+
+/**
+ * Request body for updating a document.
+ */
+export interface DocumentUpdateV3Type {
+  /** Updated title. */
+  title?: string;
+  /** Updated rich-text JSON document content. */
+  content?: object;
+  /** Updated metadata. */
+  meta?: object;
+  /** Current document version for optimistic concurrency control. Must match the server's version. */
+  version: number;
+}
+
+/**
+ * Request body for creating a document.
+ */
+export interface DocumentCreateV3Type {
+  /** Title of the document. Defaults to 'Untitled' if omitted. */
+  title?: string;
+  /** rich-text JSON document content. */
+  content?: object;
+  /** Arbitrary metadata (icon, cover image, settings, etc.). */
+  meta?: object;
+  /** Parent document ID. null or omitted for root-level documents. */
+  parent_id?: string | null;
+}
+
+export type ApiTokenWithTokenV3V3Type = ApiTokenV3V3Type & {
+  /**
+   * The actual API token value (only returned on creation)
+   * @example wxAFzFO2wwOf9ozVRjragBJ7KPWMaW2OGpklGqHh
+   */
+  token: string;
+};
+
+export interface ApiTokenV3V3Type {
+  /**
+   * Token ID
+   * @example 5
+   */
+  id: number;
+  /**
+   * Token title / description
+   * @example Github Integration
+   */
+  title: string;
+  /**
+   * Token creation timestamp
+   * @format date-time
+   * @example 2025-12-30 15:17:24+00:00
+   */
+  created_at: string;
+  /**
+   * Token last update timestamp
+   * @format date-time
+   * @example 2025-12-30 15:17:24+00:00
+   */
+  updated_at: string;
+}
+
+/**
+ * Widget update request body
+ */
+export interface WidgetUpdateReqV3Type {
+  /** Title of the widget. */
+  title?: string;
+  /** Description of the widget. */
+  description?: string | null;
+  /** Widget configuration. Structure depends on widget type. */
+  options?:
+    | WidgetOptionsMetricV3Type
+    | WidgetOptionsPieChartV3Type
+    | WidgetOptionsDonutChartV3Type
+    | WidgetOptionsBarChartV3Type
+    | WidgetOptionsLineChartV3Type
+    | WidgetOptionsTextV3Type
+    | WidgetOptionsIframeV3Type;
+  /** Display order of the widget. */
+  order?: number;
+  /** Position and size of the widget on the dashboard grid. */
+  position?: {
+    /** Column position of the widget on the dashboard grid (0-indexed, left to right). e.g. 0 means the first column, 6 means starting at the 7th column. */
+    x?: number;
+    /** Row position of the widget on the dashboard grid (0-indexed, top to bottom). e.g. 0 means the first row, 4 means starting at the 5th row. */
+    y?: number;
+    /** Width of the widget in grid columns. e.g. 6 means the widget spans 6 columns (half of a 12-column grid). */
+    w?: number;
+    /** Height of the widget in grid rows. e.g. 4 means the widget spans 4 rows tall. */
+    h?: number;
+  };
+  /** Unique identifier for the associated table. */
+  table_id?: string | null;
+  /** Unique identifier for the associated view. */
+  view_id?: string | null;
+}
+
+/**
+ * Widget create request body
+ */
+export interface WidgetCreateReqV3Type {
+  /** Title of the widget. */
+  title: string;
+  /** Description of the widget. */
+  description?: string | null;
+  /** Type of the widget. */
+  type: 'chart' | 'metric' | 'text' | 'iframe';
+  /** Widget configuration. Structure depends on widget type. */
+  options?:
+    | WidgetOptionsMetricV3Type
+    | WidgetOptionsPieChartV3Type
+    | WidgetOptionsDonutChartV3Type
+    | WidgetOptionsBarChartV3Type
+    | WidgetOptionsLineChartV3Type
+    | WidgetOptionsTextV3Type
+    | WidgetOptionsIframeV3Type;
+  /** Position and size of the widget on the dashboard grid. */
+  position?: {
+    /** Column position of the widget on the dashboard grid (0-indexed, left to right). e.g. 0 means the first column, 6 means starting at the 7th column. */
+    x?: number;
+    /** Row position of the widget on the dashboard grid (0-indexed, top to bottom). e.g. 0 means the first row, 4 means starting at the 5th row. */
+    y?: number;
+    /** Width of the widget in grid columns. e.g. 6 means the widget spans 6 columns (half of a 12-column grid). */
+    w?: number;
+    /** Height of the widget in grid rows. e.g. 4 means the widget spans 4 rows tall. */
+    h?: number;
+  };
+  /** Unique identifier for the associated table. */
+  table_id?: string | null;
+  /** Unique identifier for the associated view. */
+  view_id?: string | null;
+}
+
+/**
+ * Dashboard update request body
+ */
+export interface DashboardUpdateReqV3Type {
+  /** Title of the dashboard. */
+  title?: string;
+  /** Description of the dashboard. */
+  description?: string | null;
+}
+
+/**
+ * Dashboard create request body
+ */
+export interface DashboardCreateReqV3Type {
+  /** Title of the dashboard. */
+  title: string;
+  /** Description of the dashboard. */
+  description?: string | null;
+}
+
+export interface WidgetListV3Type {
+  list: WidgetReadV3Type[];
+}
+
+export interface WidgetReadV3Type {
+  /** Unique identifier for the widget. */
+  id: string;
+  /** Title of the widget. */
+  title: string;
+  /** Description of the widget. */
+  description?: string | null;
+  /** Unique identifier for the parent dashboard. */
+  dashboard_id: string;
+  /** Type of the widget. */
+  type: 'chart' | 'metric' | 'text' | 'iframe';
+  /** Widget configuration. Structure depends on widget type. See WidgetOptions* schemas. */
+  options?:
+    | WidgetOptionsMetricV3Type
+    | WidgetOptionsPieChartV3Type
+    | WidgetOptionsDonutChartV3Type
+    | WidgetOptionsBarChartV3Type
+    | WidgetOptionsLineChartV3Type
+    | WidgetOptionsTextV3Type
+    | WidgetOptionsIframeV3Type;
+  /** Display order of the widget. */
+  order?: number | null;
+  /** Position and size of the widget on the dashboard grid. */
+  position?: {
+    /** Column position of the widget on the dashboard grid (0-indexed, left to right). e.g. 0 means the first column, 6 means starting at the 7th column. */
+    x?: number;
+    /** Row position of the widget on the dashboard grid (0-indexed, top to bottom). e.g. 0 means the first row, 4 means starting at the 5th row. */
+    y?: number;
+    /** Width of the widget in grid columns. e.g. 6 means the widget spans 6 columns (half of a 12-column grid). */
+    w?: number;
+    /** Height of the widget in grid rows. e.g. 4 means the widget spans 4 rows tall. */
+    h?: number;
+  };
+  /** Unique identifier for the associated table. */
+  table_id?: string | null;
+  /** Unique identifier for the associated view. */
+  view_id?: string | null;
+  /** Whether the widget has a configuration error. */
+  error?: boolean;
+  /**
+   * Timestamp when the widget was created.
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the widget was last updated.
+   * @format date-time
+   */
+  updated_at: string;
+}
+
+/**
+ * Options for an iframe widget (type=iframe).
+ */
+export interface WidgetOptionsIframeV3Type {
+  /** URL to embed. */
+  url?: string;
+  /** Whether to allow fullscreen. */
+  allow_fullscreen?: boolean;
+}
+
+/**
+ * Options for a text widget (type=text). Formatting is nested inside appearance.
+ */
+export interface WidgetOptionsTextV3Type {
+  /** Text content (plain text or markdown). */
+  content?: string;
+  /** Text rendering mode. */
+  type?: 'markdown' | 'text';
+  appearance?: {
+    /** Text formatting options. */
+    formatting?: {
+      horizontal_align?: 'flex-start' | 'center' | 'flex-end';
+      vertical_align?: 'flex-start' | 'center' | 'flex-end';
+      bold?: boolean;
+      italic?: boolean;
+      underline?: boolean;
+      strikethrough?: boolean;
+    };
+    /** Font settings (only for type=text). */
+    font?: {
+      family?: string;
+      weight?: 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+      /** Font size in pixels. */
+      size?: number;
+      /** Line height multiplier. */
+      line_height?: number;
+    };
+    /** Hex color (only for type=text). */
+    color?: string;
+  };
+}
+
+/**
+ * Options for a line chart widget (type=chart, chart_type=line). Same data structure as bar chart with additional line-specific appearance options.
+ */
+export interface WidgetOptionsLineChartV3Type {
+  chart_type: 'line';
+  data_source?: 'table' | 'view' | 'filter';
+  data?: {
+    x_axis?: {
+      field_id: string;
+      sort_by?: 'x_axis' | 'y_axis';
+      order_by?: 'default' | 'asc' | 'desc';
+      include_empty_records?: boolean;
+      include_others?: boolean;
+      category_limit?: number;
+    };
+    y_axis?: {
+      start_at_zero?: boolean;
+      fields?: {
+        field_id: string;
+        aggregation: string;
+      }[];
+      group_by?: string | null;
+    };
+  };
+  appearance?: {
+    size?: 'small' | 'medium' | 'large';
+    /** Smooth curve vs straight line segments. */
+    smooth_lines?: boolean;
+    /** Show dots at data points. */
+    plot_data_points?: boolean;
+    show_count_in_legend?: boolean;
+    show_value_in_chart?: boolean;
+    legend_position?: 'top' | 'right' | 'bottom' | 'left' | 'none';
+    color_schema?: 'default' | 'custom';
+  };
+}
+
+/**
+ * Options for a bar chart widget (type=chart, chart_type=bar).
+ */
+export interface WidgetOptionsBarChartV3Type {
+  chart_type: 'bar';
+  data_source?: 'table' | 'view' | 'filter';
+  data?: {
+    /** X-axis (category) configuration. */
+    x_axis?: {
+      /** X-axis grouping field. */
+      field_id: string;
+      /** Sort by x-axis labels or y-axis values. */
+      sort_by?: 'x_axis' | 'y_axis';
+      order_by?: 'default' | 'asc' | 'desc';
+      include_empty_records?: boolean;
+      include_others?: boolean;
+      /** Max categories (10-50). */
+      category_limit?: number;
+    };
+    /** Y-axis (value) configuration. */
+    y_axis?: {
+      start_at_zero?: boolean;
+      /** Fields to aggregate on the y-axis. */
+      fields?: {
+        field_id: string;
+        aggregation: string;
+      }[];
+      /** Optional secondary grouping field ID. */
+      group_by?: string | null;
+    };
+  };
+  appearance?: {
+    size?: 'small' | 'medium' | 'large';
+    show_count_in_legend?: boolean;
+    show_value_in_chart?: boolean;
+    legend_position?: 'top' | 'right' | 'bottom' | 'left' | 'none';
+    color_schema?: 'default' | 'custom';
+  };
+}
+
+/**
+ * Options for a donut chart widget (type=chart, chart_type=donut). Same structure as pie chart.
+ */
+export interface WidgetOptionsDonutChartV3Type {
+  chart_type: 'donut';
+  data_source?: 'table' | 'view' | 'filter';
+  data?: {
+    category?: {
+      field_id: string;
+      order_by?: 'default' | 'asc' | 'desc';
+      category_limit?: number;
+      include_empty_records?: boolean;
+      include_others?: boolean;
+    };
+    value?: {
+      type: 'count' | 'summary';
+      field_id?: string;
+      aggregation?: string;
+    };
+  };
+  appearance?: {
+    size?: 'small' | 'medium' | 'large';
+    show_count_in_legend?: boolean;
+    show_percentage_on_chart?: boolean;
+    legend_position?: 'top' | 'right' | 'bottom' | 'left' | 'none';
+    color_schema?: 'default' | 'custom';
+    custom_color_schema?: {
+      color?: string;
+      label?: string;
+    }[];
+  };
+}
+
+/**
+ * Options for a pie chart widget (type=chart, chart_type=pie).
+ */
+export interface WidgetOptionsPieChartV3Type {
+  chart_type: 'pie';
+  data_source?: 'table' | 'view' | 'filter';
+  data?: {
+    category?: {
+      /** Column to group by. */
+      field_id: string;
+      order_by?: 'default' | 'asc' | 'desc';
+      /** Max categories (10-50). */
+      category_limit?: number;
+      include_empty_records?: boolean;
+      /** Aggregate remaining into 'Others'. */
+      include_others?: boolean;
+    };
+    value?: {
+      type: 'count' | 'summary';
+      /** Column to aggregate. Required when type is 'summary'. */
+      field_id?: string;
+      /** Aggregation function. Required when type is 'summary'. */
+      aggregation?: string;
+    };
+  };
+  appearance?: {
+    size?: 'small' | 'medium' | 'large';
+    show_count_in_legend?: boolean;
+    show_percentage_on_chart?: boolean;
+    legend_position?: 'top' | 'right' | 'bottom' | 'left' | 'none';
+    color_schema?: 'default' | 'custom';
+    custom_color_schema?: {
+      color?: string;
+      label?: string;
+    }[];
+  };
+}
+
+/**
+ * Options for a metric widget (type=metric).
+ */
+export interface WidgetOptionsMetricV3Type {
+  /** Data source type. */
+  data_source?: 'table' | 'view' | 'filter';
+  /** Metric aggregation configuration. */
+  metric?: {
+    /** 'count' counts all rows, 'summary' aggregates a column. */
+    type: 'count' | 'summary';
+    /** Column to aggregate. Required when type is 'summary'. */
+    field_id?: string;
+    /** Aggregation function. */
+    aggregation: 'sum' | 'avg' | 'count' | 'min' | 'max';
+  };
+  appearance?: {
+    /** Visual style variant. */
+    type?: 'default' | 'filled' | 'coloured';
+    /** Color theme. */
+    theme?:
+      | 'gray'
+      | 'red'
+      | 'green'
+      | 'yellow'
+      | 'pink'
+      | 'blue'
+      | 'orange'
+      | 'maroon'
+      | 'purple';
+  };
+}
+
+export interface DashboardDataResponseV3Type {
+  /** Map of widget IDs to their data. */
+  widgets: Record<string, any>;
+}
+
+export type DashboardGetResponseV3Type = DashboardListItemV3Type & {
+  /** List of widgets. Only included when `includeWidgets=true`. */
+  widgets?: WidgetReadV3Type[];
+};
+
+export interface DashboardListV3Type {
+  list: DashboardListItemV3Type[];
+}
+
+export interface DashboardListItemV3Type {
+  /** Unique identifier for the dashboard. */
+  id: string;
+  /** Title of the dashboard. */
+  title: string;
+  /** Description of the dashboard. */
+  description?: string | null;
+  /** Unique identifier for the base. */
+  base_id: string;
+  /** Unique identifier for the workspace. */
+  workspace_id: string;
+  /**
+   * Timestamp when the dashboard was created.
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the dashboard was last updated.
+   * @format date-time
+   */
+  updated_at: string;
+  /** User ID of the dashboard creator. */
+  created_by?: string;
+}
+
+/**
+ * Script with additional info
+ */
+export interface ScriptGetResponseV3Type {
+  /** Unique identifier for the script */
+  id: string;
+  /** Title of the script. */
+  title: string;
+  /** Description of the script. */
+  description?: string | null;
+  /** Script content. */
+  script: string;
+  /** Configuration for the script. */
+  config?: object;
+  /** Metadata of the script. */
+  meta?: object;
+  /** Unique identifier for the base */
+  base_id: string;
+  /** Unique identifier for the workspace */
+  workspace_id: string;
+  /**
+   * Timestamp when the script was created
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the script was last updated
+   * @format date-time
+   */
+  updated_at: string;
+}
+
+/**
+ * Script update request body
+ */
+export interface ScriptUpdateReqV3Type {
+  /** Title of the script. */
+  title?: string;
+  /** Description of the script. */
+  description?: string | null;
+  /** Script content. */
+  script?: string;
+  /** Configuration for the script. */
+  config?: object;
+  /** Metadata for the script. */
+  meta?: object;
+}
+
+/**
+ * Script create request body
+ */
+export interface ScriptCreateReqV3Type {
+  /** Title of the script. */
+  title: string;
+  /** Description of the script. */
+  description?: string | null;
+  /** Script content. */
+  script?: string;
+  /** Configuration for the script. */
+  config?: object;
+  /** Metadata for the script. */
+  meta?: object;
+}
+
+export interface ScriptListV3Type {
+  list: {
+    /** Unique identifier for the script. */
+    id: string;
+    /** Title of the script. */
+    title: string;
+    /** Description of the script. */
+    description?: string | null;
+    /** Unique identifier for the base to which this script belongs to. */
+    base_id: string;
+    /** Unique identifier for the workspace to which this base belongs to. */
+    workspace_id: string;
+  }[];
+}
+
+/**
+ * Bulk delete base team requests for v3 API
+ */
+export interface BaseTeamDeleteBulkV3Type {
+  /**
+   * Array of teams to remove from base
+   * @example [{"team_id":"team123"},{"team_id":"team456"}]
+   */
+  teams: BaseTeamDeleteV3Type[];
+}
+
+/**
+ * Delete base team request for v3 API
+ */
+export interface BaseTeamDeleteV3Type {
+  /**
+   * Team ID to remove from base
+   * @example team123
+   */
+  team_id: string;
+}
+
+/**
+ * Update base team request for v3 API
+ */
+export interface BaseTeamUpdateV3Type {
+  /**
+   * Team ID to update in base
+   * @example team123
+   */
+  team_id: string;
+  /**
+   * New base role for the team (creator or lower only)
+   * @example viewer
+   */
+  base_role: 'creator' | 'editor' | 'viewer' | 'commenter' | 'no-access';
+}
+
+/**
+ * Bulk create base team requests for v3 API
+ */
+export interface BaseTeamCreateBulkV3Type {
+  /**
+   * Array of teams to add to base
+   * @example [{"team_id":"team123","base_role":"editor"},{"team_id":"team456","base_role":"viewer"}]
+   */
+  teams: BaseTeamCreateV3Type[];
+}
+
+/**
+ * Create base team request for v3 API
+ */
+export interface BaseTeamCreateV3Type {
+  /**
+   * Team ID to add to base
+   * @example team123
+   */
+  team_id: string;
+  /**
+   * Base role to assign to the team (creator or lower only)
+   * @example editor
+   */
+  base_role: 'creator' | 'editor' | 'viewer' | 'commenter' | 'no-access';
+}
+
+/**
+ * Bulk delete workspace team requests for v3 API
+ */
+export interface WorkspaceTeamDeleteBulkV3Type {
+  /**
+   * Array of teams to remove from workspace
+   * @example [{"team_id":"team123"},{"team_id":"team456"}]
+   */
+  teams: WorkspaceTeamDeleteV3Type[];
+}
+
+/**
+ * Delete workspace team request for v3 API
+ */
+export interface WorkspaceTeamDeleteV3Type {
+  /**
+   * Team ID to remove from workspace
+   * @example team123
+   */
+  team_id: string;
+}
+
+/**
+ * Update workspace team request for v3 API
+ */
+export interface WorkspaceTeamUpdateV3Type {
+  /**
+   * Team ID to update in workspace
+   * @example team123
+   */
+  team_id: string;
+  /**
+   * New workspace role for the team (creator or lower only)
+   * @example workspace-level-viewer
+   */
+  workspace_role:
+    | 'workspace-level-creator'
+    | 'workspace-level-editor'
+    | 'workspace-level-viewer'
+    | 'workspace-level-commenter'
+    | 'workspace-level-no-access';
+}
+
+/**
+ * Bulk create workspace team requests for v3 API
+ */
+export interface WorkspaceTeamCreateBulkV3Type {
+  /**
+   * Array of teams to add to workspace
+   * @example [{"team_id":"team123","workspace_role":"workspace-level-editor"},{"team_id":"team456","workspace_role":"workspace-level-viewer"}]
+   */
+  teams: WorkspaceTeamCreateV3Type[];
+}
+
+/**
+ * Create workspace team request for v3 API
+ */
+export interface WorkspaceTeamCreateV3Type {
+  /**
+   * Team ID to add to workspace
+   * @example team123
+   */
+  team_id: string;
+  /**
+   * Workspace role to assign to the team (creator or lower only)
+   * @example workspace-level-editor
+   */
+  workspace_role:
+    | 'workspace-level-creator'
+    | 'workspace-level-editor'
+    | 'workspace-level-viewer'
+    | 'workspace-level-commenter'
+    | 'workspace-level-no-access';
+}
+
+/**
+ * Workspace roles for the user.
+ */
+export enum WorkspaceRolesV3Type {
+  WorkspaceLevelOwner = 'workspace-level-owner',
+  WorkspaceLevelCreator = 'workspace-level-creator',
+  WorkspaceLevelEditor = 'workspace-level-editor',
+  WorkspaceLevelViewer = 'workspace-level-viewer',
+  WorkspaceLevelCommenter = 'workspace-level-commenter',
+  WorkspaceLevelNoAccess = 'workspace-level-no-access',
+}
+
+/**
+ * Team user relationship
+ */
+export interface TeamUserV3Type {
+  /** Team ID */
+  fk_team_id: string;
+  /** User ID */
+  fk_user_id: string;
+  /** Whether user is team owner */
+  is_owner: boolean;
+  /**
+   * Creation timestamp
+   * @format date-time
+   */
+  created_at?: string;
+  /**
+   * Last update timestamp
+   * @format date-time
+   */
+  updated_at?: string;
+}
+
+/**
+ * Update team members request for v3 API
+ */
+export interface TeamMembersUpdateV3ReqV3Type {
+  /**
+   * User ID to update
+   * @example user123
+   */
+  user_id: string;
+  /**
+   * New team role
+   * @example member
+   */
+  team_role: 'member' | 'owner';
+}
+
+/**
+ * Remove team members request for v3 API
+ */
+export interface TeamMembersRemoveV3ReqV3Type {
+  /**
+   * User ID to remove
+   * @example user123
+   */
+  user_id: string;
+}
+
+/**
+ * Add team members request for v3 API
+ */
+export interface TeamMembersAddV3ReqV3Type {
+  /**
+   * User ID to add
+   * @example xxxx
+   */
+  user_id: string;
+  /**
+   * Team role to assign
+   * @example member
+   */
+  team_role: 'member' | 'owner';
+}
+
+/**
+ * Team member response for v3 API
+ */
+export interface TeamMemberV3ResponseV3Type {
+  /**
+   * User email address
+   * @format email
+   * @example user@nocodb.com
+   */
+  user_email: string;
+  /**
+   * User ID
+   * @example id
+   */
+  user_id: string;
+  /**
+   * Team role
+   * @example member
+   */
+  team_role: 'member' | 'owner';
+}
+
+/**
+ * Team member information for v3 API
+ */
+export interface TeamMemberV3V3Type {
+  /**
+   * User ID
+   * @example xxxx
+   */
+  user_id: string;
+  /**
+   * Team role
+   * @example member
+   */
+  team_role: 'member' | 'owner';
+}
+
+/**
+ * A team member inherited from an ancestor team
+ */
+export interface InheritedTeamMemberV3V3Type {
+  /**
+   * Member email address
+   * @example user@example.com
+   */
+  user_email: string;
+  /**
+   * Member user ID
+   * @example usr_xxxx
+   */
+  user_id: string;
+  /**
+   * Member role in the ancestor team
+   * @example member
+   */
+  team_role: 'owner' | 'member';
+  /**
+   * ID of the ancestor team this member is inherited from
+   * @example tm_xxxx
+   */
+  inherited_from_team_id: string;
+  /**
+   * Title of the ancestor team this member is inherited from
+   * @example Engineering
+   */
+  inherited_from_team_title: string;
+}
+
+/**
+ * Detailed team information for v3 API
+ */
+export interface TeamDetailV3V3Type {
+  /**
+   * Team name
+   * @example Design Team
+   */
+  title: string;
+  /**
+   * Team icon (emoji or icon identifier)
+   * @example 🎨
+   */
+  icon?: string | null;
+  /**
+   * Team icon type
+   * @example EMOJI
+   */
+  icon_type?: 'EMOJI' | 'ICON' | null;
+  /**
+   * Team badge color (hex code)
+   * @example #FF5733
+   */
+  badge_color?: string;
+  /** Team members */
+  members: TeamMemberV3ResponseV3Type[];
+  /** Members inherited from ancestor teams */
+  inherited_members?: InheritedTeamMemberV3V3Type[];
+}
+
+/**
+ * Team update request for v3 API
+ */
+export interface TeamUpdateV3ReqV3Type {
+  /**
+   * Updated team name
+   * @example Updated Team Name
+   */
+  title?: string;
+  /**
+   * Updated team icon (emoji or icon identifier)
+   * @example 🛠️
+   */
+  icon?: string | null;
+  /**
+   * Team icon type
+   * @example EMOJI
+   */
+  icon_type?: 'EMOJI' | 'ICON' | null;
+  /**
+   * Updated team badge color (hex code)
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   * @example #00AEEF
+   */
+  badge_color?: string;
+}
+
+/**
+ * Team creation request for v3 API
+ */
+export interface TeamCreateV3ReqV3Type {
+  /**
+   * Team name
+   * @example Design Team
+   */
+  title: string;
+  /**
+   * Team icon (emoji or icon identifier)
+   * @example 🎨
+   */
+  icon?: string | null;
+  /**
+   * Team icon type
+   * @example EMOJI
+   */
+  icon_type?: 'EMOJI' | 'ICON' | null;
+  /**
+   * Team badge color (hex code)
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   * @example #FF5733
+   */
+  badge_color?: string;
+  /** Initial team members */
+  members?: TeamMemberV3V3Type[];
+  /**
+   * Parent team ID. Null or omitted = root team.
+   * @example tmd_abc123
+   */
+  parent_team_id?: string | null;
+}
+
+/**
+ * Team information for v3 API
+ */
+export interface TeamV3V3Type {
+  /**
+   * Unique team identifier
+   * @example t12345
+   */
+  id: string;
+  /**
+   * Team name
+   * @example Design Team
+   */
+  title: string;
+  /**
+   * Team icon (emoji or icon identifier)
+   * @example 🎨
+   */
+  icon?: string | null;
+  /**
+   * Team icon type
+   * @example EMOJI
+   */
+  icon_type?: 'EMOJI' | 'ICON' | null;
+  /**
+   * Team badge color (hex code)
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   * @example #FF5733
+   */
+  badge_color?: string;
+  /**
+   * Number of team members
+   * @example 10
+   */
+  members_count: number;
+  /**
+   * Number of team managers
+   * @example 2
+   */
+  managers_count?: number;
+  /** Organization ID (for Cloud Enterprise) */
+  fk_org_id?: string;
+  /** Workspace ID (for other plans) */
+  fk_workspace_id?: string;
+  /**
+   * Team creation timestamp
+   * @format date-time
+   */
+  created_at?: string;
+  /**
+   * Team last update timestamp
+   * @format date-time
+   */
+  updated_at?: string;
+  /** Parent team ID. Null = root team. */
+  fk_parent_team_id?: string | null;
+  /**
+   * Depth in the team tree. Root teams have depth 0.
+   * @example 1
+   */
+  depth?: number;
+  /**
+   * Materialized path for efficient ancestor/descendant queries.
+   * @example /eng/fe/web
+   */
+  path?: string;
+  /** Whether the requesting user is a member of this team. */
+  is_member?: boolean;
+  /** List of user IDs who are owners/managers of this team. */
+  managers?: string[];
+}
+
+/**
+ * Array of workspace users to be deleted.
+ */
+export type WorkspaceUserDeleteV3Type = {
+  /** Unique identifier for the user */
+  user_id: string;
+}[];
+
+/**
+ * Array of workspace user updates.
+ */
+export type WorkspaceUserUpdateV3Type = {
+  /** Unique identifier for the user */
+  user_id: string;
+  /** New workspace role to assign to the user */
+  workspace_role: WorkspaceRolesV3Type;
+}[];
+
+/**
+ * Array of workspace users to be created.
+ */
+export type WorkspaceUserCreateV3Type = (
+  | {
+      /** Unique identifier for the user (skip if email is provided) */
+      user_id: string;
+      /** Workspace role to assign to the user */
+      workspace_role: WorkspaceRolesV3Type;
+    }
+  | {
+      /**
+       * Email address of the user (skip if user_id is provided)
+       * @format email
+       */
+      email: string;
+      /** Workspace role to assign to the user */
+      workspace_role: WorkspaceRolesV3Type;
+    }
+)[];
+
+/**
+ * Workspace user information
+ */
+export interface WorkspaceUserV3Type {
+  /**
+   * Email address of the user
+   * @format email
+   */
+  email: string;
+  /** Unique identifier for the user */
+  user_id: string;
+  /**
+   * Timestamp when the user was added to the workspace
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the user was last updated in the workspace
+   * @format date-time
+   */
+  updated_at: string;
+  /** Role assigned to the user in the workspace */
+  workspace_role: WorkspaceRolesV3Type;
+}
+
+/**
+ * Individual workspace member information
+ */
+export interface WorkspaceMemberV3Type {
+  /**
+   * Email address of the member
+   * @format email
+   */
+  email: string;
+  /** Unique identifier for the user */
+  user_id: string;
+  /**
+   * Timestamp when the user was added to the workspace
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the user was last updated in the workspace
+   * @format date-time
+   */
+  updated_at: string;
+  /** Role assigned to the user in the workspace */
+  workspace_role: WorkspaceRolesV3Type;
+}
+
+/**
+ * Workspace information including member details
+ */
+export type WorkspaceWithMembersV3Type = WorkspaceV3Type & {
+  individual_members: {
+    /** List of workspace members */
+    workspace_members: WorkspaceMemberV3Type[];
+  };
+};
+
+/**
+ * Workspace list response
+ */
+export interface WorkspaceV3ListResponseV3Type {
+  /** List of workspaces */
+  list: WorkspaceV3V3Type[];
+}
+
+/**
+ * Workspace update request
+ */
+export interface WorkspaceV3UpdateV3Type {
+  /** Title of the workspace */
+  title: string;
+}
+
+/**
+ * Workspace creation request
+ */
+export interface WorkspaceV3CreateV3Type {
+  /** Title of the workspace */
+  title: string;
+  /** Organization identifier (required for cloud, absent for on-prem EE) */
+  org_id?: string;
+}
+
+/**
+ * Workspace V3 information with meta data
+ */
+export interface WorkspaceV3V3Type {
+  /** Unique identifier for the workspace */
+  id: string;
+  /** Title of the workspace */
+  title: string;
+  /** Organization identifier (required for cloud, absent for on-prem EE) */
+  org_id?: string;
+  /**
+   * Timestamp when the workspace was created
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the workspace was last updated
+   * @format date-time
+   */
+  updated_at: string;
+}
+
+/**
+ * Basic workspace information
+ */
+export interface WorkspaceV3Type {
+  /** Unique identifier for the workspace */
+  id: string;
+  /** Title of the workspace */
+  title: string;
+  /**
+   * Timestamp when the workspace was created
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp when the workspace was last updated
+   * @format date-time
+   */
+  updated_at: string;
+}
+
+/**
+ * Base roles for the user.
+ */
+export enum BaseRolesV3Type {
+  Owner = 'owner',
+  Creator = 'creator',
+  Editor = 'editor',
+  Viewer = 'viewer',
+  Commenter = 'commenter',
+  NoAccess = 'no-access',
+}
+
+/**
+ * V3 Nested Data List Response format - supports both single record and array responses
+ */
+export interface DataNestedListResponseV3V3Type {
+  /** Array of records for has-many and many-to-many relationships */
+  records?: DataRecordV3V3Type[];
+  /** Single record for belongs-to and one-to-one relationships */
+  record?: DataRecordV3V3Type | null;
+  /** Pagination token for next page */
+  next?: string | null;
+  /** Pagination token for previous page */
+  prev?: string | null;
+}
+
+/**
+ * V3 Data Read Response format
+ */
+export type DataReadResponseV3V3Type = DataRecordV3V3Type;
+
+/**
+ * V3 Data Delete Response format
+ */
+export interface DataDeleteResponseV3V3Type {
+  /** Array of deleted records */
+  records: DataRecordWithDeletedV3V3Type[];
+}
+
+/**
+ * V3 Data Update Response format
+ */
+export interface DataUpdateResponseV3V3Type {
+  /** Array of updated record identifiers */
+  records: {
+    /** Updated record identifier */
+    id: string | number;
+    /** Record fields data (excluding primary key). Undefined when empty. */
+    fields?: Record<string, any>;
+  }[];
+}
+
+/**
+ * V3 Data Insert Response format
+ */
+export interface DataInsertResponseV3V3Type {
+  /** Array of created records */
+  records: DataRecordV3V3Type[];
+}
+
+/**
+ * Single record delete request
+ */
+export interface DataDeleteRequestV3V3Type {
+  /** Record identifier */
+  id: string | number;
+}
+
+/**
+ * V3 Data Update Request format
+ */
+export interface DataUpdateRequestV3V3Type {
+  /** Record identifier */
+  id: string | number;
+  /** Record fields data to update */
+  fields: Record<string, any>;
+}
+
+/**
+ * V3 Data Insert Request format
+ */
+export interface DataInsertRequestV3V3Type {
+  /** Record fields data */
+  fields: Record<string, any>;
+}
+
+/**
+ * V3 Data List Response format
+ */
+export interface DataListResponseV3V3Type {
+  /** Array of records for has-many and many-to-many relationships */
+  records?: DataRecordV3V3Type[];
+  /** Pagination token for next page */
+  next?: string | null;
+  /** Pagination token for previous page */
+  prev?: string | null;
+  /** Nested pagination token for next page */
+  nestedNext?: string | null;
+  /** Nested pagination token for previous page */
+  nestedPrev?: string | null;
+}
+
+export type DataRecordWithDeletedV3V3Type = DataRecordV3V3Type & {
+  /** Indicates if the record was deleted */
+  deleted: boolean;
+};
+
+/**
+ * V3 Data Record format with id and fields separation
+ */
+export interface DataRecordV3V3Type {
+  /** Record identifier (primary key value) */
+  id: string | number;
+  /** Individual primary key field values as object */
+  id_fields?: Record<string, any>;
+  /** Record fields data (excluding primary key). Undefined when empty. */
+  fields?: Record<string, any>;
+}
+
+export interface SortListResponseV3Type {
+  list: SortV3Type[];
+}
+
+export type FilterUpdateV3Type = {
+  /** Unique identifier for the filter. */
+  id: string;
+} & (FilterV3Type | FilterGroupV3Type);
+
+export type FilterCreateV3Type = FilterV3Type | FilterGroupLevel1V3Type;
+
+export interface FilterGroupV3Type {
+  /** Unique identifier for the group. */
+  id: string;
+  /** Parent ID of this filter-group. */
+  parent_id?: string;
+  /** Logical operator for combining filters in the group. */
+  group_operator: 'AND' | 'OR';
+  /** Nested filters or filter groups. */
+  filters: (
+    | FilterV3Type
+    | FilterGroupV3Type
+    | (FilterV3Type & FilterGroupV3Type)
+  )[];
+}
+
+export interface FilterGroupLevel1V3Type {
+  /** Logical operator for the group. */
+  group_operator: 'AND' | 'OR';
+  /** List of filters or nested filter groups at level 2. */
+  filters: (FilterV3Type | FilterGroupLevel2V3Type)[];
+}
+
+export interface FilterGroupLevel2V3Type {
+  /** Logical operator for the group. */
+  group_operator: 'AND' | 'OR';
+  /** List of filters or nested filter groups at level 3. */
+  filters: (FilterV3Type | FilterGroupLevel3V3Type)[];
+}
+
+export interface FilterGroupLevel3V3Type {
+  /** Logical operator for the group. */
+  group_operator: 'AND' | 'OR';
+  /** List of filters in this group. */
+  filters: FilterV3Type[];
+}
+
+export interface FilterListResponseV3Type {
+  /** List of filter groups. Initial set of filters are mapped to a default group with group-id set to **root**. */
+  list: FilterGroupV3Type[];
+}
+
+export interface FilterV3Type {
+  /** Unique identifier for the filter. */
+  id?: string;
+  /** Parent ID of the filter, specifying this filters group association. Defaults to **root**. */
+  parent_id?: string;
+  /** Field ID to which this filter applies. */
+  field_id: string;
+  /** Primary comparison operator (e.g., eq, gt, lt). */
+  operator: string;
+  /** Secondary comparison operator (if applicable). */
+  sub_operator?: string | null;
+  /** Value for comparison. */
+  value?: string | number | boolean | null;
+}
+
+export type FieldUpdateV3Type = FieldBaseV3Type &
+  (
+    | {
+        type?: 'LongText';
+        options?: FieldOptionsLongTextV3Type;
+      }
+    | {
+        type?: 'PhoneNumber' | 'URL' | 'Email';
+        options?: FieldOptionsPhoneNumberV3Type;
+      }
+    | {
+        type?: 'Number' | 'Decimal';
+        options?: FieldOptionsNumberV3Type;
+      }
+    | {
+        type?: 'JSON';
+      }
+    | {
+        type?: 'Currency';
+        /** Currency settings for this column. Locale defaults to `en-US` and currency code defaults to `USD` */
+        options?: FieldOptionsCurrencyV3Type;
+      }
+    | {
+        type?: 'Percent';
+        options?: FieldOptionsPercentV3Type;
+      }
+    | {
+        type?: 'Duration';
+        options?: FieldOptionsDurationV3Type;
+      }
+    | {
+        type?: 'Date' | 'DateTime' | 'Time';
+        options?: FieldOptionsDateTimeV3Type;
+      }
+    | {
+        type?: 'SingleSelect' | 'MultiSelect';
+        options?: FieldOptionsSelectV3Type;
+      }
+    | {
+        type?: 'Checkbox';
+        options?: FieldOptionsCheckboxV3Type;
+      }
+    | {
+        type?: 'Rating';
+        options?: FieldOptionsRatingV3Type;
+      }
+    | {
+        type?: 'Barcode';
+        options?: FieldOptionsBarcodeV3Type;
+      }
+    | {
+        type?: 'Formula';
+        options?: FieldOptionsFormulaV3Type;
+      }
+    | {
+        type?: 'User';
+        options?: FieldOptionsUserV3Type;
+      }
+    | {
+        type?: 'Lookup';
+        options?: FieldOptionsLookupV3Type;
+      }
+    | {
+        type?: 'Links';
+        options?: FieldOptionsLinksV3Type;
+      }
+    | {
+        type?: 'LinkToAnotherRecord';
+        options?: FieldOptionsLinkToAnotherRecordV3Type;
+      }
+  );
+
+export type FilterCreateUpdateV3Type = FilterV3Type | FilterGroupV3Type;
+
+export type FieldV3Type = FieldBaseV3Type &
+  (
+    | {
+        type?: 'SingleLineText';
+      }
+    | {
+        type?: 'LongText';
+        options?: FieldOptionsLongTextV3Type;
+      }
+    | {
+        type?: 'PhoneNumber' | 'URL' | 'Email';
+        options?: FieldOptionsPhoneNumberV3Type;
+      }
+    | {
+        type?: 'Number' | 'Decimal';
+        options?: FieldOptionsNumberV3Type;
+      }
+    | {
+        type?: 'JSON';
+      }
+    | {
+        type?: 'Currency';
+        /** Currency settings for this column. Locale defaults to `en-US` and currency code defaults to `USD` */
+        options?: FieldOptionsCurrencyV3Type;
+      }
+    | {
+        type?: 'Percent';
+        options?: FieldOptionsPercentV3Type;
+      }
+    | {
+        type?: 'Duration';
+        options?: FieldOptionsDurationV3Type;
+      }
+    | {
+        type?: 'Date' | 'DateTime' | 'Time';
+        options?: FieldOptionsDateTimeV3Type;
+      }
+    | {
+        type?: 'SingleSelect' | 'MultiSelect';
+        options?: FieldOptionsSelectV3Type;
+      }
+    | {
+        type?: 'Rating' | 'Checkbox';
+        options?: FieldOptionsRatingV3Type;
+      }
+    | {
+        type?: 'Barcode';
+        options?: FieldOptionsBarcodeV3Type;
+      }
+    | {
+        type?: 'Formula';
+        options?: FieldOptionsFormulaV3Type;
+      }
+    | {
+        type?: 'User';
+        options?: FieldOptionsUserV3Type;
+      }
+    | {
+        type?: 'Lookup';
+        options?: FieldOptionsLookupV3Type;
+      }
+    | {
+        type?: 'Links';
+        options?: FieldOptionsLinksV3Type;
+      }
+    | {
+        type?: 'LinkToAnotherRecord';
+        options?: FieldOptionsLinkToAnotherRecordV3Type;
+      }
+  );
+
+export interface FieldOptionsLinkToAnotherRecordV3Type {
+  /**
+   * Type of relationship.
+   *
+   * Supported options are listed below
+   * - `mm` many-to-many
+   * - `hm` has-many
+   * - `oo` one-to-one
+   */
+  relation_type: string;
+  /** Identifier of the linked table. */
+  related_table_id: string;
+}
+
+export interface FieldOptionsLinksV3Type {
+  /**
+   * Type of relationship.
+   *
+   * Supported options are listed below
+   * - `mm` many-to-many
+   * - `hm` has-many
+   * - `oo` one-to-one
+   */
+  relation_type: string;
+  /** Identifier of the linked table. */
+  related_table_id: string;
+}
+
+export type FieldOptionsButtonV3Type =
+  | {
+      /** Button type: formula */
+      type: 'formula';
+      /** Formula to execute */
+      formula: string;
+      /** Label of the button */
+      label?: string;
+      /** Icon of the button */
+      icon?: string;
+      /** Color of the button */
+      color?:
+        | 'brand'
+        | 'red'
+        | 'green'
+        | 'maroon'
+        | 'blue'
+        | 'orange'
+        | 'pink'
+        | 'purple'
+        | 'yellow'
+        | 'gray';
+      /** Theme of the button */
+      theme?: 'solid' | 'light' | 'text';
+    }
+  | {
+      /** Button type: webhook */
+      type: 'webhook';
+      /** ID of the webhook to trigger */
+      button_hook_id: string;
+      /** Label of the button */
+      label?: string;
+      /** Icon of the button */
+      icon?: string;
+      /** Color of the button */
+      color?:
+        | 'brand'
+        | 'red'
+        | 'green'
+        | 'maroon'
+        | 'blue'
+        | 'orange'
+        | 'pink'
+        | 'purple'
+        | 'yellow'
+        | 'gray';
+      /** Theme of the button */
+      theme?: 'solid' | 'light' | 'text';
+    }
+  | {
+      /** Button type: AI */
+      type: 'ai';
+      /** AI prompt to execute */
+      prompt: string;
+      /** Integration ID for AI service */
+      integration_id: string;
+      /** Theme of the button */
+      theme?: 'solid' | 'light' | 'text';
+      /** IDs of columns where AI output should be stored */
+      output_column_ids?: string;
+      /** Label of the button */
+      label?: string;
+      /** Icon of the button */
+      icon?: string;
+      /** Color of the button */
+      color?:
+        | 'brand'
+        | 'red'
+        | 'green'
+        | 'maroon'
+        | 'blue'
+        | 'orange'
+        | 'pink'
+        | 'purple'
+        | 'yellow'
+        | 'gray';
+    }
+  | {
+      /** Button type: script */
+      type: 'script';
+      /** ID of the script to trigger */
+      script_id: string;
+      /** Label of the button */
+      label?: string;
+      /** Icon of the button */
+      icon?: string;
+      /** Color of the button */
+      color?:
+        | 'brand'
+        | 'red'
+        | 'green'
+        | 'maroon'
+        | 'blue'
+        | 'orange'
+        | 'pink'
+        | 'purple'
+        | 'yellow'
+        | 'gray';
+      /** Theme of the button */
+      theme?: 'solid' | 'light' | 'text';
+    };
+
+export interface FieldOptionsRollupV3Type {
+  /** Linked field ID. */
+  related_field_id: string;
+  /** Rollup field ID in the linked table. */
+  related_table_rollup_field_id: string;
+  /** Rollup function. */
+  rollup_function:
+    | 'count'
+    | 'min'
+    | 'max'
+    | 'avg'
+    | 'sum'
+    | 'countDistinct'
+    | 'sumDistinct'
+    | 'avgDistinct';
+}
+
+export interface FieldOptionsLookupV3Type {
+  /** Linked field ID. Can be of type Links or LinkToAnotherRecord */
+  related_field_id: string;
+  /** Lookup field ID in the linked table. */
+  related_table_lookup_field_id: string;
+}
+
+export interface FieldOptionsUserV3Type {
+  /** Allow selecting multiple users. */
+  allow_multiple_users?: boolean;
+}
+
+export interface FieldOptionsFormulaV3Type {
+  /** Formula expression. */
+  formula?: string;
+}
+
+export interface FieldOptionsQrCodeV3Type {
+  /** Field ID that contains the value. */
+  qrcode_value_field_id?: string;
+}
+
+export interface FieldOptionsBarcodeV3Type {
+  /** Barcode format (e.g., CODE128). */
+  format?: string;
+  /** Field ID that contains the value. */
+  barcode_value_field_id?: string;
+}
+
+export interface FieldOptionsCheckboxV3Type {
+  /**
+   * Icon to display checkbox on the UI. Supported options are listed below
+   * - `square`
+   * - `circle-check`
+   * - `circle-filled`
+   * - `star`
+   * - `heart`
+   * - `thumbs-up`
+   * - `flag`
+   */
+  icon?:
+    | 'square'
+    | 'circle-check'
+    | 'circle-filled'
+    | 'star'
+    | 'heart'
+    | 'thumbs-up'
+    | 'flag';
+  /**
+   * Specifies icon color using a hexadecimal color code (e.g., `#36BFFF`).
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   */
+  color?: string;
+}
+
+export interface FieldOptionsRatingV3Type {
+  /**
+   * Icon to display rating on the UI. Supported options are listed below
+   * - `star`
+   * - `heart`
+   * - `circle-filled`
+   * - `thumbs-up`
+   * - `flag`
+   */
+  icon?: 'star' | 'heart' | 'circle-filled' | 'thumbs-up' | 'flag';
+  /**
+   * Maximum value for the rating. Allowed range: 1-10.
+   * @min 1
+   * @max 10
+   */
+  max_value?: number;
+  /**
+   * Specifies icon color using a hexadecimal color code (e.g., `#36BFFF`).
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   */
+  color?: string;
+}
+
+export interface FieldOptionsSelectV3Type {
+  choices?: {
+    /** Choice title. */
+    title: string;
+    /**
+     * Specifies the tile color for the choice using a hexadecimal color code (e.g., `#36BFFF`).
+     * @pattern ^#[0-9A-Fa-f]{6}$
+     */
+    color?: string;
+  }[];
+}
+
+export interface FieldOptionsTimeV3Type {
+  /** Use 12-hour time format. */
+  '12hr_format'?: boolean;
+}
+
+export interface FieldOptionsDateV3Type {
+  /**
+   * Date format. Supported options are listed below
+   * - `YYYY/MM/DD`
+   * - `YYYY-MM-DD`
+   * - `YYYY MM DD`
+   * - `DD/MM/YYYY`
+   * - `DD-MM-YYYY`
+   * - `DD MM YYYY`
+   * - `MM/DD/YYYY`
+   * - `MM-DD-YYYY`
+   * - `MM DD YYYY`
+   * - `YYYY-MM`
+   * - `YYYY MM`
+   */
+  date_format?: string;
+}
+
+export interface FieldOptionsDateTimeV3Type {
+  /**
+   * Date format. Supported options are listed below
+   * - `YYYY/MM/DD`
+   * - `YYYY-MM-DD`
+   * - `YYYY MM DD`
+   * - `DD/MM/YYYY`
+   * - `DD-MM-YYYY`
+   * - `DD MM YYYY`
+   * - `MM/DD/YYYY`
+   * - `MM-DD-YYYY`
+   * - `MM DD YYYY`
+   * - `YYYY-MM`
+   * - `YYYY MM`
+   */
+  date_format?: string;
+  /**
+   * Time format. Supported options are listed below
+   * - `HH:mm`
+   * - `HH:mm:ss`
+   * - `HH:mm:ss.SSS`
+   */
+  time_format?: string;
+  /** Use 12-hour time format. */
+  '12hr_format'?: boolean;
+  /** Display timezone. */
+  display_timezone?: boolean;
+  /** Timezone. Refer to https://en.wikipedia.org/wiki/List_of_tz_database_time_zones */
+  timezone?: string;
+  /** Use same timezone for all records. */
+  use_same_timezone_for_all?: boolean;
+}
+
+export interface FieldOptionsDurationV3Type {
+  /**
+   * Duration format. Supported options are listed below
+   * - `h:mm`
+   * - `h:mm:ss`
+   * - `h:mm:ss.S`
+   * - `h:mm:ss.SS`
+   * - `h:mm:ss.SSS`
+   */
+  duration_format?: string;
+}
+
+export interface FieldOptionsPercentV3Type {
+  /** Display as a progress bar. */
+  show_as_progress?: boolean;
+}
+
+/**
+ * Currency settings for this column. Locale defaults to `en-US` and currency code defaults to `USD`
+ */
+export interface FieldOptionsCurrencyV3Type {
+  /** Locale for currency formatting. Refer https://simplelocalize.io/data/locales/ */
+  locale?: string;
+  /** Currency code. Refer https://simplelocalize.io/data/locales/ */
+  code?:
+    | 'AED'
+    | 'AFN'
+    | 'ALL'
+    | 'AMD'
+    | 'ANG'
+    | 'AOA'
+    | 'ARS'
+    | 'AUD'
+    | 'AWG'
+    | 'AZN'
+    | 'BAM'
+    | 'BBD'
+    | 'BDT'
+    | 'BGN'
+    | 'BHD'
+    | 'BIF'
+    | 'BMD'
+    | 'BND'
+    | 'BOB'
+    | 'BOV'
+    | 'BRL'
+    | 'BSD'
+    | 'BTN'
+    | 'BWP'
+    | 'BYR'
+    | 'BZD'
+    | 'CAD'
+    | 'CDF'
+    | 'CHE'
+    | 'CHF'
+    | 'CHW'
+    | 'CLF'
+    | 'CLP'
+    | 'CNY'
+    | 'COP'
+    | 'COU'
+    | 'CRC'
+    | 'CUP'
+    | 'CVE'
+    | 'CYP'
+    | 'CZK'
+    | 'DJF'
+    | 'DKK'
+    | 'DOP'
+    | 'DZD'
+    | 'EEK'
+    | 'EGP'
+    | 'ERN'
+    | 'ETB'
+    | 'EUR'
+    | 'FJD'
+    | 'FKP'
+    | 'GBP'
+    | 'GEL'
+    | 'GHC'
+    | 'GIP'
+    | 'GMD'
+    | 'GNF'
+    | 'GTQ'
+    | 'GYD'
+    | 'HKD'
+    | 'HNL'
+    | 'HRK'
+    | 'HTG'
+    | 'HUF'
+    | 'IDR'
+    | 'ILS'
+    | 'INR'
+    | 'IQD'
+    | 'IRR'
+    | 'ISK'
+    | 'JMD'
+    | 'JOD'
+    | 'JPY'
+    | 'KES'
+    | 'KGS'
+    | 'KHR'
+    | 'KMF'
+    | 'KPW'
+    | 'KRW'
+    | 'KWD'
+    | 'KYD'
+    | 'KZT'
+    | 'LAK'
+    | 'LBP'
+    | 'LKR'
+    | 'LRD'
+    | 'LSL'
+    | 'LTL'
+    | 'LVL'
+    | 'LYD'
+    | 'MAD'
+    | 'MDL'
+    | 'MGA'
+    | 'MKD'
+    | 'MMK'
+    | 'MNT'
+    | 'MOP'
+    | 'MRO'
+    | 'MTL'
+    | 'MUR'
+    | 'MVR'
+    | 'MWK'
+    | 'MXN'
+    | 'MXV'
+    | 'MYR'
+    | 'MZN'
+    | 'NAD'
+    | 'NGN'
+    | 'NIO'
+    | 'NOK'
+    | 'NPR'
+    | 'NZD'
+    | 'OMR'
+    | 'PAB'
+    | 'PEN'
+    | 'PGK'
+    | 'PHP'
+    | 'PKR'
+    | 'PLN'
+    | 'PYG'
+    | 'QAR'
+    | 'ROL'
+    | 'RON'
+    | 'RSD'
+    | 'RUB'
+    | 'RWF'
+    | 'SAR'
+    | 'SBD'
+    | 'SCR'
+    | 'SDD'
+    | 'SEK'
+    | 'SGD'
+    | 'SHP'
+    | 'SIT'
+    | 'SKK'
+    | 'SLL'
+    | 'SOS'
+    | 'SRD'
+    | 'STD'
+    | 'SYP'
+    | 'SZL'
+    | 'THB'
+    | 'TJS'
+    | 'TMM'
+    | 'TND'
+    | 'TOP'
+    | 'TRY'
+    | 'TTD'
+    | 'TWD'
+    | 'TZS'
+    | 'UAH'
+    | 'UGX'
+    | 'USD'
+    | 'USN'
+    | 'USS'
+    | 'UYU'
+    | 'UZS'
+    | 'VEB'
+    | 'VND'
+    | 'VUV'
+    | 'WST'
+    | 'XAF'
+    | 'XAG'
+    | 'XAU'
+    | 'XBA'
+    | 'XBB'
+    | 'XBC'
+    | 'XBD'
+    | 'XCD'
+    | 'XDR'
+    | 'XFO'
+    | 'XFU'
+    | 'XOF'
+    | 'XPD'
+    | 'XPF'
+    | 'XPT'
+    | 'XTS'
+    | 'XXX'
+    | 'YER'
+    | 'ZAR'
+    | 'ZMK'
+    | 'ZWD';
+}
+
+export interface FieldOptionsDecimalV3Type {
+  /**
+   * Decimal field precision. Defaults to 0
+   * @min 0
+   * @max 5
+   */
+  precision?: number;
+}
+
+export interface FieldOptionsNumberV3Type {
+  /** Show thousand separator on the UI. */
+  locale_string?: boolean;
+}
+
+export interface FieldOptionsEmailV3Type {
+  /** Enable validation for Email. */
+  validation?: boolean;
+}
+
+export interface FieldOptionsURLV3Type {
+  /** Enable validation for URL. */
+  validation?: boolean;
+}
+
+export interface FieldOptionsPhoneNumberV3Type {
+  /** Enable validation for phone numbers. */
+  validation?: boolean;
+}
+
+export interface FieldOptionsLongTextV3Type {
+  /** Enable rich text formatting. */
+  rich_text?: boolean;
+  /** Enable text generation for this field using NocoAI. */
+  generate_text_using_ai?: boolean;
+}
+
+export type TableFieldBaseCreateV3Type = FieldBaseV3Type & {
+  /** Field data type. */
+  type?:
+    | 'SingleLineText'
+    | 'LongText'
+    | 'PhoneNumber'
+    | 'URL'
+    | 'Email'
+    | 'Number'
+    | 'Decimal'
+    | 'Currency'
+    | 'Percent'
+    | 'Duration'
+    | 'Date'
+    | 'DateTime'
+    | 'Time'
+    | 'SingleSelect'
+    | 'MultiSelect'
+    | 'Rating'
+    | 'Checkbox'
+    | 'Attachment'
+    | 'Geometry'
+    | 'Links'
+    | 'LinkToAnotherRecord'
+    | 'Button'
+    | 'Formula'
+    | 'Year'
+    | 'CreatedTime'
+    | 'LastModifiedTime'
+    | 'CreatedBy'
+    | 'LastModifiedBy'
+    | 'User'
+    | 'JSON';
+};
+
+export type FieldBaseCreateV3Type = FieldBaseV3Type;
+
+export interface FieldBaseV3Type {
+  /** Unique identifier for the field. */
+  id?: string;
+  /** Title of the field. */
+  title: string;
+  /** Field data type. */
+  type?:
+    | 'SingleLineText'
+    | 'LongText'
+    | 'PhoneNumber'
+    | 'URL'
+    | 'Email'
+    | 'Number'
+    | 'Decimal'
+    | 'Currency'
+    | 'Percent'
+    | 'Duration'
+    | 'Date'
+    | 'DateTime'
+    | 'Time'
+    | 'SingleSelect'
+    | 'MultiSelect'
+    | 'Rating'
+    | 'Checkbox'
+    | 'Attachment'
+    | 'Geometry'
+    | 'Links'
+    | 'Lookup'
+    | 'Rollup'
+    | 'Button'
+    | 'Formula'
+    | 'Barcode'
+    | 'Year'
+    | 'QrCode'
+    | 'CreatedTime'
+    | 'LastModifiedTime'
+    | 'CreatedBy'
+    | 'LastModifiedBy'
+    | 'LinkToAnotherRecord'
+    | 'User'
+    | 'JSON';
+  /** Description of the field. */
+  description?: string | null;
+  /** Default value for the field. Applicable for SingleLineText, LongText, PhoneNumber, URL, Email, Number, Decimal, Currency, Percent, Duration, Date, DateTime, Time, SingleSelect, MultiSelect, Rating, Checkbox, User and JSON fields. */
+  default_value?: string | boolean | number;
+  /** Enable unique constraint for the field. When enabled, the field will only accept unique values (no duplicates allowed). Note: Unique constraint is only supported for NC-DB (not external databases) and is mutually exclusive with default values. Supported field types: SingleLineText, PhoneNumber, URL, Email, Number, Decimal, Currency, Percent, Date, DateTime and Time */
+  unique?: boolean;
+}
+
+export type ViewV3Type = {
+  /** Unique identifier for the view. */
+  id: string;
+  /** Id of table associated with the view. */
+  table_id?: string;
+} & ViewBaseV3Type & {
+    /** User ID of the creator. */
+    created_by?: string;
+    /** User ID of the owner. */
+    owned_by?: string;
+    /**
+     * Timestamp of creation.
+     * @format date-time
+     */
+    created_at?: string;
+    /**
+     * Timestamp of last update.
+     * @format date-time
+     */
+    updated_at?: string;
+  } & (
+    | {
+        type?: 'grid';
+        options?: ViewOptionsGridV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'gallery';
+        options?: ViewOptionsGalleryV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'kanban';
+        options: ViewOptionsKanbanV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'calendar';
+        options: ViewOptionsCalendarV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'map';
+        options?: ViewOptionsMapV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+  );
+
+export type ViewUpdateV3Type = ViewBaseInUpdateV3Type &
+  (
+    | {
+        options?: ViewOptionsGridV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        options?: ViewOptionsGalleryV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        options?: ViewOptionsKanbanV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        options?: ViewOptionsCalendarV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        options?: ViewOptionsMapV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        options?: ViewOptionsFormV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+      }
+  );
+
+export type ViewCreateV3Type = ViewBaseV3Type &
+  (
+    | {
+        type?: 'grid';
+        options?: ViewOptionsGridV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'gallery';
+        options?: ViewOptionsGalleryV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'kanban';
+        options: ViewOptionsKanbanV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'calendar';
+        options: ViewOptionsCalendarV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'map';
+        options?: ViewOptionsMapV3Type;
+        /** List of sorts to be applied to the view. */
+        sorts?: SortCreateV3Type[];
+        filters?: FilterCreateUpdateV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+        /** Row colour configuration for the the view. */
+        row_coloring?: ViewRowColourV3Type;
+      }
+    | {
+        type?: 'form';
+        options?: ViewOptionsFormV3Type;
+        /**
+         * List of fields to be displayed in the view.
+         *
+         * - If not specified, all fields are displayed by default.
+         * - If an empty array is provided, only the display value field will be shown.
+         * - In case of partial list, fields not included in the list will be excluded from the view.
+         */
+        fields?: ViewFieldsV3Type;
+      }
+  );
+
+export interface ViewOptionsFormV3Type {
+  /** Heading for the form. */
+  form_title?: string;
+  /** Subheading for the form. */
+  form_description?: string;
+  /** Success message shown after form submission. */
+  thank_you_message?: string;
+  /** Seconds to wait before redirecting. */
+  form_redirect_after_secs?: number;
+  /** Whether to show another form after submission. */
+  show_submit_another_button?: boolean;
+  /** Whether to show a blank form after submission. */
+  reset_form_after_submit?: boolean;
+  /** Whether to hide the banner on the form. */
+  form_hide_banner?: boolean;
+  /** Whether to hide branding on the form. */
+  form_hide_branding?: boolean;
+  /**
+   * URL of the banner image for the form.
+   * @format uri
+   */
+  banner?: string;
+  /**
+   * URL of the logo for the form.
+   * @format uri
+   */
+  logo?: string;
+  /**
+   * Background color for the form.
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   */
+  form_background_color?: string;
+  /**
+   * URL to redirect to after form submission.
+   * @format uri
+   */
+  redirect_url?: string;
+  /** Custom label for the submit button. */
+  submit_button_label?: string;
+  /** Email address to send form responses to. */
+  send_response_email_to?: string;
+  /** Per-field form configuration keyed by field_id. */
+  fields_by_id?: Record<string, FormFieldConfigV3Type>;
+}
+
+export interface ViewOptionsMapV3Type {
+  /** Foreign Key to GeoData Column to be used for the map view. */
+  fk_geo_data_col_id?: string;
+}
+
+export interface ViewOptionsGalleryV3Type {
+  /** Attachment field ID to be used as cover image in gallery view. Is optional, if not provided, the first attachment field will be used. */
+  cover_field_id?: string;
+}
+
+export interface ViewOptionsCalendarV3Type {
+  date_ranges: {
+    /** Date field ID to be used as start date in calendar view. */
+    start_date_field_id: string;
+    /** Date field ID to be used as end date in calendar view. */
+    end_date_field_id?: string;
+  }[];
+}
+
+export interface ViewOptionsKanbanV3Type {
+  stack_by: {
+    /** Single select field ID to be used for stacking cards in kanban view. */
+    field_id: string;
+    /**
+     * Order of the stacks in kanban view. If not provided, the order will be determined by options listed in associated field.
+     *
+     * Example: ```stack_order: ['option1', 'option2', 'option3']```
+     */
+    stack_order?: string[];
+  };
+  /** Attachment field ID to be used as cover image in kanban view. If not provided, cover field configuration is skipped. */
+  cover_field_id?: string;
+}
+
+export interface ViewOptionsGridV3Type {
+  /** List of groups to be applied on the grid view. */
+  groups?: {
+    /** Identifier for the field being sorted. */
+    field_id: string;
+    /** Direction of the group, either 'asc' (ascending) or 'desc' (descending). */
+    direction?: 'asc' | 'desc';
+  }[];
+  /** Height of the rows in the grid view. */
+  row_height?: 'short' | 'medium' | 'tall' | 'extra';
+}
+
+export type ViewRowColourV3Type =
+  | {
+      /** Mode of row coloring. In this mode, the color is selected based on conditions applied to the fields. */
+      mode: 'filter';
+      conditions: {
+        apply_as_row_background?: boolean;
+        color?: string;
+        filters?: FilterCreateUpdateV3Type;
+      }[];
+    }
+  | {
+      /** Mode of row coloring. In this mode, the color is selected based on a single select field. */
+      mode: 'select';
+      /** Single select field ID to be used for colouring rows in the view. */
+      field_id: string;
+      /** Whether to additionally apply the color as row background. */
+      apply_as_row_background?: boolean;
+    };
+
+/**
+* List of fields to be displayed in the view. 
+
+- If not specified, all fields are displayed by default.
+- If an empty array is provided, only the display value field will be shown.
+- In case of partial list, fields not included in the list will be excluded from the view.
+*/
+export type ViewFieldsV3Type = {
+  /** Unique identifier for the field. */
+  field_id: string;
+  /** Indicates whether the field should be displayed in the view. */
+  show: boolean;
+  /**
+   * Width of the field in pixels.
+   *
+   *  **Applicable only for grid view.**
+   */
+  width?: number;
+  /**
+   * Aggregation function to be applied to the field.
+   *
+   *  **Applicable only for grid view.**
+   */
+  aggregation?: ViewAggregationEnumV3Type;
+}[];
+
+export interface ViewBaseInUpdateV3Type {
+  /** Title of the view. */
+  title?: string;
+  /**
+   * Lock type of the view.
+   *
+   *  Note: Assigning view as personal using API is not supported currently
+   */
+  lock_type?: 'collaborative' | 'locked' | 'personal';
+  /** Description of the view. */
+  description?: string;
+}
+
+export interface ViewBaseV3Type {
+  /** Title of the view. */
+  title: string;
+  /** Type of the view. */
+  type: 'grid' | 'gallery' | 'kanban' | 'calendar' | 'map' | 'form';
+  /**
+   * Lock type of the view.
+   *
+   *  Note: Assigning view as personal using API is not supported currently
+   */
+  lock_type?: 'collaborative' | 'locked' | 'personal';
+  /** Description of the view. */
+  description?: string;
+}
+
+export interface ViewListV3Type {
+  list: {
+    /** Unique identifier for the view. */
+    id: string;
+    /** Id of table associated with the view. */
+    table_id?: string;
+    /** Title of the view. */
+    title: string;
+    /** Description of the view. */
+    description?: string | null;
+    /** Type of the view. */
+    type: 'grid' | 'gallery' | 'kanban' | 'calendar' | 'form' | 'map';
+    /** View configuration edit state. */
+    lock_type: 'collaborative' | 'locked' | 'personal';
+    /** User ID of the creator. */
+    created_by: string;
+    /** User ID of the owner. Applicable only for personal views. */
+    owned_by?: string;
+    /**
+     * Timestamp of creation.
+     * @format date-time
+     */
+    created_at: string;
+    /**
+     * Timestamp of last update.
+     * @format date-time
+     */
+    updated_at: string;
+  }[];
+}
+
+export enum ViewAggregationEnumV3Type {
+  Sum = 'sum',
+  Min = 'min',
+  Max = 'max',
+  Avg = 'avg',
+  Median = 'median',
+  StdDev = 'std_dev',
+  Range = 'range',
+  Count = 'count',
+  CountEmpty = 'count_empty',
+  CountFilled = 'count_filled',
+  CountUnique = 'count_unique',
+  PercentEmpty = 'percent_empty',
+  PercentFilled = 'percent_filled',
+  PercentUnique = 'percent_unique',
+  None = 'none',
+  AttachmentSize = 'attachment_size',
+  Checked = 'checked',
+  Unchecked = 'unchecked',
+  PercentChecked = 'percent_checked',
+  PercentUnchecked = 'percent_unchecked',
+  EarliestDate = 'earliest_date',
+  LatestDate = 'latest_date',
+  DateRange = 'date_range',
+  MonthRange = 'month_range',
+}
+
+export interface ViewSummaryV3Type {
+  /**
+   * Unique identifier for the view.
+   * @format uuid
+   */
+  id?: string;
+  /** Name of the view. */
+  title?: string;
+  /** Type of the view. */
+  view_type?: 'grid' | 'gallery' | 'kanban' | 'calendar' | 'form' | 'map';
+}
+
+export type HookNotificationV3V3Type =
+  | HookNotificationV3UrlV3Type
+  | HookNotificationV3EmailV3Type
+  | HookNotificationV3ScriptV3Type
+  | HookNotificationV3MessagingV3Type;
+
+/**
+ * Messaging notification via plugin adapter (Slack, Discord, Telegram, etc.).
+ */
+export interface HookNotificationV3MessagingV3Type {
+  /** Messaging platform type. */
+  type: 'Slack' | 'Discord' | 'Telegram' | 'Whatsapp' | 'Twilio';
+  /** Messaging configuration. */
+  payload: {
+    /** Message body. Supports Handlebars templates. */
+    body: string;
+  };
+  /** If true, the hook only fires when submitted via a specific form. */
+  trigger_form?: boolean;
+  /** Form view ID that triggers this hook. Only applicable when trigger_form is true. */
+  trigger_form_id?: string;
+  /** If true, includes the triggering user's info in the webhook payload. */
+  include_user?: boolean;
+}
+
+/**
+ * Script notification. Executes a saved script when triggered.
+ */
+export interface HookNotificationV3ScriptV3Type {
+  /** Notification channel type. */
+  type: 'Script';
+  /** Script execution configuration. */
+  payload: {
+    /** Identifier of the script to execute. */
+    scriptId: string;
+    /** HTTP method used to invoke the script endpoint. */
+    method?: string;
+    /** Script execution endpoint path. */
+    path?: string;
+  };
+  /** If true, the hook only fires when submitted via a specific form. */
+  trigger_form?: boolean;
+  /** Form view ID that triggers this hook. Only applicable when trigger_form is true. */
+  trigger_form_id?: string;
+  /** If true, includes the triggering user's info in the webhook payload. */
+  include_user?: boolean;
+}
+
+/**
+ * Email notification via configured email adapter.
+ */
+export interface HookNotificationV3EmailV3Type {
+  /** Notification channel type. */
+  type: 'Email';
+  /** Email configuration. */
+  payload: {
+    /** Recipient email address. Supports Handlebars templates. */
+    to: string;
+    /** Email subject line. Supports Handlebars templates. */
+    subject: string;
+    /** Email body (HTML). Supports Handlebars templates. */
+    body: string;
+  };
+  /** If true, the hook only fires when submitted via a specific form. */
+  trigger_form?: boolean;
+  /** Form view ID that triggers this hook. Only applicable when trigger_form is true. */
+  trigger_form_id?: string;
+  /** If true, includes the triggering user's info in the webhook payload. */
+  include_user?: boolean;
+}
+
+/**
+ * URL webhook notification. Sends an HTTP request when triggered.
+ */
+export interface HookNotificationV3UrlV3Type {
+  /** Notification channel type. */
+  type: 'URL';
+  /** HTTP request configuration. */
+  payload: {
+    /** HTTP method for the webhook request. */
+    method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+    /** URL to send the webhook to. Supports Handlebars templates. */
+    path: string;
+    /** Request body. Supports Handlebars templates. */
+    body?: string;
+    /** Custom HTTP headers to include in the request. */
+    headers?: {
+      /** Header name. */
+      name?: string;
+      /** Header value. Supports Handlebars templates. */
+      value?: string;
+      /** Whether this header is active. */
+      enabled?: boolean;
+    }[];
+    /** Query parameters to append to the URL. */
+    parameters?: {
+      /** Query parameter name. */
+      name?: string;
+      /** Query parameter value. Supports Handlebars templates. */
+      value?: string;
+      /** Whether this parameter is active. */
+      enabled?: boolean;
+    }[];
+    /** Authentication configuration. Supports Handlebars templates. */
+    auth?: string;
+  };
+  /** If true, the hook only fires when submitted via a specific form. */
+  trigger_form?: boolean;
+  /** Form view ID that triggers this hook. Only applicable when trigger_form is true. */
+  trigger_form_id?: string;
+  /** If true, includes the triggering user's info in the webhook payload. */
+  include_user?: boolean;
+}
+
+/**
+ * Request body for updating an existing hook.
+ */
+export interface HookV3UpdateV3Type {
+  /** Title of the hook. */
+  title?: string;
+  /** Description of the hook. */
+  description?: string;
+  /** Event trigger type. 'record' triggers after the operation completes. */
+  event?: 'record' | 'manual';
+  /** Operations that trigger the hook. */
+  operation?: ('insert' | 'update' | 'delete')[];
+  notification?: HookNotificationV3V3Type;
+  /** Indicates if the hook is active. */
+  active?: boolean;
+  /** Field IDs that trigger the hook when modified. */
+  trigger_fields?: string[];
+}
+
+/**
+ * Request body for creating a new hook.
+ */
+export interface HookV3CreateV3Type {
+  /** Title of the hook. */
+  title: string;
+  /** Description of the hook. */
+  description?: string;
+  /** Event trigger type. Defaults to 'record' (triggers after the operation completes). */
+  event?: 'record' | 'manual';
+  /** Operations that trigger the hook. */
+  operation: ('insert' | 'update' | 'delete')[];
+  notification: HookNotificationV3V3Type;
+  /** Indicates if the hook is active. */
+  active?: boolean;
+  /** Field IDs that trigger the hook when modified. */
+  trigger_fields?: string[];
+}
+
+/**
+ * List response containing hooks.
+ */
+export interface HookV3ListV3Type {
+  /** Array of hooks. */
+  list: HookV3V3Type[];
+}
+
+/**
+ * Hook configuration for table-level event triggers.
+ */
+export interface HookV3V3Type {
+  /** Unique identifier for the hook. */
+  id: string;
+  /** Unique identifier of the associated table. */
+  table_id: string;
+  /** Title of the hook. */
+  title: string;
+  /** Description of the hook. */
+  description?: string | null;
+  /** Event trigger type. 'record' triggers after the operation completes. */
+  event: 'record' | 'manual';
+  /** Operations that trigger the hook. */
+  operation: ('insert' | 'update' | 'delete')[];
+  notification?: HookNotificationV3V3Type;
+  /** Indicates if the hook is active. */
+  active?: boolean;
+  /** Field IDs that trigger the hook when modified. */
+  trigger_fields?: string[];
+  /**
+   * Timestamp when the hook was created.
+   * @format date-time
+   */
+  created_at?: string;
+  /**
+   * Timestamp when the hook was last updated.
+   * @format date-time
+   */
+  updated_at?: string;
+}
+
+export interface SortUpdateV3Type {
+  /** Unique identifier for the sort. */
+  id: string;
+  /**
+   * Identifier for the field being sorted.
+   * @format uuid
+   */
+  field_id?: string;
+  /** Sorting direction, either 'asc' (ascending) or 'desc' (descending). */
+  direction?: 'asc' | 'desc';
+}
+
+export interface SortCreateV3Type {
+  /** Identifier for the field being sorted. */
+  field_id: string;
+  /** Sorting direction, either 'asc' (ascending) or 'desc' (descending). */
+  direction?: 'asc' | 'desc';
+}
+
+export interface SortV3Type {
+  /** Unique identifier for the sort. */
+  id: string;
+  /**
+   * Identifier for the field being sorted.
+   * @format uuid
+   */
+  field_id: string;
+  /** Sorting direction, either 'asc' (ascending) or 'desc' (descending). */
+  direction: 'asc' | 'desc';
+}
+
+export type TableUpdateV3Type = {
+  /** New title of the table. */
+  title?: string;
+  /** Description of the table. */
+  description?: string;
+  /** Unique identifier for the display field of the table. The type of the field should be one of the allowed types for display field. */
+  display_field_id?: string;
+  /** Icon prefix to the table name that needs to be displayed in-lieu of the default table icon. */
+  meta?: TableMetaReqV3Type;
+};
+
+export interface TableMetaReqV3Type {
+  /** Icon prefix to the table name that needs to be displayed in-lieu of the default table icon. */
+  icon?: string;
+}
+
+export type BaseMemberDeleteV3Type = {
+  /** User unique identifier for the member. */
+  user_id: string;
+}[];
+
+/**
+ * Array of member updates.
+ */
+export type BaseMemberUpdateV3Type = {
+  /** Unique user identifier for the member. */
+  user_id: string;
+  /** Base roles for the user. */
+  base_role: BaseRolesV3Type;
+}[];
+
+/**
+ * Array of members to be created.
+ */
+export type BaseMemberCreateV3Type = ((
+  | {
+      /** Unique identifier for the user (skip if email is provided) */
+      user_id: string;
+      /** Full name of the user. */
+      user_name?: string;
+    }
+  | {
+      /**
+       * Email address of the user (skip if user_id is provided)
+       * @format email
+       */
+      email: string;
+      /** Full name of the user. */
+      user_name?: string;
+    }
+) & {
+  /** Base roles for the user. */
+  base_role: BaseRolesV3Type;
+})[];
+
+export interface BaseMemberListV3Type {
+  list?: BaseMemberV3Type[];
+}
+
+export type BaseUserDeleteRequestV3Type = any;
+
+export interface BaseMemberWithWorkspaceRoleV3Type {
+  /** Unique identifier for the user. */
+  user_id: string;
+  /**
+   * Email address of the user.
+   * @format email
+   */
+  email: string;
+  /** Display name of the user. */
+  user_name?: string;
+  /** Base roles for the user. */
+  base_role: BaseRolesV3Type;
+  /** Role assigned to the user in the workspace */
+  workspace_role?: WorkspaceRolesV3Type;
+}
+
+export interface BaseMemberV3Type {
+  /** Unique identifier for the user. */
+  user_id: string;
+  /**
+   * Email address of the user.
+   * @format email
+   */
+  email: string;
+  /** Display name of the user. */
+  user_name?: string;
+  /** Base roles for the user. */
+  base_role: BaseRolesV3Type;
+}
+
+export interface TableV3Type {
+  /** Unique identifier for the table. */
+  id: string;
+  /** Unique identifier for the data source. This information will be included only if the table is associated with an external data source. */
+  source_id?: string;
+  /** Unique identifier for the base to which this table belongs to. */
+  base_id: string;
+  /** Title of the table. */
+  title: string;
+  /** Description of the table. */
+  description?: string;
+  /** Unique identifier for the display field of the table. First non system field is set as display field by default. */
+  display_field_id: string;
+  /** Unique identifier for the workspace to which this base belongs to. */
+  workspace_id: string;
+  /** List of fields associated with this table. */
+  fields: CreateFieldV3Type[];
+  /** List of views associated with this table. */
+  views: ViewSummaryV3Type[];
+}
+
+export type TableCreateFieldV3Type = TableFieldBaseCreateV3Type;
+
+export type CreateFieldV3Type = FieldBaseCreateV3Type;
+
+export type FieldOptionsV3Type = any;
+
+export interface TableCreateV3Type {
+  /** Title of the table. */
+  title: string;
+  /** Description of the table. */
+  description?: string | null;
+  meta?: TableMetaV3Type;
+  /** Unique identifier for the data source. Include this information only if the table being created is part of a data source. */
+  source_id?: string;
+  fields?: TableCreateFieldV3Type[];
+}
+
+export interface TableMetaV3Type {
+  /** Icon prefix to the table name that needs to be displayed in-lieu of the default table icon. */
+  icon?: string;
+}
+
+export interface TableListV3Type {
+  list: {
+    /** Unique identifier for the table. */
+    id: string;
+    /** Title of the table. */
+    title: string;
+    /** Description of the table. */
+    description?: string | null;
+    meta?: TableMetaV3Type;
+    /** Unique identifier for the base to which this table belongs to. */
+    base_id: string;
+    /** Unique identifier for the data source. This information will be included only if the table is associated with an external data source. */
+    source_id?: string;
+    /** Unique identifier for the workspace to which this base belongs to. */
+    workspace_id: string;
+  }[];
+}
+
+export interface BaseUpdateV3Type {
+  /** Title of the base. */
+  title?: string;
+  meta?: BaseMetaReqV3Type;
+}
+
+export interface BaseCreateV3Type {
+  /** Title of the base. */
+  title: string;
+  meta?: BaseMetaReqV3Type;
+}
+
+export interface BaseMetaReqV3Type {
+  /**
+   * Specifies the color of the base icon using a hexadecimal color code (e.g., `#36BFFF`).
+   *
+   * **Constraints**:
+   * - Must be a valid 6-character hexadecimal color code preceded by a `#`.
+   * - Optional field; defaults to a standard color if not provided.
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   */
+  icon_color?: string;
+}
+
+export interface BaseMetaResV3Type {
+  /**
+   * Specifies the color of the base icon using a hexadecimal color code (e.g., `#36BFFF`)
+   * @pattern ^#[0-9A-Fa-f]{6}$
+   */
+  icon_color?: string;
+}
+
+export interface BaseWithMembersV3Type {
+  /** Unique identifier for the base. */
+  id: string;
+  /** Title of the base. */
+  title: string;
+  meta: BaseMetaResV3Type;
+  /**
+   * Timestamp of when the base was created.
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp of when the base was last updated.
+   * @format date-time
+   */
+  updated_at: string;
+  /** Unique identifier for the workspace to which this base belongs to. */
+  workspace_id: string;
+  /** List of data sources associated with this base. This information will be included only if one or more external data sources are associated with the base. */
+  sources?: {
+    /** Unique identifier for the data source. */
+    id: string;
+    /** Title of the data source. */
+    title: string;
+    /** Type of the data source (e.g., pg, mysql). */
+    type: string;
+    /** Indicates if the schema in this data source is read-only. */
+    is_schema_readonly: boolean;
+    /** Indicates if the data (records) in this data source is read-only. */
+    is_data_readonly: boolean;
+    /** Integration ID for the data source. */
+    integration_id: string;
+  }[];
+  individual_members?: {
+    base_members?: BaseMemberWithWorkspaceRoleV3Type[];
+    workspace_members?: WorkspaceMemberV3Type[];
+  };
+}
+
+export interface BaseV3Type {
+  /** Unique identifier for the base. */
+  id: string;
+  /** Title of the base. */
+  title: string;
+  meta: BaseMetaResV3Type;
+  /**
+   * Timestamp of when the base was created.
+   * @format date-time
+   */
+  created_at: string;
+  /**
+   * Timestamp of when the base was last updated.
+   * @format date-time
+   */
+  updated_at: string;
+  /** Unique identifier for the workspace to which this base belongs to. */
+  workspace_id: string;
+  /** List of data sources associated with this base. This information will be included only if one or more external data sources are associated with the base. */
+  sources?: {
+    /** Unique identifier for the data source. */
+    id: string;
+    /** Title of the data source. */
+    title: string;
+    /** Type of the data source (e.g., pg, mysql). */
+    type: string;
+    /** Indicates if the schema in this data source is read-only. */
+    is_schema_readonly: boolean;
+    /** Indicates if the data (records) in this data source is read-only. */
+    is_data_readonly: boolean;
+    /** Integration ID for the data source. */
+    integration_id: string;
+  }[];
+}
+
+/**
  * Model for API Token
  */
 export interface ApiTokenType {
@@ -225,6 +4128,8 @@ export interface AuditType {
    * @example <span class="">Date</span>   : <span class="text-decoration-line-through red px-2 lighten-4 black--text">2023-03-12</span>   <span class="black--text green lighten-4 px-2"></span>
    */
   details?: string;
+  /** Version of the audit */
+  version?: number;
 }
 
 /**
@@ -297,15 +4202,7 @@ export interface SourceType {
    * DB Type
    * @example mysql2
    */
-  type?:
-    | 'mssql'
-    | 'mysql'
-    | 'mysql2'
-    | 'oracledb'
-    | 'pg'
-    | 'snowflake'
-    | 'sqlite3'
-    | 'databricks';
+  type?: 'mysql' | 'mysql2' | 'pg' | 'snowflake' | 'sqlite3' | 'databricks';
 }
 
 /**
@@ -331,6 +4228,8 @@ export interface IntegrationType {
   base_id?: string;
   /** Model for Bool */
   is_private?: BoolType;
+  /** Model for Bool */
+  is_default?: BoolType;
   /** Integration Type */
   type?: IntegrationsType;
   /**
@@ -385,15 +4284,7 @@ export interface BaseReqType {
   /** Is the data source data readonly */
   is_data_readonly?: BoolType;
   /** DB Type */
-  type?:
-    | 'mssql'
-    | 'mysql'
-    | 'mysql2'
-    | 'oracledb'
-    | 'pg'
-    | 'snowflake'
-    | 'sqlite3'
-    | 'databricks';
+  type?: 'mysql' | 'mysql2' | 'pg' | 'snowflake' | 'sqlite3' | 'databricks';
   fk_integration_id?: string;
 }
 
@@ -402,6 +4293,21 @@ export interface BaseReqType {
  */
 export enum IntegrationsType {
   Database = 'database',
+  Ai = 'ai',
+  Auth = 'auth',
+  Sync = 'sync',
+  Communication = 'communication',
+  SpreadSheet = 'spread-sheet',
+  ProjectManagement = 'project-management',
+  Crm = 'crm',
+  Marketing = 'marketing',
+  Ats = 'ats',
+  Development = 'development',
+  Finance = 'finance',
+  Ticketing = 'ticketing',
+  Storage = 'storage',
+  Others = 'others',
+  WorkflowNode = 'workflow-node',
 }
 
 /**
@@ -423,6 +4329,8 @@ export interface IntegrationReqType {
   sub_type?: string;
   /** ID of integration to be copied from. Used in Copy Integration. */
   copy_from_id?: StringOrNullType;
+  /** Whether the integration is restricted to specific bases */
+  is_restricted?: BoolType;
 }
 
 /**
@@ -568,13 +4476,20 @@ export interface ColumnType {
     | 'Links'
     | 'User'
     | 'CreatedBy'
-    | 'LastModifiedBy';
+    | 'LastModifiedBy'
+    | 'AI'
+    | 'Order'
+    | 'Meta'
+    | 'Colour'
+    | 'UUID';
   /** Is Unsigned? */
   un?: BoolType;
   /** Is unique? */
   unique?: BoolType;
   /** Is Visible? */
   visible?: BoolType;
+  /** Is this column readonly? */
+  readonly?: BoolType;
 }
 
 /**
@@ -604,7 +4519,8 @@ export type ColumnReqType = (
       NormalColumnRequestType &
       RollupColumnReqType)
 ) & {
-  column_name?: string;
+  /** Model for StringOrNull */
+  column_name?: StringOrNullType;
   /** Model for TextOrNull */
   description?: TextOrNullType;
   /** Column order in a specific view */
@@ -781,6 +4697,10 @@ export interface FilterType {
   fk_value_col_id?: StringOrNullType;
   /** Foreign Key to Link Column */
   fk_link_col_id?: StringOrNullType;
+  /** Foreign Key to RLS Policy */
+  fk_rls_policy_id?: StringOrNullType;
+  /** Foreign Key to Button Column */
+  fk_button_col_id?: StringOrNullType;
   /** Unique ID */
   id?: IdType;
   /** Is this filter grouped? */
@@ -796,6 +4716,10 @@ export interface FilterType {
    * @example 1
    */
   order?: number;
+  /** Whether this filter is enabled. Disabled filters are skipped during evaluation. */
+  enabled?: BoolType;
+  /** Foreign Key to List View Level */
+  fk_level_id?: StringOrNullType;
 }
 
 /**
@@ -928,6 +4852,8 @@ export interface FilterReqType {
       );
   /** Foreign Key to Column */
   fk_column_id?: StringOrNullType;
+  /** Foreign Key to Widget */
+  fk_widget_id?: StringOrNullType;
   /** Belong to which filter ID */
   fk_parent_id?: StringOrNullType;
   /** Is this filter grouped? */
@@ -936,6 +4862,10 @@ export interface FilterReqType {
   logical_op?: 'and' | 'not' | 'or';
   /** The filter value. Can be NULL for some operators. */
   value?: any;
+  /** Whether this filter is enabled. Disabled filters are skipped during evaluation. */
+  enabled?: BoolType;
+  /** Foreign Key to List View Level */
+  fk_level_id?: StringOrNullType;
 }
 
 export interface FollowerType {
@@ -998,6 +4928,10 @@ export interface FormType {
    * @example Form View 1
    */
   title?: string;
+  /** Form start date. Before this date, the form shows a countdown and does not accept submissions. */
+  starts_at?: StringOrNullType;
+  /** Form expiration date. After this date, the form will no longer accept submissions. */
+  expires_at?: StringOrNullType;
 }
 
 /**
@@ -1032,6 +4966,10 @@ export interface FormUpdateReqType {
   submit_another_form?: BoolType;
   /** Custom message after the form is successfully submitted */
   success_msg?: TextOrNullType;
+  /** Form start date. Before this date, the form shows a countdown and does not accept submissions. */
+  starts_at?: StringOrNullType;
+  /** Form expiration date. After this date, the form will no longer accept submissions. */
+  expires_at?: StringOrNullType;
 }
 
 /**
@@ -1110,6 +5048,8 @@ export interface FormulaType {
   formula_raw?: string;
   /** Unique ID */
   id?: IdType;
+  /** Parsed Formula Tree */
+  parsed_tree?: any;
 }
 
 /**
@@ -1119,7 +5059,7 @@ export interface ButtonType {
   /** Unique ID */
   id?: IdType;
   /** Whether button is webhook or url */
-  type?: 'webhook' | 'url';
+  type?: ButtonActionsType;
   /** Label of Button */
   label?: string;
   /** Button Theme */
@@ -1154,8 +5094,18 @@ export interface ButtonType {
   parsed_tree?: object;
   /** Webhook ID */
   fk_webhook_id?: IdType;
+  /** Script ID */
+  fk_script_id?: IdType;
   /** Foreign Key to Column */
   fk_column_id?: IdType;
+  /** Comma separated column ids to be updated with the generated value */
+  output_column_ids?: string;
+  /** Foreign key to AI integration */
+  fk_integration_id?: string;
+  /** AI model */
+  model?: string;
+  /** Visibility condition filters for the button */
+  filters?: FilterType[];
 }
 
 /**
@@ -1167,7 +5117,7 @@ export interface ButtonColumnReqType {
   /** UI Data Type */
   uidt?: 'Formula';
   /** Whether button is webhook or url */
-  type?: 'webhook' | 'url';
+  type?: ButtonActionsType;
   /** Button Theme */
   theme?: 'solid' | 'text' | 'light';
   /** Button color */
@@ -1442,7 +5392,7 @@ export interface HookType {
    * Event Type for the operation
    * @example after
    */
-  event?: 'after' | 'before' | 'manual';
+  event?: 'view' | 'field' | 'after' | 'before' | 'manual';
   /**
    * Foreign Key to Model
    * @example md_rsu68aqjsbyqtl
@@ -1456,14 +5406,7 @@ export interface HookType {
    * Hook Operation
    * @example insert
    */
-  operation?:
-    | 'insert'
-    | 'update'
-    | 'delete'
-    | 'bulkInsert'
-    | 'bulkUpdate'
-    | 'bulkDelete'
-    | 'trigger';
+  operation?: ('insert' | 'update' | 'delete' | 'trigger')[];
   /**
    * Retry Count
    * @example 10
@@ -1488,9 +5431,12 @@ export interface HookType {
   type?: string;
   /**
    * Hook Version
-   * @example v2
+   * @example v3
    */
-  version?: 'v1' | 'v2';
+  version?: 'v1' | 'v2' | 'v3';
+  /** Is this hook only trigger when some fields are affected */
+  trigger_field?: boolean;
+  trigger_fields?: string[];
 }
 
 /**
@@ -1512,7 +5458,7 @@ export interface HookReqType {
    * Event Type for the operation
    * @example after
    */
-  event: 'after' | 'before' | 'manual';
+  event: 'view' | 'field' | 'after' | 'before' | 'manual';
   /**
    * Foreign Key to Model
    * @example md_rsu68aqjsbyqtl
@@ -1526,14 +5472,7 @@ export interface HookReqType {
    * Hook Operation
    * @example insert
    */
-  operation:
-    | 'insert'
-    | 'update'
-    | 'delete'
-    | 'bulkInsert'
-    | 'bulkUpdate'
-    | 'bulkDelete'
-    | 'trigger';
+  operation: ('insert' | 'update' | 'delete' | 'trigger')[];
   /**
    * Retry Count
    * @example 10
@@ -1558,6 +5497,9 @@ export interface HookReqType {
   type?: string | null;
   /** Is this hook assoicated with some filters */
   condition?: BoolType;
+  /** Is this hook only trigger when some fields are affected */
+  trigger_field?: boolean;
+  trigger_fields?: string[];
 }
 
 /**
@@ -1591,7 +5533,7 @@ export interface HookLogType {
    * Hook Event
    * @example after
    */
-  event?: 'after' | 'before' | 'manual';
+  event?: 'field' | 'view' | 'after' | 'before' | 'manual';
   /**
    * Execution Time in milliseconds
    * @example 98
@@ -1607,14 +5549,7 @@ export interface HookLogType {
    * Hook Operation
    * @example insert
    */
-  operation?:
-    | 'insert'
-    | 'update'
-    | 'delete'
-    | 'bulkInsert'
-    | 'bulkUpdate'
-    | 'bulkDelete'
-    | 'trigger';
+  operation?: 'insert' | 'update' | 'delete' | 'trigger';
   /**
    * Hook Payload
    * @example {"method":"POST","body":"{{ json data }}","headers":[{}],"parameters":[{}],"auth":"","path":"https://webhook.site/6eb45ce5-b611-4be1-8b96-c2965755662b"}
@@ -1727,6 +5662,30 @@ export interface KanbanUpdateReqType {
 }
 
 /**
+ * Model for MCP Token
+ */
+export interface MCPTokenType {
+  /** Unique ID */
+  id?: string;
+  /** Title of the MCP Token */
+  title?: string;
+  /** Order of the Script */
+  order?: number;
+  /** MCP Token */
+  token?: string;
+  /** Workspace ID */
+  fk_workspace_id?: IdType;
+  /** Base ID */
+  base_id?: IdType;
+  /** User ID of the creator */
+  fk_user_id?: IdType;
+  /** Last updated time */
+  updated_at?: string;
+  /** Creation time */
+  created_at?: string;
+}
+
+/**
  * Model for Calendar
  */
 export interface CalendarType {
@@ -1784,6 +5743,65 @@ export interface CalendarColumnType {
 }
 
 /**
+ * Model for Date Dependency
+ */
+export interface DateDependencyType {
+  /** Unique identifier */
+  id?: IdType;
+  /** Foreign Key to Model (Table) */
+  fk_model_id?: IdType;
+  /** Foreign Key to start date Column */
+  fk_start_date_field_id?: StringOrNullType;
+  /** Foreign Key to end date Column */
+  fk_end_date_field_id?: StringOrNullType;
+  /** Foreign Key to duration Column */
+  fk_duration_field_id?: StringOrNullType;
+  /** Foreign Key to link-row Column used for predecessor/successor dependency */
+  fk_dependency_linkrow_field_id?: StringOrNullType;
+  /** Whether the linkrow field links to predecessors or successors */
+  dependency_linkrow_role?: 'predecessors' | 'successors';
+  /** Which date from predecessor drives which date in successor */
+  dependency_connection_type?:
+    | 'end-to-start'
+    | 'end-to-end'
+    | 'start-to-end'
+    | 'start-to-start';
+  /** Type of buffer between predecessor end and successor start */
+  dependency_buffer_type?: 'flexible' | 'fixed' | 'none';
+  /** Buffer in days between predecessor and successor */
+  dependency_buffer_days?: number;
+  /** Whether to include weekends in date calculations */
+  include_weekends?: boolean;
+  /** Whether the date dependency rule is active */
+  is_active?: boolean;
+}
+
+/**
+ * Request model for creating/updating Date Dependency
+ */
+export interface DateDependencyReqType {
+  /** Foreign Key to start date Column */
+  fk_start_date_field_id?: StringOrNullType;
+  /** Foreign Key to end date Column */
+  fk_end_date_field_id?: StringOrNullType;
+  /** Foreign Key to duration Column */
+  fk_duration_field_id?: StringOrNullType;
+  /** Foreign Key to link-row Column */
+  fk_dependency_linkrow_field_id?: StringOrNullType;
+  dependency_linkrow_role?: 'predecessors' | 'successors';
+  dependency_connection_type?:
+    | 'end-to-start'
+    | 'end-to-end'
+    | 'start-to-end'
+    | 'start-to-start';
+  dependency_buffer_type?: 'flexible' | 'fixed' | 'none';
+  /** @min 0 */
+  dependency_buffer_days?: number;
+  include_weekends?: boolean;
+  is_active?: boolean;
+}
+
+/**
  * Model for Calendar Date Range
  */
 export interface CalendarRangeType {
@@ -1836,7 +5854,7 @@ export interface LinkToAnotherColumnReqType {
   /** The title of the virtual column */
   title: string;
   /** The type of the relationship */
-  type: 'bt' | 'hm' | 'mm' | 'oo';
+  type: 'bt' | 'hm' | 'mm' | 'om' | 'mo' | 'oo';
   /** Abstract type of the relationship */
   uidt: 'LinkToAnotherRecord' | 'Links';
   /** Is this relationship virtual? */
@@ -1866,6 +5884,12 @@ export interface LinkToAnotherRecordType {
   ur?: string;
   /** Model for Bool */
   virtual?: BoolType;
+  fk_related_base_id?: string;
+  fk_mm_base_id?: string;
+  base_id?: string;
+  fk_related_source_id?: string;
+  fk_mm_source_id?: string;
+  version?: number;
 }
 
 /**
@@ -2095,11 +6119,18 @@ export interface NormalColumnRequestType {
     | 'Links'
     | 'User'
     | 'CreatedBy'
-    | 'LastModifiedBy';
+    | 'LastModifiedBy'
+    | 'AI'
+    | 'Order'
+    | 'Meta'
+    | 'Colour'
+    | 'UUID';
   /** Is this column unique? */
   un?: BoolType;
   /** Is this column unique? */
   unique?: BoolType;
+  /** Is this column readonly? */
+  readonly?: BoolType;
 }
 
 /**
@@ -2131,7 +6162,7 @@ export interface PaginatedType {
    */
   offset?: number;
   /**
-   * The number of pages
+   * The number of records per page
    * @example 10
    */
   pageSize?: number;
@@ -2140,6 +6171,20 @@ export interface PaginatedType {
    * @example 1
    */
   totalRows?: number;
+}
+
+/**
+ * Model for Paginated
+ */
+export interface PaginatedV3Type {
+  /** URL to access next page */
+  next?: string;
+  /** URL to access previous page */
+  prev?: string;
+  /** URL to access current page data with next set of nested fields data */
+  nestedNext?: string;
+  /** URL to access current page data with previous set of nested fields data */
+  nestedPrev?: string;
 }
 
 /**
@@ -2200,7 +6245,7 @@ export interface PluginType {
   description?: string;
   /** Documentation of plugin (Not in use) */
   docs?: string;
-  /** Plugin Icon (Not in use) */
+  /** Plugin Icon - IconMapKey. Takes priority over 'logo' if both are provided. */
   icon?: string;
   /** Unique ID */
   id?: IdType;
@@ -2311,6 +6356,34 @@ export interface BaseType {
    * @example my-base
    */
   title?: string;
+  /** ID of custom url */
+  fk_custom_url_id?: StringOrNullType;
+  /** List of permissions for the base */
+  permissions?: {
+    /** Permission id */
+    id?: string;
+    /** Permission entity */
+    entity: string;
+    /** ID of the entity */
+    entity_id: string;
+    /** Permission key */
+    permission: string;
+    /** Type of permission granted */
+    granted_type: string;
+    /** Role to which permission is granted */
+    granted_role?: string | null;
+    /** List of subjects (users or groups) for the permission */
+    subjects?: {
+      /** Type of the subject */
+      type: 'user' | 'team';
+      /** ID of the subject */
+      id: string;
+    }[];
+  }[];
+  /** Indicates if the base is a sandbox */
+  is_sandbox?: BoolType;
+  /** Indicates if the base is a sandbox master */
+  is_sandbox_master?: BoolType;
 }
 
 /**
@@ -2350,10 +6423,10 @@ export interface ProjectReqType {
    */
   status?: StringOrNullType;
   type?: 'database' | 'documentation' | 'dashboard';
-  /** List of Linked Database Base IDs (only used for Dashboard Projects so far) */
-  linked_db_project_ids?: string[];
   /** Base Meta */
   meta?: MetaType;
+  /** Workspace ID */
+  fk_workspace_id?: string;
 }
 
 /**
@@ -2377,8 +6450,6 @@ export interface ProjectUpdateReqType {
    * @example locked
    */
   status?: StringOrNullType;
-  /** List of Linked Database Base IDs (only used for Dashboard Projects so far) */
-  linked_db_project_ids?: string[];
   /**
    * The order of the list of projects.
    * @min 0
@@ -2401,7 +6472,29 @@ export interface ProjectUserReqType {
     | 'guest'
     | 'owner'
     | 'viewer'
-    | 'creator';
+    | 'creator'
+    | 'inherit';
+}
+
+/**
+ * Model for Base User Request
+ */
+export interface ProjectUserUpdateReqType {
+  /**
+   * Base User Email
+   * @format email
+   */
+  email?: string;
+  /** Base User Role */
+  roles:
+    | 'no-access'
+    | 'commenter'
+    | 'editor'
+    | 'guest'
+    | 'owner'
+    | 'viewer'
+    | 'creator'
+    | 'inherit';
 }
 
 /**
@@ -2509,13 +6602,8 @@ export interface SelectOptionsType {
  */
 export interface SharedBaseReqType {
   /**
-   * Password to protect the base
-   * @example password123
-   */
-  password?: string;
-  /**
    * The role given the target user
-   * @example editor
+   * @example viewer
    */
   roles?: 'commenter' | 'editor' | 'viewer';
 }
@@ -2610,6 +6698,8 @@ export interface SortType {
    * @example p_9sx43moxhqtjm3
    */
   base_id?: string;
+  /** Foreign Key to List View Level */
+  fk_level_id?: StringOrNullType;
 }
 
 /**
@@ -2630,6 +6720,8 @@ export interface SortReqType {
   fk_column_id?: IdType;
   /** Sort direction */
   direction?: 'asc' | 'desc';
+  /** Foreign Key to List View Level */
+  fk_level_id?: StringOrNullType;
 }
 
 /**
@@ -2668,10 +6760,14 @@ export type IdOrNullType = IdType | null;
 export interface TableType {
   /** Unique Source ID */
   source_id?: string;
+  /** Date dependency rule for this table */
+  date_dependency?: DateDependencyType | null;
   /** The columns included in this table */
   columns?: ColumnType[];
   /** Column Models grouped by IDs */
-  columnsById?: object;
+  columnsById?: Record<string, any>;
+  /** Hash of columns */
+  columnsHash?: string;
   /** Model for Bool */
   deleted?: BoolType;
   /** Is this table enabled? */
@@ -2698,6 +6794,8 @@ export interface TableType {
   title: string;
   /** Table Type */
   type?: string;
+  /** Is this table synced? */
+  synced?: BoolType;
 }
 
 /**
@@ -2764,8 +6862,11 @@ export interface UserType {
   location?: string;
   website?: string;
   avatar?: string;
+  is_new_user?: boolean;
   /** Access token version */
   token_version?: string;
+  /** Meta data for user */
+  meta?: MetaType;
 }
 
 /**
@@ -2829,8 +6930,6 @@ export interface ViewType {
   show: BoolType;
   /** Should show system fields in this view? */
   show_system_fields?: BoolType;
-  /** Is this view default view for the model? */
-  is_default?: BoolType;
   /** View Title */
   title: string;
   /** View Type */
@@ -2845,7 +6944,20 @@ export interface ViewType {
     | KanbanType
     | MapType
     | CalendarType
-    | (FormType & GalleryType & GridType & KanbanType & MapType & CalendarType);
+    | ListType
+    | (FormType &
+        GalleryType &
+        GridType &
+        KanbanType &
+        MapType &
+        CalendarType &
+        ListType);
+  /** ID of view owner user */
+  owned_by?: IdType;
+  /** The row coloring mode whether it is select, condition or not set */
+  row_coloring_mode?: 'filter' | 'select';
+  /** ID of custom url */
+  fk_custom_url_id?: StringOrNullType;
 }
 
 /**
@@ -2877,6 +6989,11 @@ export interface ViewCreateReqType {
   fk_geo_data_col_id?: StringOrNullType;
   /** Calendar Range or Null */
   calendar_range?: CalendarRangeOrNullType;
+  /**
+   * Description of the view.
+   * @example This is a grid view.
+   */
+  description?: TextOrNullType;
 }
 
 /**
@@ -2918,6 +7035,8 @@ export interface ViewUpdateReqType {
   order?: number;
   /** Should this view show system fields? */
   show_system_fields?: BoolType;
+  /** ID of view owner user */
+  owned_by?: IdType;
 }
 
 /**
@@ -3044,6 +7163,8 @@ export interface UserFieldRecordType {
   display_name?: string;
   email: string;
   deleted?: boolean;
+  /** Meta data for user */
+  meta?: MetaType;
 }
 
 export type NestedListCopyPasteOrDeleteAllReqType = {
@@ -3265,6 +7386,102 @@ export interface ExtensionType {
   order?: number;
 }
 
+/**
+ * Model for Snapshot
+ */
+export interface SnapshotType {
+  /** Unique ID */
+  id?: IdType;
+  /** Title of the Snapshot */
+  title?: string;
+  /** Foreign Key to Base */
+  base_id?: IdType;
+  /** Foreign Key to Snapshot Base */
+  snapshot_base_id?: IdType;
+  /** Foreign Key to Workspace */
+  fk_workspace_id?: IdType;
+  /**
+   * Date of creation
+   * @format date
+   */
+  created_at?: string;
+  /** User ID of the creator */
+  created_by?: IdType;
+  /** Status of the Snapshot */
+  status?: string;
+}
+
+/**
+ * Model for Script
+ */
+export interface ScriptType {
+  /** Unique ID */
+  id?: string;
+  /** Title of the Script */
+  title?: string;
+  /** Description of the Script */
+  description?: string;
+  /** Meta data for the Script */
+  meta?: object;
+  /** Config for the Script */
+  config?: object;
+  /** Order of the Script */
+  order?: number;
+  /** Base ID */
+  base_id?: IdType;
+  /** Workspace ID */
+  fk_workspace_id?: IdType;
+  /** User ID of the creator */
+  created_by?: IdType;
+  /** Code of the script */
+  script?: string;
+  /** Last updated time */
+  updated_at?: string;
+  /** Creation time */
+  created_at?: string;
+}
+
+/**
+ * Model for Workflow
+ */
+export interface WorkflowType {
+  /** Unique ID */
+  id?: string;
+  /** Title of the Workflow */
+  title?: string;
+  /** Description of the Workflow */
+  description?: string;
+  /** Base ID */
+  base_id?: IdType;
+  /** Workspace ID */
+  fk_workspace_id?: IdType;
+  /** Whether the workflow is enabled */
+  enabled?: boolean;
+  /** Nodes configuration for the workflow workflow */
+  nodes?: MetaType;
+  /** Edges configuration for the workflow workflow */
+  edges?: MetaType;
+  /** Meta data for the Workflow */
+  meta?: MetaType;
+  /** Draft data for the Workflow */
+  draft?: {
+    /** Nodes configuration for the draft workflow */
+    nodes?: MetaType;
+    /** Edges configuration for the draft workflow */
+    edges?: MetaType;
+  };
+  /** The order of the workflow in the list */
+  order?: number;
+  /** Last updated time */
+  updated_at?: string;
+  /** Creation time */
+  created_at?: string;
+  /** User ID of the creator */
+  created_by?: IdType;
+  /** User ID of the last updated user */
+  updated_by?: IdType;
+}
+
 export interface ExtensionReqType {
   /** Unique Base ID */
   base_id?: IdType;
@@ -3278,6 +7495,191 @@ export interface ExtensionReqType {
   meta?: MetaType;
   /** Order of the extension */
   order?: number;
+}
+
+export interface AIRecordType {
+  /** Value */
+  value?: string;
+  /** Last Modified By User ID */
+  lastModifiedBy?: IdType;
+  /** Last Modified Time */
+  lastModifiedTime?: string;
+  /** Is any referenced value updated? */
+  isStale?: boolean;
+  /** Is edited by AI? */
+  isAiEdited?: boolean;
+}
+
+export enum ButtonActionsType {
+  Webhook = 'webhook',
+  Url = 'url',
+  Ai = 'ai',
+  Script = 'script',
+}
+
+/**
+ * Model for Custom Url
+ */
+export interface CustomUrlType {
+  /** Id associated to the Custom url */
+  id?: string;
+  /** Workspace ID */
+  fk_workspace_id?: string;
+  /** Dashboard ID */
+  fk_dashboard_id?: string;
+  /** Base ID */
+  base_id?: string;
+  /** Model ID */
+  fk_model_id?: string;
+  /** View ID */
+  view_id?: string;
+  /** Original url used for redirection purpose */
+  original_path?: string;
+  /** Custom url path */
+  custom_path?: string;
+}
+
+/**
+ * Model for List View Level
+ */
+export interface ListViewLevelType {
+  /** Unique ID for Level */
+  id?: string;
+  /** Foreign Key to View */
+  fk_view_id?: string;
+  /** Level number (1, 2, or 3) */
+  level?: number;
+  /** Foreign Key to Model (table) for this level */
+  fk_model_id?: string;
+  /** Foreign Key to Link Column connecting levels */
+  fk_link_column_id?: string;
+  /** Enable nested records (Level 1 only) */
+  enable_nested_records?: BoolType;
+  /** Foreign Key to Self-Link Column */
+  fk_self_link_column_id?: string;
+  /** Wrap column headers in this level */
+  wrap_headers?: BoolType;
+  /** Meta data for this level */
+  meta?: MetaType;
+}
+
+/**
+ * Model for List View
+ */
+export interface ListType {
+  /** The ID of the source that this view belongs to */
+  source_id?: string;
+  /** Columns in this view */
+  columns?: ListColumnType[];
+  /** Foreign Key to View */
+  fk_view_id?: string;
+  /** Meta data for this view */
+  meta?: MetaType;
+  /** The order of the list */
+  order?: number;
+  /** The ID of the base that this view belongs to */
+  base_id?: string;
+  /** To show this view or not */
+  show?: boolean;
+  /** Title of List View */
+  title?: string;
+  /** Show empty parent sections */
+  show_empty_parents?: BoolType;
+  /** Row height for this list view */
+  row_height?: number;
+  /** Foreign Key to Prefix Column */
+  fk_prefix_column_id?: StringOrNullType;
+  /** Levels configuration for this list view */
+  levels?: ListViewLevelType[];
+}
+
+/**
+ * Model for List Column
+ */
+export interface ListColumnType {
+  /** The ID of the source */
+  source_id?: string;
+  /** Foreign Key to Column */
+  fk_column_id?: string;
+  /** Foreign Key to View */
+  fk_view_id?: string;
+  /** Foreign Key to Level */
+  fk_level_id?: string;
+  /** Unique ID of List Column */
+  id?: string;
+  /** The order in the list of columns */
+  order?: number;
+  /** The ID of the base */
+  base_id?: string;
+  /** Whether to show this column or not */
+  show?: number;
+  /** Column width */
+  width?: string;
+}
+
+/**
+ * Model for List View Update Request
+ */
+export interface ListUpdateReqType {
+  /** Meta data for this view */
+  meta?: MetaType;
+  /** Show empty parent sections */
+  show_empty_parents?: BoolType;
+  /** Row height for this list view */
+  row_height?: number;
+  /** Foreign Key to Prefix Column */
+  fk_prefix_column_id?: StringOrNullType;
+  /** Levels configuration for this list view */
+  levels?: ListViewLevelReqType[];
+}
+
+/**
+ * Model for List View Level Request
+ */
+export interface ListViewLevelReqType {
+  /** Level number (1, 2, or 3) */
+  level: number;
+  /** Foreign Key to Model (table) for this level */
+  fk_model_id: string;
+  /** Foreign Key to Link Column */
+  fk_link_column_id?: StringOrNullType;
+  /** Model for Bool */
+  enable_nested_records?: BoolType;
+  /** Foreign Key to Self-Link Column */
+  fk_self_link_column_id?: StringOrNullType;
+  /** Wrap column headers in this level */
+  wrap_headers?: BoolType;
+}
+
+export interface WorkspaceUserType {
+  /** @format email */
+  email?: string;
+  fk_user_id?: string;
+  invite_accepted?: boolean;
+  invite_token?: string;
+  roles?: string;
+}
+
+export interface WorkspaceUserInviteType {
+  /** @format email */
+  email?: string;
+  roles?: string;
+}
+
+export interface WorkspaceUserListType {
+  list?: WorkspaceUserType[];
+  /** Model for Paginated */
+  pageInfo?: PaginatedType;
+}
+
+/**
+ * Model for Integration List
+ */
+export interface IntegrationListType {
+  /** List of Integration Models */
+  list: IntegrationType[];
+  /** Pagination Info */
+  pageInfo: PaginatedType;
 }
 
 import type {
@@ -3344,7 +7746,7 @@ export class HttpClient<SecurityDataType = unknown> {
   }: ApiConfig<SecurityDataType> = {}) {
     this.instance = axios.create({
       ...axiosConfig,
-      baseURL: axiosConfig.baseURL || 'http://localhost:8080',
+      baseURL: axiosConfig.baseURL || 'https://app.nocodb.com',
     });
     this.secure = secure;
     this.format = format;
@@ -3463,7 +7865,7 @@ export class HttpClient<SecurityDataType = unknown> {
 /**
  * @title nocodb
  * @version 1.0
- * @baseUrl http://localhost:8080
+ * @baseUrl https://app.nocodb.com
  *
  * NocoDB API Documentation
  */
@@ -5292,6 +9694,8 @@ export class Api<
   url?: string,
   \** @example viewer *\
   roles?: string,
+  \** ID of custom url *\
+  fk_custom_url_id?: StringOrNullType,
 
 }` OK
  * @response `400` `{
@@ -5312,6 +9716,8 @@ export class Api<
           url?: string;
           /** @example viewer */
           roles?: string;
+          /** ID of custom url */
+          fk_custom_url_id?: StringOrNullType;
         },
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
@@ -5414,6 +9820,8 @@ export class Api<
   url?: string,
   \** @example viewer *\
   roles?: string,
+  \** ID of custom url *\
+  fk_custom_url_id?: StringOrNullType,
 
 }` OK
  * @response `400` `{
@@ -5424,7 +9832,10 @@ export class Api<
  */
     sharedBaseUpdate: (
       baseId: IdType,
-      data: SharedBaseReqType,
+      data: SharedBaseReqType & {
+        /** Custom url path */
+        custom_url_path?: StringOrNullType;
+      },
       params: RequestParams = {}
     ) =>
       this.request<
@@ -5438,6 +9849,8 @@ export class Api<
           url?: string;
           /** @example viewer */
           roles?: string;
+          /** ID of custom url */
+          fk_custom_url_id?: StringOrNullType;
         },
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
@@ -5476,6 +9889,54 @@ export class Api<
       >({
         path: `/api/v1/db/meta/projects/${baseId}/cost`,
         method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Duplicate a shared base
+ * 
+ * @tags Base
+ * @name DuplicateShared
+ * @summary Duplicate Shared Base
+ * @request POST:/api/v2/meta/duplicate/{workspaceId}/shared/{sharedBaseId}
+ * @response `200` `{
+  name?: string,
+  id?: string,
+
+}` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    duplicateShared: (
+      workspaceId: IdType,
+      sharedBaseId: any,
+      data: {
+        options?: {
+          excludeData?: boolean;
+          excludeViews?: boolean;
+        };
+        base?: object;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        {
+          name?: string;
+          id?: string;
+        },
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/meta/duplicate/${workspaceId}/shared/${sharedBaseId}`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
         format: 'json',
         ...params,
       }),
@@ -5587,7 +10048,7 @@ export class Api<
  * @name HasEmptyOrNullFilters
  * @summary List Empty & Null Filter
  * @request GET:/api/v1/db/meta/projects/{baseId}/has-empty-or-null-filters
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -5596,7 +10057,7 @@ export class Api<
  */
     hasEmptyOrNullFilters: (baseId: IdType, params: RequestParams = {}) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -5604,66 +10065,6 @@ export class Api<
       >({
         path: `/api/v1/db/meta/projects/${baseId}/has-empty-or-null-filters`,
         method: 'GET',
-        format: 'json',
-        ...params,
-      }),
-
-    /**
- * @description List all audit data in the given base
- * 
- * @tags Base
- * @name AuditList
- * @summary List Audits in Base
- * @request GET:/api/v1/db/meta/projects/{baseId}/audits
- * @response `200` `{
-  list: (AuditType)[],
-  \** Model for Paginated *\
-  pageInfo: PaginatedType,
-
-}` OK
- * @response `400` `{
-  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
-  msg: string,
-
-}`
- */
-    auditList: (
-      baseId: IdType,
-      query?: {
-        /** @min 0 */
-        offset?: number;
-        /** @min 1 */
-        limit?: number;
-        sourceId?: string;
-        orderBy?: {
-          /**
-           * Sort direction
-           * @example desc
-           */
-          created_at?: 'asc' | 'desc';
-          /**
-           * Sort direction
-           * @example desc
-           */
-          user?: 'asc' | 'desc';
-        };
-      },
-      params: RequestParams = {}
-    ) =>
-      this.request<
-        {
-          list: AuditType[];
-          /** Model for Paginated */
-          pageInfo: PaginatedType;
-        },
-        {
-          /** @example BadRequest [Error]: <ERROR MESSAGE> */
-          msg: string;
-        }
-      >({
-        path: `/api/v1/db/meta/projects/${baseId}/audits`,
-        method: 'GET',
-        query: query,
         format: 'json',
         ...params,
       }),
@@ -5767,7 +10168,7 @@ export class Api<
  * @name List
  * @summary List Sources
  * @request GET:/api/v1/db/meta/projects/{baseId}/bases/
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -5776,7 +10177,7 @@ export class Api<
  */
     list: (baseId: IdType, params: RequestParams = {}) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -6362,6 +10763,39 @@ export class Api<
         ...params,
       }),
   };
+  dbLinks = {
+    /**
+ * @description Read the table metadata by linked column ID and  table ID
+ * 
+ * @tags DB Links
+ * @name TableRead
+ * @summary Read Partial Linked Table
+ * @request GET:/api/v1/db/internal/links/{linkColumnId}/tables/{tableId}
+ * @response `200` `TableType` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    tableRead: (
+      linkColumnId: IdType,
+      tableId: IdType,
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        TableType,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v1/db/internal/links/${linkColumnId}/tables/${tableId}`,
+        method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+  };
   dbTableColumn = {
     /**
  * @description Create a new column in a given Table
@@ -6674,6 +11108,189 @@ export class Api<
       }),
 
     /**
+ * @description Get the row color info from view.
+ * 
+ * @tags DB View
+ * @name GetViewRowColor
+ * @summary Get row color info
+ * @request GET:/api/v1/db/meta/views/{viewId}/row-color
+ * @response `200` `void` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    getViewRowColor: (viewId: IdType, params: RequestParams = {}) =>
+      this.request<
+        void,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v1/db/meta/views/${viewId}/row-color`,
+        method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Delete the row color info from view.
+ * 
+ * @tags DB View
+ * @name DeleteViewRowColor
+ * @summary Delete row color info
+ * @request DELETE:/api/v1/db/meta/views/{viewId}/row-color
+ * @response `200` `void` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    deleteViewRowColor: (viewId: IdType, params: RequestParams = {}) =>
+      this.request<
+        void,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v1/db/meta/views/${viewId}/row-color`,
+        method: 'DELETE',
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags DB View
+     * @name ViewRowColorSelectAdd
+     * @summary Set view row color select
+     * @request POST:/api/v1/db/meta/views/{viewId}/row-color-select
+     * @response `200` `void` OK
+     */
+    viewRowColorSelectAdd: (
+      viewId: IdType,
+      data: {
+        /** Column ID to use for row coloring */
+        fk_column_id: string;
+        /** Whether to use the color as background */
+        is_set_as_background: boolean;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<void, any>({
+        path: `/api/v1/db/meta/views/${viewId}/row-color-select`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags DB View
+     * @name ViewRowColorConditionAdd
+     * @summary Add view row color condition
+     * @request POST:/api/v1/db/meta/views/{viewId}/row-color-conditions
+     * @response `200` `void` OK
+     */
+    viewRowColorConditionAdd: (
+      viewId: IdType,
+      data: {
+        /** Color to apply to matching rows */
+        color: string;
+        /** Whether to use the color as background */
+        is_set_as_background: boolean;
+        /** Order of the condition */
+        nc_order: number;
+        filter: {
+          /** Comparison operator */
+          comparison_op:
+            | 'eq'
+            | 'neq'
+            | 'gt'
+            | 'gte'
+            | 'lt'
+            | 'lte'
+            | 'like'
+            | 'nlike'
+            | 'in'
+            | 'nin'
+            | 'is'
+            | 'isnot'
+            | 'null'
+            | 'notnull';
+          /** Value to compare against */
+          value: string;
+          /** Column ID to filter on */
+          fk_column_id: string;
+        };
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<void, any>({
+        path: `/api/v1/db/meta/views/${viewId}/row-color-conditions`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags DB View
+     * @name ViewRowColorConditionUpdate
+     * @summary Update view row color condition
+     * @request PATCH:/api/v1/db/meta/views/{viewId}/row-color-conditions/{id}
+     * @response `200` `void` OK
+     */
+    viewRowColorConditionUpdate: (
+      viewId: IdType,
+      id: IdType,
+      data: {
+        /** Color to apply to matching rows */
+        color: string;
+        /** Whether to use the color as background */
+        is_set_as_background: boolean;
+        /** Order of the condition */
+        nc_order: number;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<void, any>({
+        path: `/api/v1/db/meta/views/${viewId}/row-color-conditions/${id}`,
+        method: 'PATCH',
+        body: data,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags DB View
+     * @name ViewRowColorConditionDelete
+     * @summary Delete view row color condition
+     * @request DELETE:/api/v1/db/meta/views/{viewId}/row-color-conditions/{id}
+     * @response `200` `void` OK
+     */
+    viewRowColorConditionDelete: (
+      viewId: IdType,
+      id: IdType,
+      params: RequestParams = {}
+    ) =>
+      this.request<void, any>({
+        path: `/api/v1/db/meta/views/${viewId}/row-color-conditions/${id}`,
+        method: 'DELETE',
+        ...params,
+      }),
+
+    /**
  * @description Show All Columns in a given View
  * 
  * @tags DB View
@@ -6818,7 +11435,7 @@ export class Api<
  * @name FormUpdate
  * @summary Update Form View
  * @request PATCH:/api/v1/db/meta/forms/{formViewId}
- * @response `200` `number` OK
+ * @response `200` `ViewType` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -6831,7 +11448,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        number,
+        ViewType,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -6914,7 +11531,7 @@ export class Api<
  * @name GridUpdate
  * @summary Update Grid View
  * @request PATCH:/api/v1/db/meta/grids/{viewId}
- * @response `200` `number` OK
+ * @response `200` `ViewType` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -6927,7 +11544,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        number,
+        ViewType,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -7044,7 +11661,7 @@ export class Api<
  * @name GalleryUpdate
  * @summary Update Gallery View
  * @request PATCH:/api/v1/db/meta/galleries/{galleryViewId}
- * @response `200` `number` OK
+ * @response `200` `ViewType` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -7057,7 +11674,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        number,
+        ViewType,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -7140,7 +11757,7 @@ export class Api<
  * @name KanbanUpdate
  * @summary Update Kanban View
  * @request PATCH:/api/v1/db/meta/kanbans/{kanbanViewId}
- * @response `200` `number` OK
+ * @response `200` `ViewType` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -7153,7 +11770,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        number,
+        ViewType,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -7460,7 +12077,10 @@ export class Api<
  */
     update: (
       viewId: string,
-      data: SharedViewReqType,
+      data: SharedViewReqType & {
+        /** Custom url path */
+        custom_url_path?: StringOrNullType;
+      },
       params: RequestParams = {}
     ) =>
       this.request<
@@ -8089,6 +12709,8 @@ export class Api<
         filterArrJson?: string;
         /** Comma separated list of pks */
         pks?: string;
+        /** Get hidden columns on List Api */
+        getHiddenColumns?: string;
       },
       params: RequestParams = {}
     ) =>
@@ -8118,7 +12740,7 @@ export class Api<
  * @name Create
  * @summary Create Table Row
  * @request POST:/api/v1/db/data/{orgs}/{baseName}/{tableName}
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -8130,10 +12752,14 @@ export class Api<
       baseName: string,
       tableName: string,
       data: object,
+      query?: {
+        before?: string;
+        undo?: boolean;
+      },
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -8141,6 +12767,7 @@ export class Api<
       >({
         path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}`,
         method: 'POST',
+        query: query,
         body: data,
         type: ContentType.Json,
         format: 'json',
@@ -8193,7 +12820,7 @@ export class Api<
      * @name GroupBy
      * @summary Group By Table Row
      * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/groupby
-     * @response `200` `any` OK
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
      */
     groupBy: (
       orgs: string,
@@ -8211,8 +12838,39 @@ export class Api<
       },
       params: RequestParams = {}
     ) =>
-      this.request<any, any>({
+      this.request<BaseUserDeleteRequestV3Type, any>({
         path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}/groupby`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Get the number of groups by the given query
+     *
+     * @tags DB Table Row
+     * @name GroupByCount
+     * @summary Group By Table Row Count
+     * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/groupby/count
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
+     */
+    groupByCount: (
+      orgs: string,
+      baseName: string,
+      tableName: string,
+      query?: {
+        /** Column name of the column you want to group by, eg. `column_name=column1` */
+        column_name?: string;
+        sort?: any[];
+        where?: string;
+        /** @min 0 */
+        offset?: number;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<BaseUserDeleteRequestV3Type, any>({
+        path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}/groupby/count`,
         method: 'GET',
         query: query,
         format: 'json',
@@ -8416,6 +13074,42 @@ export class Api<
       }),
 
     /**
+ * @description Bulk upsert table rows in one go.
+ * 
+ * @tags DB Table Row
+ * @name BulkUpsert
+ * @summary Bulk Upsert Table Rows
+ * @request POST:/api/v1/db/data/bulk/{orgs}/{baseName}/{tableName}/upsert
+ * @response `200` `(any)[]` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    bulkUpsert: (
+      orgs: string,
+      baseName: string,
+      tableName: string,
+      data: object[],
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        any[],
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v1/db/data/bulk/${orgs}/${baseName}/${tableName}/upsert`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
  * @description Bulk insert table rows in one go.
  * 
  * @tags DB Table Row
@@ -8437,6 +13131,9 @@ export class Api<
       baseName: string,
       tableName: string,
       data: object[],
+      query?: {
+        undo?: string;
+      },
       params: RequestParams = {}
     ) =>
       this.request<
@@ -8450,6 +13147,7 @@ export class Api<
       >({
         path: `/api/v1/db/data/bulk/${orgs}/${baseName}/${tableName}`,
         method: 'POST',
+        query: query,
         body: data,
         type: ContentType.Json,
         format: 'json',
@@ -8535,7 +13233,7 @@ export class Api<
  * @name BulkUpdateAll
  * @summary Bulk Update Table Rows with Conditions
  * @request PATCH:/api/v1/db/data/bulk/{orgs}/{baseName}/{tableName}/all
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -8550,11 +13248,13 @@ export class Api<
       query?: {
         where?: string;
         viewId?: string;
+        /** Comma separated list of pks */
+        skipPks?: string;
       },
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -8587,10 +13287,11 @@ export class Api<
       orgs: string,
       baseName: string,
       tableName: string,
-      data: object,
       query?: {
         where?: string;
         viewId?: string;
+        /** Comma separated list of pks */
+        skipPks?: string;
       },
       params: RequestParams = {}
     ) =>
@@ -8604,43 +13305,7 @@ export class Api<
         path: `/api/v1/db/data/bulk/${orgs}/${baseName}/${tableName}/all`,
         method: 'DELETE',
         query: query,
-        body: data,
-        type: ContentType.Json,
         format: 'json',
-        ...params,
-      }),
-
-    /**
- * @description Export Table View Rows by CSV or Excel
- * 
- * @tags DB Table Row
- * @name CsvExport
- * @summary Export Table View Rows
- * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/export/{type}
- * @response `200` `any` OK
- * @response `400` `{
-  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
-  msg: string,
-
-}`
- */
-    csvExport: (
-      orgs: string,
-      baseName: string,
-      tableName: string,
-      type: 'csv' | 'excel',
-      params: RequestParams = {}
-    ) =>
-      this.request<
-        any,
-        {
-          /** @example BadRequest [Error]: <ERROR MESSAGE> */
-          msg: string;
-        }
-      >({
-        path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}/export/${type}`,
-        method: 'GET',
-        wrapped: true,
         ...params,
       }),
 
@@ -8651,7 +13316,7 @@ export class Api<
  * @name NestedList
  * @summary List Nested Relations Rows
  * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/{rowId}/{relationType}/{columnName}
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -8663,7 +13328,7 @@ export class Api<
       baseName: string,
       tableName: string,
       rowId: any,
-      relationType: 'mm' | 'hm' | 'bt' | 'oo',
+      relationType: 'mm' | 'hm' | 'bt' | 'oo' | 'ln',
       columnName: string,
       query?: {
         /** @min 1 */
@@ -8675,7 +13340,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -8711,7 +13376,7 @@ export class Api<
       baseName: string,
       tableName: string,
       rowId: any,
-      relationType: 'mm' | 'hm' | 'bt' | 'oo',
+      relationType: 'mm' | 'hm' | 'bt' | 'oo' | 'ln',
       columnName: string,
       refRowId: string,
       query?: {
@@ -8778,7 +13443,7 @@ export class Api<
       baseName: string,
       tableName: string,
       rowId: any,
-      relationType: 'mm' | 'hm' | 'bt' | 'oo',
+      relationType: 'mm' | 'hm' | 'bt' | 'oo' | 'ln',
       columnName: string,
       refRowId: string,
       params: RequestParams = {}
@@ -8806,7 +13471,7 @@ export class Api<
  * @name NestedChildrenExcludedList
  * @summary Referenced Table Rows Excluding Current Record's Children / Parent
  * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/{rowId}/{relationType}/{columnName}/exclude
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -8818,7 +13483,7 @@ export class Api<
       baseName: string,
       tableName: string,
       rowId: any,
-      relationType: 'mm' | 'hm' | 'bt' | 'oo',
+      relationType: 'mm' | 'hm' | 'bt' | 'oo' | 'ln',
       columnName: string,
       query?: {
         /** @min 1 */
@@ -8830,7 +13495,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -8919,6 +13584,7 @@ export class Api<
         /** Query params for nested data */
         nested?: any;
         offset?: number;
+        getHiddenColumns?: boolean;
       },
       params: RequestParams = {}
     ) =>
@@ -8961,6 +13627,10 @@ export class Api<
       tableName: string,
       viewName: string,
       data: object,
+      query?: {
+        before?: string;
+        undo?: string;
+      },
       params: RequestParams = {}
     ) =>
       this.request<
@@ -8972,6 +13642,7 @@ export class Api<
       >({
         path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}/views/${viewName}`,
         method: 'POST',
+        query: query,
         body: data,
         type: ContentType.Json,
         format: 'json',
@@ -9027,7 +13698,7 @@ export class Api<
  * @name GroupBy
  * @summary Group By Table View Row
  * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/views/{viewName}/groupby
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -9052,13 +13723,56 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
         }
       >({
         path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}/views/${viewName}/groupby`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Get the table view rows grouped by count the given query
+ * 
+ * @tags DB View Row
+ * @name GroupByCount
+ * @summary Count of Group By Table View Row
+ * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/views/{viewName}/groupby/count
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    groupByCount: (
+      orgs: string,
+      baseName: string,
+      tableName: string,
+      viewName: string,
+      query?: {
+        /** Column name of the column you want to group by, eg. `column_name=column1` */
+        column_name?: string;
+        sort?: any[];
+        where?: string;
+        /** @min 0 */
+        offset?: number;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        BaseUserDeleteRequestV3Type,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}/views/${viewName}/groupby/count`,
         method: 'GET',
         query: query,
         format: 'json',
@@ -9244,41 +13958,6 @@ export class Api<
         format: 'json',
         ...params,
       }),
-
-    /**
- * @description Export Table View Rows by CSV or Excel
- * 
- * @tags DB View Row
- * @name Export
- * @summary Export Table View Rows
- * @request GET:/api/v1/db/data/{orgs}/{baseName}/{tableName}/views/{viewName}/export/{type}
- * @response `200` `any` OK
- * @response `400` `{
-  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
-  msg: string,
-
-}`
- */
-    export: (
-      orgs: string,
-      baseName: string,
-      tableName: string,
-      viewName: string,
-      type: 'csv' | 'excel',
-      params: RequestParams = {}
-    ) =>
-      this.request<
-        any,
-        {
-          /** @example BadRequest [Error]: <ERROR MESSAGE> */
-          msg: string;
-        }
-      >({
-        path: `/api/v1/db/data/${orgs}/${baseName}/${tableName}/views/${viewName}/export/${type}`,
-        method: 'GET',
-        wrapped: true,
-        ...params,
-      }),
   };
   dbCalendarViewRow = {
     /**
@@ -9296,6 +13975,8 @@ export class Api<
       viewName: string,
       query: {
         from_date: string;
+        prev_date: string;
+        next_date: string;
         to_date: string;
         fields?: any[];
         sort?: any[];
@@ -9326,6 +14007,8 @@ export class Api<
       query: {
         from_date: string;
         to_date: string;
+        prev_date: string;
+        next_date: string;
         fields?: any[];
         sort?: any[];
         where?: string;
@@ -9385,7 +14068,7 @@ export class Api<
  * @name DbCalendarViewRowCount
  * @summary Count of Records in Dates in Calendar View
  * @request GET:/api/v1/db/calendar-data/{orgs}/{baseName}/{tableName}/views/{viewName}/countByDate/
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -9400,6 +14083,8 @@ export class Api<
       query: {
         from_date: string;
         to_date: string;
+        prev_date: string;
+        next_date: string;
         sort?: any[];
         where?: string;
         /** @min 1 */
@@ -9410,7 +14095,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -9431,7 +14116,7 @@ export class Api<
  * @name DataCalendarRowCount
  * @summary Count of Records in Dates in Calendar View
  * @request GET:/api/v1/db/public/calendar-view/{sharedViewUuid}/countByDate
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -9442,6 +14127,8 @@ export class Api<
       sharedViewUuid: string,
       query: {
         from_date: string;
+        prev_date: string;
+        next_date: string;
         to_date: string;
         sort?: any[];
         where?: string;
@@ -9453,13 +14140,47 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
         }
       >({
         path: `/api/v1/db/public/calendar-view/${sharedViewUuid}/countByDate`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Count how many rows in the given Table View
+ * 
+ * @tags Public
+ * @name DbViewRowCount
+ * @summary Count Table View Rows
+ * @request GET:/api/v2/public/shared-view/{sharedViewUuid}/count
+ * @response `200` `{
+  count?: number,
+
+}` OK
+ */
+    dbViewRowCount: (
+      sharedViewUuid: string,
+      query?: {
+        where?: string;
+        /** Query params for nested data */
+        nested?: any;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        {
+          count?: number;
+        },
+        any
+      >({
+        path: `/api/v2/public/shared-view/${sharedViewUuid}/count`,
         method: 'GET',
         query: query,
         format: 'json',
@@ -9580,6 +14301,49 @@ export class Api<
         path: `/api/v2/public/shared-view/${sharedViewUuid}/aggregate`,
         method: 'GET',
         query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Read bulk aggregated data from a given table with provided filters
+ * 
+ * @tags Public
+ * @name DataTableBulkAggregate
+ * @summary Read Shared View Bulk Aggregated Data
+ * @request POST:/api/v2/public/shared-view/{sharedViewUuid}/bulk/aggregate
+ * @response `200` `object` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    dataTableBulkAggregate: (
+      sharedViewUuid: string,
+      data: object[],
+      query?: {
+        /** Extra filtering */
+        where?: string;
+        /** Used for multiple filter queries */
+        filterArrJson?: string;
+        /** List of fields to be aggregated */
+        aggregation?: object[];
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        object,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/public/shared-view/${sharedViewUuid}/bulk/aggregate`,
+        method: 'POST',
+        query: query,
+        body: data,
+        type: ContentType.Json,
         format: 'json',
         ...params,
       }),
@@ -9857,6 +14621,48 @@ export class Api<
       }),
 
     /**
+ * @description Get the number of groups by the given query
+ * 
+ * @tags Public
+ * @name DataGroupByCount
+ * @summary Group By Table Row Count
+ * @request GET:/api/v2/public/shared-view/{sharedViewUuid}/groupby/count
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    dataGroupByCount: (
+      sharedViewUuid: string,
+      query?: {
+        /** The result will be sorted based on `sort` query */
+        sort?: string[] | string;
+        /** Extra filtering */
+        where?: string;
+        /** Used for multiple filter queries */
+        filterArrJson?: string;
+        /** Columns to group by */
+        column_name?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        BaseUserDeleteRequestV3Type,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/public/shared-view/${sharedViewUuid}/groupby/count`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
  * @description List all nested list data in a given shared view
  * 
  * @tags Public
@@ -9879,7 +14685,7 @@ export class Api<
     dataNestedList: (
       sharedViewUuid: string,
       rowId: any,
-      relationType: 'mm' | 'hm' | 'bt' | 'oo',
+      relationType: 'mm' | 'hm' | 'bt' | 'oo' | 'ln',
       columnName: string,
       query?: {
         /** Which fields to be shown */
@@ -9925,45 +14731,13 @@ export class Api<
       }),
 
     /**
- * @description Export all rows in Share View in a CSV / Excel Format
- * 
- * @tags Public
- * @name CsvExport
- * @summary Export Rows in Share View
- * @request GET:/api/v1/db/public/shared-view/{sharedViewUuid}/rows/export/{type}
- * @response `200` `any` OK
- * @response `400` `{
-  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
-  msg: string,
-
-}`
- */
-    csvExport: (
-      sharedViewUuid: string,
-      type: 'csv' | 'excel',
-      params: RequestParams = {}
-    ) =>
-      this.request<
-        any,
-        {
-          /** @example BadRequest [Error]: <ERROR MESSAGE> */
-          msg: string;
-        }
-      >({
-        path: `/api/v1/db/public/shared-view/${sharedViewUuid}/rows/export/${type}`,
-        method: 'GET',
-        wrapped: true,
-        ...params,
-      }),
-
-    /**
  * @description List Nested Data Relation
  * 
  * @tags Public
  * @name DataRelationList
  * @summary List Nested Data Relation
  * @request GET:/api/v1/db/public/shared-view/{sharedViewUuid}/nested/{columnName}
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -9998,7 +14772,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -10117,6 +14891,28 @@ export class Api<
         method: 'GET',
         ...params,
       }),
+
+    /**
+     * @description Trigger export as job
+     *
+     * @tags Public
+     * @name ExportData
+     * @summary Trigger export as job
+     * @request POST:/api/v2/public/export/{publicDataUuid}/{exportAs}
+     */
+    exportData: (
+      publicDataUuid: IdType,
+      exportAs: 'csv',
+      data: object,
+      params: RequestParams = {}
+    ) =>
+      this.request<any, any>({
+        path: `/api/v2/public/export/${publicDataUuid}/${exportAs}`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        ...params,
+      }),
   };
   dbDataTableBulkList = {
     /**
@@ -10200,55 +14996,227 @@ export class Api<
         ...params,
       }),
   };
-  utils = {
+  oAuth = {
     /**
- * @description List all audits
+ * @description Retrieve public information about an OAuth client for authorization display
  * 
- * @tags Utils
- * @name AuditList
- * @summary List Audits
- * @request GET:/api/v1/db/meta/audits
+ * @tags OAuth
+ * @name V2PublicOauthClientDetail
+ * @summary Get OAuth Client Information
+ * @request GET:/api/v2/public/oauth/client/{clientId}
  * @response `200` `{
-  list: (AuditType)[],
+  \** OAuth client identifier *\
+  client_id: string,
+  \** Application name *\
+  client_name: string,
+  \**
+   * Application homepage URL
+   * @format uri
+   *\
+  client_uri?: string,
+  \** Application logo URL or file metadata *\
+  logo_uri?: (string | {
+  path?: string,
+  title?: string,
+  mimetype?: string,
+  size?: number,
 
-}` OK
+}),
+  \** Application description *\
+  client_description?: string,
+  \** Registered redirect URIs *\
+  redirect_uris: (string)[],
+  \** OAuth client type *\
+  client_type: "public" | "confidential",
+
+}` OAuth client information
+ * @response `400` `{
+  \** @example invalid_client_id *\
+  error?: string,
+  \** @example The client ID format is invalid *\
+  error_description?: string,
+
+}` Invalid client ID format
+ * @response `404` `{
+  \** @example client_not_found *\
+  error?: string,
+  \** @example The requested OAuth client does not exist *\
+  error_description?: string,
+
+}` OAuth client not found
+ */
+    v2PublicOauthClientDetail: (clientId: string, params: RequestParams = {}) =>
+      this.request<
+        {
+          /** OAuth client identifier */
+          client_id: string;
+          /** Application name */
+          client_name: string;
+          /**
+           * Application homepage URL
+           * @format uri
+           */
+          client_uri?: string;
+          /** Application logo URL or file metadata */
+          logo_uri?:
+            | string
+            | {
+                path?: string;
+                title?: string;
+                mimetype?: string;
+                size?: number;
+              };
+          /** Application description */
+          client_description?: string;
+          /** Registered redirect URIs */
+          redirect_uris: string[];
+          /** OAuth client type */
+          client_type: 'public' | 'confidential';
+        },
+        | {
+            /** @example invalid_client_id */
+            error?: string;
+            /** @example The client ID format is invalid */
+            error_description?: string;
+          }
+        | {
+            /** @example client_not_found */
+            error?: string;
+            /** @example The requested OAuth client does not exist */
+            error_description?: string;
+          }
+      >({
+        path: `/api/v2/public/oauth/client/${clientId}`,
+        method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Handle OAuth authorization request with user approval/denial
+ * 
+ * @tags OAuth
+ * @name Authorize
+ * @summary OAuth Authorization
+ * @request POST:/api/v2/oauth/authorize
+ * @response `200` `{
+  \**
+   * URL to redirect the user to
+   * @format uri
+   *\
+  redirect_url?: string,
+
+}` Authorization processed successfully
+ * @response `400` `{
+  \** @example Missing required parameters: client_id, redirect_uri *\
+  message?: string,
+
+}` Missing required parameters
+ */
+    authorize: (
+      data: {
+        /**
+         * The client identifier
+         * @example your-client-id
+         */
+        client_id: string;
+        /**
+         * The client redirection URI
+         * @format uri
+         * @example https://your-app.com/callback
+         */
+        redirect_uri: string;
+        /**
+         * Opaque value used to maintain state between request and callback
+         * @example xyz123
+         */
+        state?: string;
+        /**
+         * Whether the user approved the authorization request
+         * @example true
+         */
+        approved?: boolean;
+        /**
+         * PKCE code challenge
+         * @example dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk
+         */
+        code_challenge?: string;
+        /**
+         * PKCE code challenge method
+         * @example S256
+         */
+        code_challenge_method?: 'S256' | 'plain';
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        {
+          /**
+           * URL to redirect the user to
+           * @format uri
+           */
+          redirect_url?: string;
+        },
+        {
+          /** @example Missing required parameters: client_id, redirect_uri */
+          message?: string;
+        }
+      >({
+        path: `/api/v2/oauth/authorize`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+  };
+  dbDataTableBulkAggregate = {
+    /**
+ * @description Read bulk aggregated data from a given table with given filters
+ * 
+ * @tags DB Data Table Bulk Aggregate
+ * @name DbDataTableBulkAggregate
+ * @summary Read Bulk Aggregated Data
+ * @request POST:/api/v2/tables/{tableId}/bulk/aggregate
+ * @response `200` `object` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
 
 }`
  */
-    auditList: (
+    dbDataTableBulkAggregate: (
+      tableId: string,
       query: {
-        /**
-         * Row ID
-         * @example 10
-         */
-        row_id: string;
-        /**
-         * Foreign Key to Model
-         * @example md_c6csq89tl37jm5
-         */
-        fk_model_id: IdType;
+        /** View ID is required */
+        viewId: string;
+        /** List of fields to be aggregated */
+        aggregation?: object[];
+        /** Extra filtering */
+        where?: string;
+        /** Used for multiple filter queries */
+        filterArrJson?: string;
       },
+      data: object[],
       params: RequestParams = {}
     ) =>
       this.request<
-        {
-          list: AuditType[];
-        },
+        object,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
         }
       >({
-        path: `/api/v1/db/meta/audits`,
-        method: 'GET',
+        path: `/api/v2/tables/${tableId}/bulk/aggregate`,
+        method: 'POST',
         query: query,
+        body: data,
+        type: ContentType.Json,
         format: 'json',
         ...params,
       }),
-
+  };
+  utils = {
     /**
  * @description List all comments
  * 
@@ -10429,98 +15397,6 @@ export class Api<
       }),
 
     /**
- * @description List all audit data in the given project
- * 
- * @tags Utils
- * @name ProjectAuditList
- * @summary List Audits in Project
- * @request GET:/api/v1/db/meta/projects/audits
- * @response `200` `{
-  list: (AuditType)[],
-  \** Model for Paginated *\
-  pageInfo: PaginatedType,
-
-}` OK
- * @response `400` `{
-  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
-  msg: string,
-
-}`
- */
-    projectAuditList: (
-      query?: {
-        /** @min 0 */
-        offset?: number;
-        /** @min 1 */
-        limit?: number;
-        orderBy?: {
-          /**
-           * Sort direction
-           * @example desc
-           */
-          created_at?: 'asc' | 'desc';
-          /**
-           * Sort direction
-           * @example desc
-           */
-          user?: 'asc' | 'desc';
-        };
-      },
-      params: RequestParams = {}
-    ) =>
-      this.request<
-        {
-          list: AuditType[];
-          /** Model for Paginated */
-          pageInfo: PaginatedType;
-        },
-        {
-          /** @example BadRequest [Error]: <ERROR MESSAGE> */
-          msg: string;
-        }
-      >({
-        path: `/api/v1/db/meta/projects/audits`,
-        method: 'GET',
-        query: query,
-        format: 'json',
-        ...params,
-      }),
-
-    /**
- * @description Update Audit Row
- * 
- * @tags Utils
- * @name AuditRowUpdate
- * @summary Update Audit Row
- * @request POST:/api/v1/db/meta/audits/rows/{rowId}/update
- * @response `200` `AuditType` OK
- * @response `400` `{
-  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
-  msg: string,
-
-}`
- */
-    auditRowUpdate: (
-      rowId: any,
-      data: AuditRowUpdateReqType,
-      params: RequestParams = {}
-    ) =>
-      this.request<
-        AuditType,
-        {
-          /** @example BadRequest [Error]: <ERROR MESSAGE> */
-          msg: string;
-        }
-      >({
-        path: `/api/v1/db/meta/audits/rows/${rowId}/update`,
-        method: 'POST',
-        body: data,
-        type: ContentType.Json,
-        format: 'json',
-        ...params,
-      }),
-
-    /**
  * @description Test the DB Connection
  * 
  * @tags Utils
@@ -10546,10 +15422,8 @@ export class Api<
          * @example mysql2
          */
         client?:
-          | 'mssql'
           | 'mysql'
           | 'mysql2'
-          | 'oracledb'
           | 'pg'
           | 'snowflake'
           | 'sqlite3'
@@ -10596,7 +15470,7 @@ export class Api<
    * DB Type
    * @example mysql2
    *\
-  client?: "mssql" | "mysql" | "mysql2" | "oracledb" | "pg" | "snowflake" | "sqlite3" | "databricks",
+  client?: "mysql" | "mysql2" | "pg" | "snowflake" | "sqlite3" | "databricks",
   \** Connection Config *\
   connection?: {
   \** DB User *\
@@ -10636,10 +15510,8 @@ export class Api<
            * @example mysql2
            */
           client?:
-            | 'mssql'
             | 'mysql'
             | 'mysql2'
-            | 'oracledb'
             | 'pg'
             | 'snowflake'
             | 'sqlite3'
@@ -10937,6 +15809,45 @@ export class Api<
       }),
 
     /**
+ * No description
+ * 
+ * @tags Utils
+ * @name CloudFeatures
+ * @summary Get Cloud Features
+ * @request GET:/api/v2/cloud-features
+ * @response `200` `({
+  Id?: number,
+  Title?: string,
+  Highlight?: boolean,
+  "Coming Soon"?: boolean,
+
+})[]` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    cloudFeatures: (params: RequestParams = {}) =>
+      this.request<
+        {
+          Id?: number;
+          Title?: string;
+          Highlight?: boolean;
+          'Coming Soon'?: boolean;
+        }[],
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/cloud-features`,
+        method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+
+    /**
  * @description Get Aggregated Meta Info such as tableCount, dbViewCount, viewCount and etc.
  * 
  * @tags Utils
@@ -11131,10 +16042,10 @@ export class Api<
      * @name CommandPalette
      * @summary Get command palette suggestions
      * @request POST:/api/v1/command_palette
-     * @response `200` `any` OK
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
      */
     commandPalette: (data: any, params: RequestParams = {}) =>
-      this.request<any, any>({
+      this.request<BaseUserDeleteRequestV3Type, any>({
         path: `/api/v1/command_palette`,
         method: 'POST',
         body: data,
@@ -11249,7 +16160,7 @@ export class Api<
  * @tags DB Table Webhook
  * @name SamplePayloadGet
  * @summary Get Sample Hook Payload
- * @request GET:/api/v1/db/meta/tables/{tableId}/hooks/samplePayload/{operation}/{version}
+ * @request GET:/api/v1/db/meta/tables/{tableId}/hooks/samplePayload/{event}/{operation}/{version}
  * @response `200` `{
   \** Sample Payload Data *\
   data?: object,
@@ -11263,6 +16174,7 @@ export class Api<
  */
     samplePayloadGet: (
       tableId: IdType,
+      event: 'field' | 'view' | 'after' | 'before' | 'manual',
       operation:
         | 'insert'
         | 'update'
@@ -11270,7 +16182,7 @@ export class Api<
         | 'bulkInsert'
         | 'bulkUpdate'
         | 'bulkDelete',
-      version: 'v1' | 'v2',
+      version: 'v1' | 'v2' | 'v3',
       params: RequestParams = {}
     ) =>
       this.request<
@@ -11283,7 +16195,7 @@ export class Api<
           msg: string;
         }
       >({
-        path: `/api/v1/db/meta/tables/${tableId}/hooks/samplePayload/${operation}/${version}`,
+        path: `/api/v1/db/meta/tables/${tableId}/hooks/samplePayload/${event}/${operation}/${version}`,
         method: 'GET',
         format: 'json',
         ...params,
@@ -11455,7 +16367,7 @@ export class Api<
  * @tags Plugin
  * @name Status
  * @summary Get Plugin Status
- * @request GET:/api/v1/db/meta/plugins/{pluginTitle}/status
+ * @request GET:/api/v1/db/meta/plugins/{pluginId}/status
  * @response `200` `boolean` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
@@ -11463,7 +16375,7 @@ export class Api<
 
 }`
  */
-    status: (pluginTitle: string, params: RequestParams = {}) =>
+    status: (pluginId: string, params: RequestParams = {}) =>
       this.request<
         boolean,
         {
@@ -11471,7 +16383,7 @@ export class Api<
           msg: string;
         }
       >({
-        path: `/api/v1/db/meta/plugins/${pluginTitle}/status`,
+        path: `/api/v1/db/meta/plugins/${pluginId}/status`,
         method: 'GET',
         format: 'json',
         ...params,
@@ -11484,7 +16396,7 @@ export class Api<
  * @name Test
  * @summary Test Plugin
  * @request POST:/api/v1/db/meta/plugins/test
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -11493,7 +16405,7 @@ export class Api<
  */
     test: (data: PluginTestReqType, params: RequestParams = {}) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -11514,7 +16426,7 @@ export class Api<
  * @name Update
  * @summary Update Plugin
  * @request PATCH:/api/v1/db/meta/plugins/{pluginId}
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -11527,7 +16439,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -11676,6 +16588,11 @@ export class Api<
          * @example download/noco/jango_fett/Table1/attachment/uVbjPVQxC_SSfs8Ctx.jpg
          */
         path: string;
+        /**
+         * The scope of the attachment
+         * @example workspacePics
+         */
+        scope?: 'workspacePics' | 'profilePics' | 'organizationPics';
       },
       data: {
         files: FileReqType[];
@@ -11706,6 +16623,11 @@ export class Api<
          * @example download/noco/jango_fett/Table1/attachment/c7z_UF8sZBgJUxMjpN.jpg
          */
         path: string;
+        /**
+         * The scope of the attachment
+         * @example workspacePics
+         */
+        scope?: 'workspacePics' | 'profilePics' | 'organizationPics';
       },
       data: AttachmentReqType[],
       params: RequestParams = {}
@@ -11936,7 +16858,7 @@ export class Api<
  * @name Create
  * @summary Create Table Rows
  * @request POST:/api/v2/tables/{tableId}/records
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -11949,11 +16871,13 @@ export class Api<
       query?: {
         /** View ID */
         viewId?: string;
+        before?: string;
+        undo?: string;
       },
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -11975,7 +16899,7 @@ export class Api<
  * @name Update
  * @summary Update Table Rows
  * @request PATCH:/api/v2/tables/{tableId}/records
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -11992,7 +16916,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -12014,7 +16938,7 @@ export class Api<
  * @name Delete
  * @summary Delete Table Rows
  * @request DELETE:/api/v2/tables/{tableId}/records
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -12031,7 +16955,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -12085,6 +17009,43 @@ export class Api<
       >({
         path: `/api/v2/tables/${tableId}/records/${rowId}`,
         method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+ * @description Move the table row to new position
+ * 
+ * @tags DB Data Table Row
+ * @name Move
+ * @summary Move Table Row
+ * @request POST:/api/v2/tables/{tableId}/records/{rowId}/move
+ * @response `200` `object` OK
+ * @response `400` `{
+  \** @example BadRequest [Error]: <ERROR MESSAGE> *\
+  msg: string,
+
+}`
+ */
+    move: (
+      tableId: string,
+      rowId: string,
+      query?: {
+        /** The row ID before which the row should be moved */
+        before?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<
+        object,
+        {
+          /** @example BadRequest [Error]: <ERROR MESSAGE> */
+          msg: string;
+        }
+      >({
+        path: `/api/v2/tables/${tableId}/records/${rowId}/move`,
+        method: 'POST',
         query: query,
         format: 'json',
         ...params,
@@ -12213,7 +17174,7 @@ export class Api<
  * @name NestedLink
  * @summary Create Nested Relations Rows
  * @request POST:/api/v2/tables/{tableId}/links/{columnId}/records/{rowId}
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -12232,7 +17193,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -12254,7 +17215,7 @@ export class Api<
  * @name NestedUnlink
  * @summary Delete Nested Relations Rows
  * @request DELETE:/api/v2/tables/{tableId}/links/{columnId}/records/{rowId}
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -12273,7 +17234,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -12336,7 +17297,7 @@ export class Api<
  * @name NestedListCopyPasteOrDeleteAll
  * @summary Copy paste or deleteAll nested link
  * @request POST:/api/v2/tables/{tableId}/links/{columnId}/records
- * @response `200` `any` OK
+ * @response `200` `BaseUserDeleteRequestV3Type` OK
  * @response `400` `{
   \** @example BadRequest [Error]: <ERROR MESSAGE> *\
   msg: string,
@@ -12354,7 +17315,7 @@ export class Api<
       params: RequestParams = {}
     ) =>
       this.request<
-        any,
+        BaseUserDeleteRequestV3Type,
         {
           /** @example BadRequest [Error]: <ERROR MESSAGE> */
           msg: string;
@@ -12402,10 +17363,10 @@ export class Api<
      * @name Create
      * @summary Create Extension
      * @request POST:/api/v2/extensions/{baseId}
-     * @response `200` `any` OK
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
      */
     create: (baseId: IdType, data: object, params: RequestParams = {}) =>
-      this.request<any, any>({
+      this.request<BaseUserDeleteRequestV3Type, any>({
         path: `/api/v2/extensions/${baseId}`,
         method: 'POST',
         body: data,
@@ -12438,10 +17399,10 @@ export class Api<
      * @name Update
      * @summary Update Extension
      * @request PATCH:/api/v2/extensions/{extensionId}
-     * @response `200` `any` OK
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
      */
     update: (extensionId: IdType, data: object, params: RequestParams = {}) =>
-      this.request<any, any>({
+      this.request<BaseUserDeleteRequestV3Type, any>({
         path: `/api/v2/extensions/${extensionId}`,
         method: 'PATCH',
         body: data,
@@ -12457,10 +17418,10 @@ export class Api<
      * @name Delete
      * @summary Delete Extension
      * @request DELETE:/api/v2/extensions/{extensionId}
-     * @response `200` `any` OK
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
      */
     delete: (extensionId: IdType, params: RequestParams = {}) =>
-      this.request<any, any>({
+      this.request<BaseUserDeleteRequestV3Type, any>({
         path: `/api/v2/extensions/${extensionId}`,
         method: 'DELETE',
         format: 'json',
@@ -12532,6 +17493,198 @@ export class Api<
         ...params,
       }),
   };
+  ai = {
+    /**
+     * @description AI Utils
+     *
+     * @tags Ai
+     * @name Utils
+     * @summary AI Utils
+     * @request POST:/api/v2/ai/bases/{baseId}/utils
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
+     */
+    utils: (
+      baseId: IdType,
+      data: {
+        operation?: string;
+        input: any;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<BaseUserDeleteRequestV3Type, any>({
+        path: `/api/v2/ai/bases/${baseId}/utils`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description AI Completion
+     *
+     * @tags Ai
+     * @name Completion
+     * @summary AI Completion
+     * @request POST:/api/v2/ai/bases/{baseId}/completion
+     * @response `200` `object` OK
+     */
+    completion: (
+      baseId: IdType,
+      data: {
+        schema?: object;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<object, any>({
+        path: `/api/v2/ai/bases/${baseId}/completion`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description AI Schema
+     *
+     * @tags Ai
+     * @name Schema
+     * @summary AI Schema
+     * @request POST:/api/v2/ai/bases/{baseId}/schema
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
+     */
+    schema: (
+      baseId: IdType,
+      data: {
+        operation?: string;
+        input: any;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<BaseUserDeleteRequestV3Type, any>({
+        path: `/api/v2/ai/bases/${baseId}/schema`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description AI Schema
+     *
+     * @tags Ai
+     * @name SchemaCreate
+     * @summary AI Schema
+     * @request POST:/api/v2/ai/workspaces/{workspaceId}/bases
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
+     */
+    schemaCreate: (
+      workspaceId: IdType,
+      data: {
+        operation?: string;
+        input: any;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<BaseUserDeleteRequestV3Type, any>({
+        path: `/api/v2/ai/workspaces/${workspaceId}/bases`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Generate AI data for specified rows
+     *
+     * @tags Ai
+     * @name DataGenerate
+     * @summary Generate AI Data
+     * @request POST:/api/v2/ai/tables/{modelId}/rows/generate
+     * @response `200` `(any)[]` OK
+     */
+    dataGenerate: (
+      modelId: string,
+      data: {
+        rowIds: string[];
+        column?:
+          | string
+          | {
+              title: string;
+              prompt_raw: string;
+              fk_integration_id: string;
+              uidt: string;
+              model?: string;
+              output_column_ids?: string;
+            };
+        preview?: boolean;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<any[], any>({
+        path: `/api/v2/ai/tables/${modelId}/rows/generate`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Fill AI data for specified rows
+     *
+     * @tags Ai
+     * @name DataFill
+     * @summary Fill AI Data
+     * @request POST:/api/v2/ai/tables/{modelId}/rows/fill
+     * @response `200` `(any)[]` OK
+     */
+    dataFill: (
+      modelId: string,
+      data: {
+        rows?: any[];
+        numRows: number;
+        generateIds: string[];
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<any[], any>({
+        path: `/api/v2/ai/tables/${modelId}/rows/fill`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Extract AI data from the input
+     *
+     * @tags Ai
+     * @name DataExtract
+     * @summary Extract Data using AI
+     * @request POST:/api/v2/ai/tables/{modelId}/extract
+     * @response `200` `(any)[]` OK
+     */
+    dataExtract: (
+      modelId: string,
+      data: {
+        input: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<any[], any>({
+        path: `/api/v2/ai/tables/${modelId}/extract`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+  };
   integration = {
     /**
      * @description List integrations
@@ -12540,7 +17693,7 @@ export class Api<
      * @name List
      * @summary List integrations
      * @request GET:/api/v2/meta/integrations
-     * @response `200` `any` OK
+     * @response `200` `IntegrationListType` OK
      */
     list: (
       query?: {
@@ -12554,7 +17707,7 @@ export class Api<
       },
       params: RequestParams = {}
     ) =>
-      this.request<any, any>({
+      this.request<IntegrationListType, any>({
         path: `/api/v2/meta/integrations`,
         method: 'GET',
         query: query,
@@ -12641,6 +17794,496 @@ export class Api<
       this.request<void, any>({
         path: `/api/v2/meta/integrations/${integrationId}`,
         method: 'DELETE',
+        ...params,
+      }),
+
+    /**
+     * @description Set integration as category default
+     *
+     * @tags Integration
+     * @name SetDefault
+     * @summary Set integration as category default
+     * @request PATCH:/api/v2/meta/integrations/{integrationId}/default
+     * @response `200` `void` OK
+     */
+    setDefault: (integrationId: string, params: RequestParams = {}) =>
+      this.request<void, any>({
+        path: `/api/v2/meta/integrations/${integrationId}/default`,
+        method: 'PATCH',
+        ...params,
+      }),
+
+    /**
+     * @description Store integration
+     *
+     * @tags Integration
+     * @name Store
+     * @summary Store integration
+     * @request POST:/api/v2/integrations/:integrationId/store
+     * @response `200` `void` OK
+     */
+    store: (
+      integrationId: string,
+      data:
+        | {
+            op: 'list';
+            limit: number;
+            offset: number;
+          }
+        | {
+            op: 'get';
+          }
+        | {
+            op: 'sum';
+            fields: string[];
+          },
+      params: RequestParams = {}
+    ) =>
+      this.request<void, any>({
+        path: `/api/v2/integrations/${integrationId}/store`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description List integrations
+     *
+     * @tags Integration
+     * @name WorkspaceList
+     * @summary List integrations
+     * @request GET:/api/v2/meta/workspaces/{workspaceId}/integrations
+     * @response `200` `IntegrationListType` OK
+     */
+    workspaceList: (
+      workspaceId: string,
+      query?: {
+        /** Integration Type */
+        type?: IntegrationsType;
+        includeDatabaseInfo?: boolean;
+        limit?: number;
+        offset?: number;
+        baseId?: string;
+        query?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<IntegrationListType, any>({
+        path: `/api/v2/meta/workspaces/${workspaceId}/integrations`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Create integration
+     *
+     * @tags Integration
+     * @name WorkspaceCreate
+     * @summary Create integration
+     * @request POST:/api/v2/meta/workspaces/{workspaceId}/integrations
+     * @response `200` `IntegrationType` OK
+     */
+    workspaceCreate: (
+      workspaceId: string,
+      data: IntegrationReqType,
+      params: RequestParams = {}
+    ) =>
+      this.request<IntegrationType, any>({
+        path: `/api/v2/meta/workspaces/${workspaceId}/integrations`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+  };
+  integrations = {
+    /**
+     * @description List available integrations
+     *
+     * @tags Integrations
+     * @name List
+     * @summary Integration List
+     * @request GET:/api/v2/integrations
+     * @response `200` `object` OK
+     */
+    list: (params: RequestParams = {}) =>
+      this.request<object, any>({
+        path: `/api/v2/integrations`,
+        method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Get info for integration
+     *
+     * @tags Integrations
+     * @name Info
+     * @summary Get Integration Info
+     * @request GET:/api/v2/integrations/:type/:subType
+     * @response `200` `object` OK
+     */
+    info: (type: string, subType: string, params: RequestParams = {}) =>
+      this.request<object, any>({
+        path: `/api/v2/integrations/${type}/${subType}`,
+        method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Call exposed integration endpoint
+     *
+     * @tags Integrations
+     * @name Endpoint
+     * @summary Call exposed integration endpoint
+     * @request POST:/api/v2/integrations/:integrationId/:endpoint
+     * @response `200` `object` OK
+     */
+    endpoint: (
+      integrationId: string,
+      endpoint: string,
+      data: object,
+      params: RequestParams = {}
+    ) =>
+      this.request<object, any>({
+        path: `/api/v2/integrations/${integrationId}/${endpoint}`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+  };
+  action = {
+    /**
+     * @description Trigger a button action
+     *
+     * @tags Action
+     * @name TriggerButton
+     * @summary Trigger a button action
+     * @request POST:/api/v2/tables/:tableId/button/:fieldId
+     * @response `200` `object` OK
+     */
+    triggerButton: (
+      tableId: string,
+      fieldId: string,
+      data: {
+        customRows?: any[];
+        rowIds?: string[];
+        customField?: object;
+      },
+      query?: {
+        /** Trigger AI action with custom record data provided in request body as rows */
+        passThrough?: boolean;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<object, any>({
+        path: `/api/v2/tables/${tableId}/button/${fieldId}`,
+        method: 'POST',
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+  };
+  internal = {
+    /**
+     * @description Trigger an internal operation
+     *
+     * @tags Internal
+     * @name PostOperation
+     * @summary Trigger an internal operation
+     * @request POST:/api/v2/internal/:workspaceId/:baseId
+     * @response `200` `Record<string, any>` OK
+     */
+    postOperation: (
+      workspaceId: string,
+      baseId: string,
+      query: {
+        /** Operation to trigger */
+        operation: string;
+        /** Model ID */
+        fk_model_id?: string;
+        /** Row ID */
+        row_id?: string;
+        /** Workflow ID */
+        workflowId?: string;
+        /** Cursor */
+        cursor?: string;
+        /** Table Id */
+        tableId?: string;
+        /** MCP Token Id */
+        mcpTokenId?: string;
+        /** View Id */
+        viewId?: string;
+        /** Form View Id */
+        formViewId?: string;
+        /** Grid View Id */
+        gridViewId?: string;
+        /** Kanban View Id */
+        kanbanViewId?: string;
+        /** Gallery View Id */
+        galleryViewId?: string;
+        /** Calendar View Id */
+        calendarViewId?: string;
+        /** Public Data UUID */
+        publicDataUuid?: string;
+        /** Shared View UUID */
+        sharedViewUuid?: string;
+        /** Shared Base UUID */
+        sharedBaseUuid?: string;
+        /** Shared Dashboard UUID */
+        sharedDashboardUuid?: string;
+        /** Hook Id */
+        hookId?: string;
+        /** Row Color Condition Id */
+        rowColorConditionId?: string;
+        /** Grid View Column Id */
+        gridViewColumnId?: string;
+        /** Form View Column Id */
+        formViewColumnId?: string;
+        /** Gallery View Column Id */
+        galleryViewColumnId?: string;
+        /** Column Id */
+        columnId?: string;
+        /** Filter Id */
+        filterId?: string;
+        /** Filter Parent Id */
+        filterParentId?: string;
+        /** Widget ID */
+        widgetId?: string;
+        /** Sort Id */
+        sortId?: string;
+        /** Sync Id */
+        syncId?: string;
+        /** Extension Id */
+        extensionId?: string;
+        /** Team ID */
+        teamId?: string;
+        /** Client ID */
+        clientId?: string;
+        /** Token ID */
+        tokenId?: string;
+        /** Dashboard ID */
+        dashboardId?: string;
+        /** Entity ID */
+        id?: string;
+      },
+      data: Record<string, any>,
+      params: RequestParams = {}
+    ) =>
+      this.request<Record<string, any>, any>({
+        path: `/api/v2/internal/${workspaceId}/${baseId}`,
+        method: 'POST',
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Trigger an internal operation
+     *
+     * @tags Internal
+     * @name GetOperation
+     * @summary Trigger an internal operation
+     * @request GET:/api/v2/internal/:workspaceId/:baseId
+     * @response `200` `Record<string, any>` OK
+     */
+    getOperation: (
+      workspaceId: string,
+      baseId: string,
+      query: {
+        /** Operation to trigger */
+        operation: string;
+        /** Model ID */
+        fk_model_id?: string;
+        /** Row ID */
+        row_id?: string;
+        /** Workflow ID */
+        workflowId?: string;
+        /** Cursor */
+        cursor?: string;
+        /** Table Id */
+        tableId?: string;
+        /** MCP Token Id */
+        mcpTokenId?: string;
+        /** View Id */
+        viewId?: string;
+        /** Form View Id */
+        formViewId?: string;
+        /** Grid View Id */
+        gridViewId?: string;
+        /** Kanban View Id */
+        kanbanViewId?: string;
+        /** Gallery View Id */
+        galleryViewId?: string;
+        /** Calendar View Id */
+        calendarViewId?: string;
+        /** Public Data UUID */
+        publicDataUuid?: string;
+        /** Shared View UUID */
+        sharedViewUuid?: string;
+        /** Shared Base UUID */
+        sharedBaseUuid?: string;
+        /** Shared Dashboard UUID */
+        sharedDashboardUuid?: string;
+        /** Hook Id */
+        hookId?: string;
+        /** Row Color Condition Id */
+        rowColorConditionId?: string;
+        /** Grid View Column Id */
+        gridViewColumnId?: string;
+        /** Form View Column Id */
+        formViewColumnId?: string;
+        /** Gallery View Column Id */
+        galleryViewColumnId?: string;
+        /** Column Id */
+        columnId?: string;
+        /** Filter Id */
+        filterId?: string;
+        /** Filter Parent Id */
+        filterParentId?: string;
+        /** Widget ID */
+        widgetId?: string;
+        /** Sort Id */
+        sortId?: string;
+        /** Sync Id */
+        syncId?: string;
+        /** Extension Id */
+        extensionId?: string;
+        /** Team ID */
+        teamId?: string;
+        /** Client ID */
+        clientId?: string;
+        /** Token ID */
+        tokenId?: string;
+        /** Dashboard ID */
+        dashboardId?: string;
+        /** Entity ID */
+        id?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<Record<string, any>, any>({
+        path: `/api/v2/internal/${workspaceId}/${baseId}`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+  };
+  workspaceUser = {
+    /**
+     * @description Workspace users list
+     *
+     * @tags Workspace user
+     * @name List
+     * @summary Workspace users list
+     * @request GET:/api/v1/workspaces/{workspaceId}/users
+     * @response `200` `WorkspaceUserListType` OK
+     */
+    list: (
+      workspaceId: string,
+      query?: {
+        includeDeleted?: boolean;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<WorkspaceUserListType, any>({
+        path: `/api/v1/workspaces/${workspaceId}/users`,
+        method: 'GET',
+        query: query,
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Workspace user read
+     *
+     * @tags Workspace user
+     * @name Read
+     * @summary Workspace user read
+     * @request GET:/api/v1/workspaces/{workspaceId}/users/{userId}
+     * @response `200` `WorkspaceUserType` OK
+     */
+    read: (workspaceId: string, userId: string, params: RequestParams = {}) =>
+      this.request<WorkspaceUserType, any>({
+        path: `/api/v1/workspaces/${workspaceId}/users/${userId}`,
+        method: 'GET',
+        format: 'json',
+        ...params,
+      }),
+
+    /**
+     * @description Update workspace user
+     *
+     * @tags Workspace user
+     * @name Update
+     * @summary Update workspace user
+     * @request PATCH:/api/v1/workspaces/{workspaceId}/users/{userId}
+     * @response `200` `void` OK
+     */
+    update: (
+      workspaceId: string,
+      userId: string,
+      data: {
+        roles?: string;
+      },
+      params: RequestParams = {}
+    ) =>
+      this.request<void, any>({
+        path: `/api/v1/workspaces/${workspaceId}/users/${userId}`,
+        method: 'PATCH',
+        body: data,
+        type: ContentType.Json,
+        ...params,
+      }),
+
+    /**
+     * @description Delete workspace user
+     *
+     * @tags Workspace User
+     * @name Delete
+     * @summary Delete workspace user
+     * @request DELETE:/api/v1/workspaces/{workspaceId}/users/{userId}
+     * @response `200` `void` OK
+     */
+    delete: (workspaceId: string, userId: string, params: RequestParams = {}) =>
+      this.request<void, any>({
+        path: `/api/v1/workspaces/${workspaceId}/users/${userId}`,
+        method: 'DELETE',
+        ...params,
+      }),
+
+    /**
+     * @description Workspace user invite
+     *
+     * @tags Workspace user
+     * @name Invite
+     * @summary Workspace user invite
+     * @request POST:/api/v1/workspaces/{workspaceId}/invitations
+     * @response `200` `BaseUserDeleteRequestV3Type` OK
+     */
+    invite: (
+      workspaceId: string,
+      data: WorkspaceUserInviteType,
+      params: RequestParams = {}
+    ) =>
+      this.request<BaseUserDeleteRequestV3Type, any>({
+        path: `/api/v1/workspaces/${workspaceId}/invitations`,
+        method: 'POST',
+        body: data,
+        type: ContentType.Json,
+        format: 'json',
         ...params,
       }),
   };

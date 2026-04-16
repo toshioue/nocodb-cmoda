@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { OrgUserRoles } from 'nocodb-sdk'
-import type { OrgUserReqType, RequestParams, UserType } from 'nocodb-sdk'
+import { EnterpriseOrgUserRoles } from 'nocodb-sdk'
+import type { RequestParams, UserType } from 'nocodb-sdk'
 
 const { api, isLoading } = useApi()
 
@@ -13,13 +13,33 @@ const { t } = useI18n()
 
 const { dashboardUrl } = useDashboard()
 
-const { user: loggedInUser } = useGlobal()
+const { appInfo, user: loggedInUser } = useGlobal()
 
 const { copy } = useCopy()
 
 const { sorts, sortDirection, loadSorts, handleGetSortedData, saveOrUpdate: saveOrUpdateUserSort } = useUserSorts('Org')
 
 const users = ref<UserType[]>([])
+
+const hasOrgRoles = computed(() => appInfo.value?.isOnPrem && appInfo.value?.ee)
+
+const updateOrgRole = async (user: UserType, newRole: string) => {
+  try {
+    const orgId = appInfo.value?.defaultOrgId || NC_DEFAULT_ORG_ID
+    await api.instance.patch(`/api/v1/orgs/${orgId}/users/${user.id}`, { org_role: newRole })
+
+    // Update reactively by replacing the user object in the array
+    const idx = users.value.findIndex((u) => u.id === user.id)
+    if (idx !== -1) {
+      users.value[idx] = { ...users.value[idx], org_roles: newRole } as any
+    }
+
+    message.success(t('msg.success.roleUpdated'))
+    $e('a:org-user:role-update', { role: newRole })
+  } catch (e: any) {
+    message.error(await extractSdkResponseErrorMsg(e))
+  }
+}
 
 const sortedUsers = computed(() => {
   return handleGetSortedData(users.value, sorts.value) as UserType[]
@@ -71,30 +91,16 @@ onMounted(() => {
   loadSorts()
 })
 
-const updateRole = async (userId: string, roles: string) => {
-  try {
-    await api.orgUsers.update(userId, {
-      roles,
-    } as OrgUserReqType)
-    message.success(t('msg.success.roleUpdated'))
-
-    users.value.forEach((user) => {
-      if (user.id === userId) {
-        user.roles = roles
-      }
-    })
-
-    $e('a:org-user:role-updated', { role: roles })
-  } catch (e: any) {
-    message.error(await extractSdkResponseErrorMsg(e))
-  }
-}
-
 const deleteModalInfo = ref<UserType | null>(null)
 
 const deleteUser = async () => {
   try {
-    await api.orgUsers.delete(deleteModalInfo.value?.id as string)
+    if (hasOrgRoles.value) {
+      const orgId = appInfo.value?.defaultOrgId || NC_DEFAULT_ORG_ID
+      await api.instance.delete(`/api/v1/orgs/${orgId}/users/${deleteModalInfo.value?.id}`)
+    } else {
+      await api.orgUsers.delete(deleteModalInfo.value?.id as string)
+    }
     message.success(t('msg.success.userDeleted'))
 
     await loadUsers()
@@ -130,7 +136,7 @@ const resendInvite = async (user: UserType) => {
 const copyInviteUrl = async (user: User) => {
   if (!user.invite_token) return
   try {
-    await copy(`${dashboardUrl.value}#/signup/${user.invite_token}`)
+    await copy(`${dashboardUrl.value}/signup/${user.invite_token}`)
 
     // Invite URL copied to clipboard
     message.success(t('msg.success.inviteURLCopied'))
@@ -184,37 +190,58 @@ const orderBy = computed<Record<string, SordDirectionType>>({
   },
 })
 
-const columns = [
-  {
-    key: 'email',
-    title: t('objects.users'),
-    minWidth: 220,
-    dataIndex: 'email',
-    showOrderBy: true,
-  },
-  {
-    key: 'role',
-    title: t('general.access'),
-    basis: '30%',
-    minWidth: 272,
-    dataIndex: 'roles',
-    showOrderBy: true,
-  },
-  {
+const orgAllowedRoles = computed(() => {
+  return [EnterpriseOrgUserRoles.VIEWER, EnterpriseOrgUserRoles.CREATOR, EnterpriseOrgUserRoles.ADMIN]
+})
+
+const onOrgRoleChange = (user: UserType) => async (role: string) => {
+  await updateOrgRole(user, role)
+}
+
+const columns = computed(() => {
+  const cols: NcTableColumnProps[] = [
+    {
+      key: 'email',
+      title: t('objects.members'),
+      minWidth: 220,
+      dataIndex: 'email',
+      showOrderBy: true,
+    },
+  ]
+
+  if (hasOrgRoles.value) {
+    cols.push({
+      key: 'org_roles',
+      title: t('labels.orgRole'),
+      basis: '25%',
+      minWidth: 200,
+    })
+  }
+
+  cols.push({
+    key: 'created_at',
+    title: t('title.dateJoined'),
+    basis: '25%',
+    minWidth: 200,
+  })
+
+  cols.push({
     key: 'action',
     title: t('labels.actions'),
     width: 110,
     minWidth: 110,
     justify: 'justify-end',
-  },
-] as NcTableColumnProps[]
+  })
+
+  return cols
+})
 </script>
 
 <template>
   <div class="flex flex-col" data-testid="nc-super-user-list">
     <NcPageHeader>
       <template #icon>
-        <GeneralIcon icon="users" class="flex-none text-gray-700 h-5 w-5" />
+        <GeneralIcon icon="users" class="flex-none h-5 w-5" />
       </template>
       <template #title>
         <span data-rec="true">
@@ -224,7 +251,7 @@ const columns = [
     </NcPageHeader>
     <div class="nc-content-max-w p-6 h-[calc(100vh_-_100px)] flex flex-col gap-6 overflow-auto nc-scrollbar-thin">
       <div class="h-full">
-        <div class="max-w-195 mx-auto h-full">
+        <div class="h-full">
           <div class="flex gap-4 items-center justify-between">
             <a-input
               v-model:value="searchText"
@@ -233,7 +260,7 @@ const columns = [
               @change="loadUsers()"
             >
               <template #prefix>
-                <PhMagnifyingGlassBold class="!h-3.5 text-gray-500" />
+                <PhMagnifyingGlassBold class="!h-3.5 text-nc-content-gray-muted" />
               </template>
             </a-input>
             <div class="flex gap-3 items-center justify-center">
@@ -251,119 +278,113 @@ const columns = [
             :columns="columns"
             :data="sortedUsers"
             :is-data-loading="isLoading"
-            class="h-[calc(100%-58px)] max-w-250 mt-6"
+            class="h-[calc(100%-58px)] mt-6"
           >
             <template #bodyCell="{ column, record: el }">
-              <div v-if="column.key === 'email'" class="w-full">
-                <NcTooltip v-if="el.display_name" class="truncate max-w-full">
-                  <template #title>
+              <div v-if="column.key === 'email'" class="w-full flex gap-3 items-center">
+                <GeneralUserIcon size="base" :user="el" class="flex-none" />
+                <div class="flex flex-col flex-1 max-w-[calc(100%_-_44px)]">
+                  <div class="flex items-center gap-1">
+                    <NcTooltip class="truncate max-w-full text-nc-content-gray capitalize font-semibold" show-on-truncate-only>
+                      <template #title>
+                        {{ el.display_name || el.email.slice(0, el.email.indexOf('@')) }}
+                      </template>
+                      {{ el.display_name || el.email.slice(0, el.email.indexOf('@')) }}
+                    </NcTooltip>
+                    <NcBadge
+                      v-if="el.roles?.includes('super')"
+                      :border="false"
+                      color="purple"
+                      class="text-[10px] leading-[14px] !h-[18px] font-semibold flex-none"
+                    >
+                      {{ $t('objects.roleType.superAdmin') }}
+                    </NcBadge>
+                    <NcTooltip v-if="el.scim_managed" :title="$t('labels.scimManagedUserTooltip')" class="flex items-center">
+                      <NcBadge
+                        :border="false"
+                        color="blue"
+                        class="text-nc-content-blue-dark text-[10px] leading-[14px] !h-[18px] font-semibold flex-none"
+                      >
+                        {{ $t('labels.scimManaged') }}
+                      </NcBadge>
+                    </NcTooltip>
+                  </div>
+                  <NcTooltip class="truncate max-w-full text-xs text-nc-content-gray-subtle2" show-on-truncate-only>
+                    <template #title>
+                      {{ el.email }}
+                    </template>
                     {{ el.email }}
-                  </template>
-                  {{ el.display_name }}
-                </NcTooltip>
-
-                <NcTooltip v-else class="truncate max-w-full" show-on-truncate-only>
+                  </NcTooltip>
+                </div>
+              </div>
+              <div v-if="column.key === 'org_roles'" class="flex items-center">
+                <RolesSelectorV2
+                  :on-role-change="onOrgRoleChange(el)"
+                  :role="el.org_roles || EnterpriseOrgUserRoles.VIEWER"
+                  :roles="orgAllowedRoles"
+                  class="cursor-pointer"
+                  data-testid="nc-org-role-select"
+                />
+              </div>
+              <div v-if="column.key === 'created_at'">
+                <NcTooltip class="max-w-full">
                   <template #title>
-                    {{ el.email }}
+                    {{ parseStringDateTime(el.created_at) }}
                   </template>
-                  {{ el.email }}
+                  <span>
+                    {{ timeAgo(el.created_at) }}
+                  </span>
                 </NcTooltip>
               </div>
-              <template v-if="column.key === 'role'">
-                <div v-if="el?.roles?.includes('super')" class="font-weight-bold" data-rec="true">
-                  {{ $t('labels.superAdmin') }}
-                </div>
-                <NcSelect
-                  v-else-if="el.id !== loggedInUser?.id"
-                  v-model:value="el.roles"
-                  class="w-55 nc-user-roles"
-                  :dropdown-match-select-width="false"
-                  dropdown-class-name="max-w-64"
-                  @change="updateRole(el.id, el.roles as string)"
-                >
-                  <a-select-option
-                    class="nc-users-list-role-option"
-                    :value="OrgUserRoles.CREATOR"
-                    :label="$t(`objects.roleType.orgLevelCreator`)"
-                  >
-                    <div class="w-full">
-                      <div class="flex items-center gap-1 justify-between">
-                        <div data-rec="true">{{ $t(`objects.roleType.orgLevelCreator`) }}</div>
-                        <GeneralIcon
-                          v-if="el?.roles === OrgUserRoles.CREATOR"
-                          id="nc-selected-item-icon"
-                          icon="check"
-                          class="flex-none w-4 h-4 text-primary"
-                        />
-                      </div>
-                      <div class="text-gray-500 text-xs whitespace-normal" data-rec="true">
-                        {{ $t('msg.info.roles.orgCreator') }}
-                      </div>
-                    </div>
-                  </a-select-option>
-
-                  <a-select-option
-                    class="nc-users-list-role-option"
-                    :value="OrgUserRoles.VIEWER"
-                    :label="$t(`objects.roleType.orgLevelViewer`)"
-                  >
-                    <div class="w-full">
-                      <div class="flex items-center gap-1 justify-between">
-                        <div data-rec="true">{{ $t(`objects.roleType.orgLevelViewer`) }}</div>
-                        <GeneralIcon
-                          v-if="el.roles === OrgUserRoles.VIEWER"
-                          id="nc-selected-item-icon"
-                          icon="check"
-                          class="flex-none w-4 h-4 text-primary"
-                        />
-                      </div>
-                      <div class="text-gray-500 text-xs whitespace-normal" data-rec="true">
-                        {{ $t('msg.info.roles.orgViewer') }}
-                      </div>
-                    </div>
-                  </a-select-option>
-                </NcSelect>
-                <div v-else class="font-weight-bold" data-rec="true">
-                  {{ $t(`objects.roleType.orgLevelCreator`) }}
-                </div>
-              </template>
-              <div
-                v-if="column.key === 'action'"
-                class="flex items-center gap-2"
-                :class="{
-                  'opacity-0 pointer-events-none': el.roles?.includes('super'),
-                }"
-              >
-                <NcDropdown :trigger="['click']">
+              <div v-if="column.key === 'action'" class="flex items-center gap-2">
+                <NcDropdown :trigger="['click']" placement="bottomRight">
                   <NcButton size="xsmall" type="ghost">
                     <MdiDotsVertical
-                      class="text-gray-600 h-5.5 w-5.5 rounded outline-0 p-0.5 nc-workspace-menu transform transition-transform !text-gray-400 cursor-pointer hover:(!text-gray-500 bg-gray-100)"
+                      class="text-nc-content-gray-subtle2 h-5.5 w-5.5 rounded outline-0 p-0.5 nc-workspace-menu transform transition-transform !text-gray-400 cursor-pointer hover:(!text-nc-content-inverted-secondary-disabled bg-nc-bg-gray-light)"
                     />
                   </NcButton>
 
                   <template #overlay>
-                    <NcMenu>
+                    <NcMenu variant="small">
+                      <NcMenuItemCopyId
+                        :id="el.id"
+                        :tooltip="$t('labels.clickToCopyUserID')"
+                        :label="
+                          $t('labels.userIdColon', {
+                            userId: el.id,
+                          })
+                        "
+                      />
+
                       <template v-if="!el.roles?.includes('super')">
+                        <NcDivider />
+
                         <!-- Resend invite Email -->
                         <NcMenuItem @click="resendInvite(el)">
-                          <component :is="iconMap.email" class="flex text-gray-600" />
+                          <component :is="iconMap.email" class="flex text-nc-content-gray-subtle2" />
                           <div data-rec="true">{{ $t('activity.resendInvite') }}</div>
                         </NcMenuItem>
                         <NcMenuItem @click="copyInviteUrl(el)">
-                          <component :is="iconMap.copy" class="flex text-gray-600" />
+                          <component :is="iconMap.copy" class="flex text-nc-content-gray-subtle2" />
                           <div data-rec="true">{{ $t('activity.copyInviteURL') }}</div>
                         </NcMenuItem>
                         <NcMenuItem @click="copyPasswordResetUrl(el)">
-                          <component :is="iconMap.copy" class="flex text-gray-600" />
+                          <component :is="iconMap.copy" class="flex text-nc-content-gray-subtle2" />
                           <div>{{ $t('activity.copyPasswordResetURL') }}</div>
                         </NcMenuItem>
-                      </template>
-                      <template v-if="el.id !== loggedInUser?.id">
-                        <NcDivider v-if="!el.roles?.includes('super')" />
-                        <NcMenuItem data-rec="true" class="!text-red-500 !hover:bg-red-50" @click="openDeleteModal(el)">
-                          <MaterialSymbolsDeleteOutlineRounded />
-                          {{ $t('general.remove') }} {{ $t('objects.user') }}
-                        </NcMenuItem>
+                        <template v-if="el.id !== loggedInUser?.id">
+                          <NcDivider v-if="!el.roles?.includes('super')" />
+                          <NcTooltip
+                            :disabled="!el.scim_managed"
+                            :title="$t('labels.scimManagedRemovalTooltip')"
+                            placement="left"
+                          >
+                            <NcMenuItem :disabled="el.scim_managed" data-rec="true" danger @click="openDeleteModal(el)">
+                              <MaterialSymbolsDeleteOutlineRounded />
+                              {{ $t('general.remove') }} {{ $t('objects.user') }}
+                            </NcMenuItem>
+                          </NcTooltip>
+                        </template>
                       </template>
                     </NcMenu>
                   </template>
@@ -375,10 +396,10 @@ const columns = [
                 v-if="pagination.total === 1 && sortedUsers.length === 1"
                 class="w-full pt-12 pb-4 px-2 flex flex-col items-center gap-6 text-center"
               >
-                <div class="text-2xl text-gray-800 font-bold">
+                <div class="text-2xl text-nc-content-gray font-bold">
                   {{ $t('placeholder.inviteYourTeam') }}
                 </div>
-                <div class="text-sm text-gray-700">
+                <div class="text-sm text-nc-content-gray-subtle">
                   {{ $t('placeholder.inviteYourTeamLabel') }}
                 </div>
                 <img src="~assets/img/placeholder/invite-team.png" class="!w-[30rem] flex-none" />
@@ -400,7 +421,9 @@ const columns = [
           <GeneralDeleteModal v-model:visible="isOpen" entity-name="User" :on-delete="() => deleteUser()">
             <template #entity-preview>
               <span>
-                <div class="flex flex-row items-center py-2.25 px-2.5 bg-gray-50 rounded-lg text-gray-700 mb-4">
+                <div
+                  class="flex flex-row items-center py-2.25 px-2.5 bg-nc-bg-gray-extralight rounded-lg text-nc-content-gray-subtle mb-4"
+                >
                   <GeneralIcon icon="account" class="nc-view-icon"></GeneralIcon>
                   <div
                     class="text-ellipsis overflow-hidden select-none w-full pl-1.75"
@@ -413,7 +436,7 @@ const columns = [
             </template>
           </GeneralDeleteModal>
 
-          <LazyAccountUsersModal :key="userMadalKey" :show="showUserModal" @closed="showUserModal = false" @reload="loadUsers" />
+          <AccountUsersModal :key="userMadalKey" :show="showUserModal" @closed="showUserModal = false" @reload="loadUsers" />
         </div>
       </div>
     </div>

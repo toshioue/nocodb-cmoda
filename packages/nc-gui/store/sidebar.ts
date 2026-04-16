@@ -1,18 +1,49 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { INITIAL_LEFT_SIDEBAR_WIDTH, MAX_WIDTH_FOR_MOBILE_MODE } from '~/lib/constants'
+import { INITIAL_LEFT_SIDEBAR_WIDTH, MINI_SIDEBAR_WIDTH, NC_BREAKPOINTS, NEW_MINI_SIDEBAR_WIDTH } from '~/lib/constants'
 
 export const useSidebarStore = defineStore('sidebarStore', () => {
+  const router = useRouter()
+  const route = router.currentRoute
+
   const { width } = useWindowSize()
+
   const isViewPortMobile = () => {
-    return width.value < MAX_WIDTH_FOR_MOBILE_MODE
+    return width.value < NC_BREAKPOINTS.sm
   }
-  const { isMobileMode, leftSidebarSize: _leftSidebarSize } = useGlobal()
+
+  const { isMobileMode, leftSidebarSize: _leftSidebarSize, isLeftSidebarOpen: _isLeftSidebarOpen } = useGlobal()
+
+  const miniSidebarWidth = computed(() => {
+    if (isMobileMode.value) return MINI_SIDEBAR_WIDTH
+    return width.value >= 1280 ? NEW_MINI_SIDEBAR_WIDTH : MINI_SIDEBAR_WIDTH
+  })
+
+  const isFullScreen = ref(false)
 
   const tablesStore = useTablesStore()
-  const _isLeftSidebarOpen = ref(!isViewPortMobile())
+
+  const viewsStore = useViewsStore()
+  const { activeViewTitleOrId } = storeToRefs(viewsStore)
+
+  const allowHideLeftSidebarForCurrentRoute = computed(() => {
+    return (
+      [
+        'index-typeOrId-baseId-index-index',
+        'index-typeOrId-settings-page',
+        'index-typeOrId-baseId-index-settings-page',
+        'index-typeOrId-baseId-index-docs',
+        'index-typeOrId-baseId-index-docs-docId-slugs',
+      ].includes(route.value.name as string) || isWsHomeRoute(route.value)
+    )
+  })
+
   const isLeftSidebarOpen = computed({
     get() {
-      return (isMobileMode.value && !tablesStore.activeTableId) || _isLeftSidebarOpen.value
+      if (isMobileMode.value && allowHideLeftSidebarForCurrentRoute.value) {
+        return _isLeftSidebarOpen.value
+      }
+
+      return (isMobileMode.value && !activeViewTitleOrId.value) || _isLeftSidebarOpen.value
     },
     set(value) {
       _isLeftSidebarOpen.value = value
@@ -53,7 +84,7 @@ export const useSidebarStore = defineStore('sidebarStore', () => {
       return 100
     }
 
-    return leftSideBarSize.value.current ?? leftSideBarSize.value.old
+    return leftSideBarSize.value.current || leftSideBarSize.value.old
   })
 
   const nonHiddenLeftSidebarWidth = computed(() => {
@@ -73,6 +104,88 @@ export const useSidebarStore = defineStore('sidebarStore', () => {
     return (formRightSidebarState.value.width / (width.value - leftSidebarWidth.value)) * 100
   })
 
+  const hideMiniSidebar = ref(false)
+
+  const hideSidebar = ref(false)
+
+  const isBaseSettingsFullPage = ref(false)
+
+  const showTopbar = ref(false)
+
+  type SidebarTab = 'data' | 'docs' | 'workflows' | 'agents' | 'settings'
+
+  const activeSidebarTab = ref<SidebarTab>('data')
+
+  /** Derive the correct sidebar tab from the current route name. */
+  const routeDerivedTab = computed<SidebarTab | null>(() => {
+    const name = route.value.name?.toString() ?? ''
+
+    // Workspace-level settings (old and new flat routes)
+    if (wsSettingsRouteNames.has(name)) return 'settings'
+
+    // Base routes — only derive tab when a baseId is present
+    if (name.startsWith('index-typeOrId-baseId-')) {
+      if (name.startsWith('index-typeOrId-baseId-index-settings')) return 'settings'
+
+      if (name.startsWith('index-typeOrId-baseId-index-docs')) {
+        return 'docs'
+      }
+
+      if (
+        name.startsWith('index-typeOrId-baseId-index-workflows') ||
+        name.startsWith('index-typeOrId-baseId-index-automation-') ||
+        name.startsWith('index-typeOrId-baseId-index-scripts') ||
+        name.startsWith('index-typeOrId-baseId-index-automations')
+      ) {
+        return 'workflows'
+      }
+
+      return 'data'
+    }
+
+    return null
+  })
+
+  watch(
+    routeDerivedTab,
+    (newTab) => {
+      if (newTab !== null && activeSidebarTab.value !== newTab) {
+        activeSidebarTab.value = newTab
+      }
+    },
+    {
+      immediate: true,
+    },
+  )
+
+  const toggleFullScreenState = () => {
+    if (isFullScreen.value) {
+      isLeftSidebarOpen.value = true
+      if (!ncIsIframe() && document?.exitFullscreen && document?.fullscreenElement) {
+        document.exitFullscreen().catch((err) => {
+          console.warn('Exit fullscreen failed:', err)
+        })
+      }
+    } else {
+      isLeftSidebarOpen.value = false
+
+      if (!ncIsIframe() && document?.documentElement?.requestFullscreen) {
+        document.documentElement.requestFullscreen().catch((err) => {
+          console.warn('Request fullscreen failed:', err)
+        })
+      }
+    }
+
+    isFullScreen.value = !isFullScreen.value
+  }
+
+  onMounted(() => {
+    if (!isViewPortMobile() || tablesStore.activeTableId) return
+
+    _isLeftSidebarOpen.value = true
+    leftSidebarState.value = 'openEnd'
+  })
+
   return {
     isLeftSidebarOpen,
     isRightSidebarOpen,
@@ -85,6 +198,15 @@ export const useSidebarStore = defineStore('sidebarStore', () => {
     windowSize: width,
     formRightSidebarState,
     formRightSidebarWidthPercent,
+    hideMiniSidebar,
+    hideSidebar,
+    isBaseSettingsFullPage,
+    showTopbar,
+    miniSidebarWidth,
+    isFullScreen,
+    toggleFullScreenState,
+    allowHideLeftSidebarForCurrentRoute,
+    activeSidebarTab,
   }
 })
 

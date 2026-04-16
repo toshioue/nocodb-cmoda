@@ -3,7 +3,8 @@ import knex from 'knex';
 import isEmpty from 'lodash/isEmpty';
 import mapKeys from 'lodash/mapKeys';
 import find from 'lodash/find';
-import { UITypes } from 'nocodb-sdk';
+import { ncIsNullOrUndefined, UITypes } from 'nocodb-sdk';
+import debug from 'debug';
 import KnexClient from '~/db/sql-client/lib/KnexClient';
 import Debug from '~/db/util/Debug';
 import Result from '~/db/util/Result';
@@ -13,8 +14,10 @@ import {
   generateCastQuery,
 } from '~/db/sql-client/lib/pg/typeCast';
 import pgQueries from '~/db/sql-client/lib/pg/pg.queries';
+import deepClone from '~/helpers/deepClone';
 
 const log = new Debug('PGClient');
+const debugTableUpdateQuery = debug('nc:db:query:PGClient:tableUpdate');
 
 class PGClient extends KnexClient {
   constructor(connectionConfig) {
@@ -254,9 +257,9 @@ class PGClient extends KnexClient {
     try {
       await this.raw('SELECT 1+1 as data');
     } catch (e1) {
-      const connectionParamsWithoutDb = JSON.parse(
-        JSON.stringify(this.connectionConfig),
-      );
+      const connectionParamsWithoutDb = deepClone(this.connectionConfig);
+      connectionParamsWithoutDb.connection.password =
+        this.connectionConfig.connection.password;
       connectionParamsWithoutDb.connection.database = 'postgres';
       const tempSqlClient = knex({
         ...connectionParamsWithoutDb,
@@ -459,9 +462,9 @@ class PGClient extends KnexClient {
     let tempSqlClient;
 
     try {
-      const connectionParamsWithoutDb = JSON.parse(
-        JSON.stringify(this.connectionConfig),
-      );
+      const connectionParamsWithoutDb = deepClone(this.connectionConfig);
+      connectionParamsWithoutDb.connection.password =
+        this.connectionConfig.connection.password;
       let rows = [];
       try {
         connectionParamsWithoutDb.connection.database = 'postgres';
@@ -504,10 +507,9 @@ class PGClient extends KnexClient {
       ).rows?.[0];
 
       if (!schemaExists) {
-        await this.sqlClient.raw(
-          `CREATE SCHEMA IF NOT EXISTS ??  AUTHORIZATION ?? `,
-          [schemaName, this.connectionConfig.connection.user],
-        );
+        await this.sqlClient.raw(`CREATE SCHEMA IF NOT EXISTS ??`, [
+          schemaName,
+        ]);
       }
 
       // this.sqlClient = knex(this.connectionConfig);
@@ -534,9 +536,9 @@ class PGClient extends KnexClient {
     log.api(`${_func}:args:`, args);
 
     try {
-      const connectionParamsWithoutDb = JSON.parse(
-        JSON.stringify(this.connectionConfig),
-      );
+      const connectionParamsWithoutDb = deepClone(this.connectionConfig);
+      connectionParamsWithoutDb.connection.password =
+        this.connectionConfig.connection.password;
       connectionParamsWithoutDb.connection.database = 'postgres';
       const tempSqlClient = knex({
         ...connectionParamsWithoutDb,
@@ -671,9 +673,18 @@ class PGClient extends KnexClient {
     try {
       const { rows } = await this.sqlClient.raw(
         `SELECT datname as database FROM pg_database WHERE datistemplate = false and datname = ?`,
-        [args.database],
+        [args.databaseName],
       );
+
       result.data.value = rows.length > 0;
+
+      if (result.data.value && args.schema) {
+        const { rows: rows2 } = await this.sqlClient.raw(
+          `SELECT schema_name FROM information_schema.schemata WHERE schema_name = ?`,
+          [args.schema],
+        );
+        result.data.value = rows2.length > 0;
+      }
     } catch (e) {
       log.ppe(e, _func);
       throw e;
@@ -839,7 +850,7 @@ class PGClient extends KnexClient {
                 tc1.CONSTRAINT_TYPE = 'UNIQUE'
                 and tc1.TABLE_NAME = c.TABLE_NAME
                 and cu.COLUMN_NAME = c.COLUMN_NAME
-                and tc1.TABLE_SCHEMA=c.TABLE_SCHEMA) IsUnique,
+                and tc1.TABLE_SCHEMA=c.TABLE_SCHEMA) is_unique,
                 (SELECT
         string_agg(enumlabel, ',')
         FROM "pg_enum" "e"
@@ -884,6 +895,7 @@ class PGClient extends KnexClient {
         column.clen = response.rows[i].clen;
         column.dp = response.rows[i].dp;
         column.cop = response.rows[i].cop;
+        column.unique = !!response.rows[i].is_unique;
 
         // todo : there are lot of types in pg - handle them
         //column.dtx = this.getKnexDataType(column.dt);
@@ -1178,28 +1190,32 @@ class PGClient extends KnexClient {
     const result = new Result();
     log.api(`${_func}:args:`, args);
     try {
+      // The relationList & relationListAll queries is may look needlessly long, but it is a way
+      // to get relationships without the `information_schema.constraint_column_usage` table (view).
+      // As that view only returns fk relations if the pg user is the table owner.
+      // Resource: https://dba.stackexchange.com/a/218969
+      // Remove clause `WHERE clause: AND f_sch.nspname = sch.nspname` for x-schema relations.
       const { rows } = await this.sqlClient.raw(
-        `SELECT distinct
-                tc.table_schema as ts,
-                tc.constraint_name as cstn,
-                tc.table_name as tn,
-                kcu.column_name as cn,
-                ccu.table_schema AS foreign_table_schema,
-                ccu.table_name AS rtn,
-                ccu.column_name AS rcn,
-                pc.confupdtype as ur, pc.confdeltype as dr
-        FROM
-            information_schema.table_constraints AS tc
-            JOIN information_schema.key_column_usage AS kcu
-              ON tc.constraint_name = kcu.constraint_name
-              AND tc.table_schema = kcu.table_schema
-            JOIN information_schema.constraint_column_usage AS ccu
-              ON ccu.constraint_name = tc.constraint_name
-              AND ccu.table_schema = tc.table_schema
-            join (select conname,confupdtype,confdeltype from pg_catalog.pg_constraint) pc
-            on pc.conname = tc.constraint_name
-        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema=:schema and tc.table_name=:table
-        order by tc.table_name;`,
+        `SELECT 
+          sch.nspname    AS ts,
+          pc.conname     AS cstn,
+          tbl.relname    AS tn,
+          col.attname    AS cn,
+          f_sch.nspname  AS foreign_table_schema,
+          f_tbl.relname  AS rtn,
+          f_col.attname  AS rcn,
+          pc.confupdtype AS ur,
+          pc.confdeltype AS dr
+        FROM pg_constraint pc
+          LEFT JOIN LATERAL UNNEST(pc.conkey)  WITH ORDINALITY AS u(attnum, attposition)   ON TRUE
+          LEFT JOIN LATERAL UNNEST(pc.confkey) WITH ORDINALITY AS f_u(attnum, attposition) ON f_u.attposition = u.attposition
+          JOIN pg_class tbl ON tbl.oid = pc.conrelid
+          JOIN pg_namespace sch ON sch.oid = tbl.relnamespace
+          LEFT JOIN pg_attribute col ON (col.attrelid = tbl.oid AND col.attnum = u.attnum)
+          LEFT JOIN pg_class f_tbl ON f_tbl.oid = pc.confrelid
+          LEFT JOIN pg_namespace f_sch ON f_sch.oid = f_tbl.relnamespace
+          LEFT JOIN pg_attribute f_col ON (f_col.attrelid = f_tbl.oid AND f_col.attnum = f_u.attnum)
+        WHERE pc.contype = 'f' AND sch.nspname = :schema AND f_sch.nspname = sch.nspname AND tbl.relname = :table ;`,
         { schema: this.getEffectiveSchema(args), table: args.tn },
       );
 
@@ -1317,28 +1333,27 @@ class PGClient extends KnexClient {
     log.api(`${_func}:args:`, args);
     try {
       const { rows } = await this.sqlClient.raw(
-        `SELECT DISTINCT tc.table_schema as ts,
-                tc.constraint_name as cstn,
-                tc.table_name as tn,
-                kcu.column_name as cn,
-                ccu.table_schema AS foreign_table_schema,
-                ccu.table_name   AS rtn,
-                ccu.column_name  AS rcn,
-                pc.confupdtype   as ur,
-                pc.confdeltype   as dr
-         FROM information_schema.table_constraints AS tc
-                JOIN information_schema.key_column_usage AS kcu
-                     ON tc.constraint_name = kcu.constraint_name
-                       AND tc.table_schema = kcu.table_schema
-                JOIN information_schema.constraint_column_usage AS ccu
-                     ON ccu.constraint_name = tc.constraint_name
-                       AND ccu.table_schema = tc.table_schema
-                join (select conname, confupdtype, confdeltype
-                      from pg_catalog.pg_constraint) pc
-                     on pc.conname = tc.constraint_name
-         WHERE tc.constraint_type = 'FOREIGN KEY'
-           AND tc.table_schema = ?
-         order by tc.table_name;`,
+        `SELECT 
+          sch.nspname    AS ts,
+          pc.conname     AS cstn,
+          tbl.relname    AS tn,
+          col.attname    AS cn,
+          f_sch.nspname  AS foreign_table_schema,
+          f_tbl.relname  AS rtn,
+          f_col.attname  AS rcn,
+          pc.confupdtype AS ur,
+          pc.confdeltype AS dr
+        FROM pg_constraint pc
+          LEFT JOIN LATERAL UNNEST(pc.conkey)  WITH ORDINALITY AS u(attnum, attposition)   ON TRUE
+          LEFT JOIN LATERAL UNNEST(pc.confkey) WITH ORDINALITY AS f_u(attnum, attposition) ON f_u.attposition = u.attposition
+          JOIN pg_class tbl ON tbl.oid = pc.conrelid
+          JOIN pg_namespace sch ON sch.oid = tbl.relnamespace
+          LEFT JOIN pg_attribute col ON (col.attrelid = tbl.oid AND col.attnum = u.attnum)
+          LEFT JOIN pg_class f_tbl ON f_tbl.oid = pc.confrelid
+          LEFT JOIN pg_namespace f_sch ON f_sch.oid = f_tbl.relnamespace
+          LEFT JOIN pg_attribute f_col ON (f_col.attrelid = f_tbl.oid AND f_col.attnum = f_u.attnum)
+        WHERE pc.contype = 'f' AND sch.nspname = ? AND f_sch.nspname = sch.nspname
+        ORDER BY tn;`,
         [this.getEffectiveSchema(args)],
       );
 
@@ -2464,20 +2479,78 @@ class PGClient extends KnexClient {
       let downQuery = '';
 
       for (let i = 0; i < args.columns.length; ++i) {
+        // Set table name on column object (needed for functions that don't take table parameter)
+        args.columns[i].tn = args.table;
         const oldColumn = find(originalColumns, {
           cn: args.columns[i].cno,
         });
+        // Set table name on old column object as well
+        if (oldColumn) {
+          oldColumn.tn = args.table;
+        }
+
+        // If dropping unique constraint and constraint name is missing, query database
+        if (
+          oldColumn &&
+          (args.columns[i].altered & 2 || args.columns[i].altered & 8)
+        ) {
+          const nIsUnique = !!args.columns[i].unique;
+          const oIsUnique = !!oldColumn.unique;
+
+          // Dropping unique constraint (was unique, now not unique)
+          if (oIsUnique && !nIsUnique) {
+            // Check if constraint name exists in internal_meta
+            let constraintName: string | null = null;
+            if (oldColumn.internal_meta) {
+              let internalMeta = oldColumn.internal_meta;
+              if (typeof internalMeta === 'string') {
+                try {
+                  internalMeta = JSON.parse(internalMeta);
+                } catch {
+                  internalMeta = {};
+                }
+              }
+              constraintName = internalMeta?.unique_constraint_name || null;
+            }
+
+            // If constraint name is missing, query database
+            if (!constraintName) {
+              const columnName = oldColumn.cn || oldColumn.cno;
+              if (columnName) {
+                const queriedName = await this.queryUniqueConstraintName(
+                  args.table,
+                  columnName,
+                  args.schema,
+                );
+                if (queriedName) {
+                  // Store in oldColumn.internal_meta for use in alterTableColumn
+                  if (!oldColumn.internal_meta) {
+                    oldColumn.internal_meta = {};
+                  }
+                  if (typeof oldColumn.internal_meta === 'string') {
+                    try {
+                      oldColumn.internal_meta = JSON.parse(
+                        oldColumn.internal_meta,
+                      );
+                    } catch {
+                      oldColumn.internal_meta = {};
+                    }
+                  }
+                  oldColumn.internal_meta.unique_constraint_name = queriedName;
+                }
+              }
+            }
+          }
+        }
 
         if (args.columns[i].altered & 4) {
           // col remove
           upQuery += this.alterTableRemoveColumn(
-            args.table,
             args.columns[i],
             oldColumn,
             upQuery,
           );
           downQuery += this.alterTableAddColumn(
-            args.table,
             oldColumn,
             args.columns[i],
             downQuery,
@@ -2485,13 +2558,11 @@ class PGClient extends KnexClient {
         } else if (args.columns[i].altered & 2 || args.columns[i].altered & 8) {
           // col edit
           upQuery += this.alterTableChangeColumn(
-            args.table,
             args.columns[i],
             oldColumn,
             upQuery,
           );
           downQuery += this.alterTableChangeColumn(
-            args.table,
             oldColumn,
             args.columns[i],
             downQuery,
@@ -2499,13 +2570,11 @@ class PGClient extends KnexClient {
         } else if (args.columns[i].altered & 1) {
           // col addition
           upQuery += this.alterTableAddColumn(
-            args.table,
             args.columns[i],
             oldColumn,
             upQuery,
           );
           downQuery += this.alterTableRemoveColumn(
-            args.table,
             args.columns[i],
             oldColumn,
             downQuery,
@@ -2534,8 +2603,10 @@ class PGClient extends KnexClient {
         //upQuery = `ALTER TABLE "${args.columns[0].tn}" ${upQuery};`;
         //downQuery = `ALTER TABLE "${args.columns[0].tn}" ${downQuery};`;
       }
-
-      if (upQuery !== '') await this.sqlClient.raw(upQuery);
+      if (upQuery && upQuery !== '') {
+        debugTableUpdateQuery(upQuery);
+        await this.sqlClient.raw(upQuery);
+      }
 
       // console.log(upQuery);
 
@@ -2856,51 +2927,77 @@ class PGClient extends KnexClient {
     return result;
   }
 
-  alterTablePK(t, n, o, _existingQuery, createTable = false) {
-    const numOfPksInOriginal = [];
-    const numOfPksInNew = [];
-    let pksChanged = 0;
+  /**
+   * Generates SQL query to modify primary key constraints for a table
+   * @param {string} tableName - Full table name (can include schema)
+   * @param {Array<ColumnType>} newColumns - New column definitions
+   * @param {Array<ColumnType>} originalColumns - Original column definitions
+   * @param {string} _existingQuery - Existing SQL query (unused parameter)
+   * @param {boolean} [createTable=false] - Whether this is part of a CREATE TABLE statement
+   * @returns {string} SQL query for primary key modifications
+   */
+  alterTablePK(
+    tableName,
+    newColumns,
+    originalColumns,
+    _existingQuery,
+    createTable = false,
+  ) {
+    const originalPrimaryKeys = [];
+    const newPrimaryKeys = [];
+    let primaryKeyChanges = 0;
 
-    for (let i = 0; i < n.length; ++i) {
-      if (n[i].pk) {
-        if (n[i].altered !== 4) numOfPksInNew.push(n[i].cn);
+    // Handle schema-qualified table names by extracting just the table name
+    const tableNameWithoutSchema = tableName.includes('.')
+      ? tableName.split('.')[1]
+      : tableName;
+
+    // Collect new primary key columns (excluding dropped columns)
+    for (let i = 0; i < newColumns.length; ++i) {
+      if (newColumns[i].pk) {
+        if (newColumns[i].altered !== 4) newPrimaryKeys.push(newColumns[i].cn);
       }
     }
 
-    for (let i = 0; i < o.length; ++i) {
-      if (o[i].pk) {
-        numOfPksInOriginal.push(o[i].cn);
+    // Collect original primary key columns
+    for (let i = 0; i < originalColumns.length; ++i) {
+      if (originalColumns[i].pk) {
+        originalPrimaryKeys.push(originalColumns[i].cn);
       }
     }
 
-    if (numOfPksInNew.length === numOfPksInOriginal.length) {
-      for (let i = 0; i < numOfPksInNew.length; ++i) {
-        if (numOfPksInOriginal[i] !== numOfPksInNew[i]) {
-          pksChanged = 1;
+    // Determine if primary keys have changed
+    if (newPrimaryKeys.length === originalPrimaryKeys.length) {
+      for (let i = 0; i < newPrimaryKeys.length; ++i) {
+        if (originalPrimaryKeys[i] !== newPrimaryKeys[i]) {
+          primaryKeyChanges = 1;
           break;
         }
       }
     } else {
-      pksChanged = numOfPksInNew.length - numOfPksInOriginal.length;
+      primaryKeyChanges = newPrimaryKeys.length - originalPrimaryKeys.length;
     }
 
     let query = '';
-    if (!numOfPksInNew.length && !numOfPksInOriginal.length) {
-      // do nothing
-    } else if (pksChanged) {
-      query += numOfPksInOriginal.length
+    if (!newPrimaryKeys.length && !originalPrimaryKeys.length) {
+      // No primary keys in either version, no changes needed
+    } else if (primaryKeyChanges) {
+      // Drop existing primary key if it exists
+      query += originalPrimaryKeys.length
         ? this.genQuery(`alter TABLE ?? drop constraint IF EXISTS ??;`, [
-            t,
-            `${t}_pkey`,
+            tableName,
+            `${tableNameWithoutSchema}_pkey`,
           ])
         : '';
-      if (numOfPksInNew.length) {
+
+      // Add new primary key if specified
+      if (newPrimaryKeys.length) {
         if (createTable) {
-          query += this.genQuery(`, PRIMARY KEY(??)`, [numOfPksInNew]);
+          query += this.genQuery(`, PRIMARY KEY(??)`, [newPrimaryKeys]);
         } else {
           query += this.genQuery(
             `alter TABLE ?? add constraint ?? PRIMARY KEY(??);`,
-            [t, `${t}_pkey`, numOfPksInNew],
+            [tableName, `${tableNameWithoutSchema}_pkey`, newPrimaryKeys],
           );
         }
       }
@@ -2909,34 +3006,35 @@ class PGClient extends KnexClient {
     return query;
   }
 
-  alterTableRemoveColumn(t, n, _o, existingQuery) {
+  alterTableRemoveColumn(n, _o, existingQuery) {
     const shouldSanitize = true;
+    const tableName = n.tn;
     let query = existingQuery ? ',' : '';
     query += this.genQuery(
       `ALTER TABLE ?? DROP COLUMN ??`,
-      [t, n.cn],
+      [tableName, n.cn],
       shouldSanitize,
     );
     return query;
   }
 
-  createTableColumn(t, n, o, existingQuery) {
-    return this.alterTableColumn(t, n, o, existingQuery, 0);
+  createTableColumn(n, o, existingQuery) {
+    return this.alterTableColumn(n, o, existingQuery, 0);
   }
 
-  alterTableAddColumn(t, n, o, existingQuery) {
-    return this.alterTableColumn(t, n, o, existingQuery, 1);
+  alterTableAddColumn(n, o, existingQuery) {
+    return this.alterTableColumn(n, o, existingQuery, 1);
   }
 
-  alterTableChangeColumn(t, n, o, existingQuery) {
-    return this.alterTableColumn(t, n, o, existingQuery, 2);
+  alterTableChangeColumn(n, o, existingQuery) {
+    return this.alterTableColumn(n, o, existingQuery, 2);
   }
 
   createTable(table, args) {
     let query = '';
 
     for (let i = 0; i < args.columns.length; ++i) {
-      query += this.createTableColumn(table, args.columns[i], null, query);
+      query += this.createTableColumn(args.columns[i], null, query);
     }
 
     query += this.alterTablePK(table, args.columns, [], query, true);
@@ -2944,14 +3042,26 @@ class PGClient extends KnexClient {
     query = this.genQuery(`CREATE TABLE ?? (${query});`, [
       args.schema ? `${args.schema}.${args.tn}` : args.tn,
     ]);
-
     return query;
   }
 
-  alterTableColumn(t, n, o, existingQuery, change = 2) {
+  alterTableColumn(n, o, existingQuery, change = 2) {
+    // Get table name from column object (like MySQL pattern)
+    const t = n.tn || o?.tn;
     let query = '';
 
-    const defaultValue = this.sanitiseDefaultValue(n.cdf);
+    let defaultValue = this.sanitiseDefaultValue(n.cdf);
+    if (
+      !ncIsNullOrUndefined(defaultValue) &&
+      defaultValue !== '' &&
+      (['json', 'jsonb'].includes(n.dt) || [UITypes.JSON].includes(n.uidt))
+    ) {
+      if (!defaultValue.startsWith("'")) {
+        defaultValue = `'${defaultValue}'`;
+      }
+      defaultValue = `${defaultValue}::json`;
+    }
+
     const shouldSanitize = true;
 
     if (change === 0) {
@@ -2972,23 +3082,69 @@ class PGClient extends KnexClient {
         );
         query += n.rqd ? ' NOT NULL' : ' NULL';
         query += defaultValue ? ` DEFAULT ${defaultValue}` : '';
-        query += n.unique ? ` UNIQUE` : '';
+
+        // For change === 0 (CREATE TABLE), add UNIQUE inline
+        if (n.unique) {
+          query += ' UNIQUE';
+        }
       }
     } else if (change === 1) {
-      query += this.genQuery(
-        ` ADD ?? ${this.sanitiseDataType(n.dt)}`,
-        [n.cn],
+      if (n.ai) {
+        // AutoNumber / auto-increment: use serial types so PG creates
+        // a sequence + DEFAULT nextval() automatically.
+        let serialType: string;
+        if (n.dt === 'int8' || n.dt.indexOf('bigint') > -1) {
+          serialType = 'bigserial';
+        } else if (n.dt === 'int2' || n.dt.indexOf('smallint') > -1) {
+          serialType = 'smallserial';
+        } else {
+          serialType = 'serial';
+        }
+        query += this.genQuery(` ADD ?? ${serialType}`, [n.cn], shouldSanitize);
+      } else {
+        // Add column first (without UNIQUE constraint)
+        query += this.genQuery(
+          ` ADD ?? ${this.sanitiseDataType(n.dt)}`,
+          [n.cn],
+          shouldSanitize,
+        );
+        query += n.rqd ? ' NOT NULL' : ' NULL';
+        query += defaultValue ? ` DEFAULT ${defaultValue}` : '';
+      }
+      query = this.genQuery(
+        `ALTER TABLE ?? ?;`,
+        [t, this.sqlClient.raw(query)],
         shouldSanitize,
       );
-      query += n.rqd ? ' NOT NULL' : ' NULL';
-      query += defaultValue ? ` DEFAULT ${defaultValue}` : '';
-      query += n.unique ? ` UNIQUE` : '';
-      query = this.genQuery(`ALTER TABLE ?? ${query};`, [t], shouldSanitize);
+      // For change === 1, use addUniqueConstraintToQuery
+      query = this.addUniqueConstraintToQuery(n, t, query, shouldSanitize);
     } else {
-      if (n.cn !== o.cn) {
+      // Ensure column name is set - use n.cn if available, otherwise fall back to o.cn or o.cno
+      // This ensures all subsequent operations have a valid column name
+      // IMPORTANT: If column is not being renamed, n.cn should match o.cno (original column name)
+      const oldColumnName = o.cno || o.cn;
+      const newColumnName = n.cn;
+
+      // If n.cn is not set or is the same as the old name, use the old name
+      // This prevents accidental renames when only updating other properties
+      const columnName =
+        newColumnName && newColumnName !== oldColumnName
+          ? newColumnName
+          : oldColumnName;
+
+      if (!columnName) {
+        throw new Error('Column name is required for column update operations');
+      }
+
+      // Set n.cn to the correct column name for all subsequent operations
+      n.cn = columnName;
+
+      // Only rename column if both names are set and they're explicitly different
+      // This ensures we don't accidentally rename when only updating other properties
+      if (oldColumnName && newColumnName && oldColumnName !== newColumnName) {
         query += this.genQuery(
           `\nALTER TABLE ?? RENAME COLUMN ?? TO ?? ;\n`,
-          [t, o.cn, n.cn],
+          [t, oldColumnName, newColumnName],
           shouldSanitize,
         );
       }
@@ -3019,20 +3175,25 @@ class PGClient extends KnexClient {
           shouldSanitize,
         );
 
-        const castedColumn = formatColumn(
-          this.genQuery('??', [n.cn], shouldSanitize),
-          o.uidt,
-        );
-        const limit = typeof n.dtxp === 'number' ? n.dtxp : null;
-        const castQuery = generateCastQuery(
-          n.uidt,
-          n.dt,
-          castedColumn,
-          limit,
-          n.meta.date_format || 'YYYY-MM-DD',
-        );
+        // AutoNumber: backfill overwrites all values, so just cast to 0
+        if (n.uidt === UITypes.AutoNumber && n.ai && !o.ai) {
+          query += this.genQuery(`0::bigint;\n`, [], shouldSanitize);
+        } else {
+          const castedColumn = formatColumn(
+            this.genQuery('??', [n.cn], shouldSanitize),
+            o.uidt,
+          );
+          const limit = typeof n.dtxp === 'number' ? n.dtxp : null;
+          const castQuery = generateCastQuery(
+            n.uidt,
+            n.dt,
+            castedColumn,
+            limit,
+            n.meta?.date_format || 'YYYY-MM-DD',
+          );
 
-        query += this.genQuery(castQuery, [], shouldSanitize);
+          query += this.genQuery(castQuery, [], shouldSanitize);
+        }
       }
 
       if (n.rqd !== o.rqd) {
@@ -3050,11 +3211,226 @@ class PGClient extends KnexClient {
           [t, n.cn],
           shouldSanitize,
         );
-        query += n.cdf
-          ? ` SET DEFAULT ${this.sanitiseDefaultValue(n.cdf)};\n`
-          : ` DROP DEFAULT;\n`;
+        query += n.cdf ? ` SET DEFAULT ${defaultValue};\n` : ` DROP DEFAULT;\n`;
+      }
+
+      // Handle auto-increment change (e.g. converting text/number → AutoNumber)
+      if (n.ai && !o.ai) {
+        const schema = t.includes('.') ? t.split('.')[0] : null;
+        const tableNameOnly = t.includes('.') ? t.split('.').pop() : t;
+        const seqNameOnly = `${tableNameOnly}_${n.cn}_seq`;
+        const seqName = schema ? `${schema}.${seqNameOnly}` : seqNameOnly;
+        // Regclass string for nextval() — double quotes inside single quotes
+        // so PG preserves case and separates schema from name
+        const seqRegclass = schema
+          ? `"${schema}"."${seqNameOnly}"`
+          : `"${seqNameOnly}"`;
+
+        query += this.genQuery(
+          `\nCREATE SEQUENCE IF NOT EXISTS ?? OWNED BY ??.??;\n`,
+          [seqName, t, n.cn],
+          shouldSanitize,
+        );
+        query += this.genQuery(
+          `\nALTER TABLE ?? ALTER COLUMN ?? SET DEFAULT nextval(?);\n`,
+          [t, n.cn, seqRegclass],
+          shouldSanitize,
+        );
+      } else if (!n.ai && o.ai) {
+        // Removing auto-increment — drop the sequence default
+        query += this.genQuery(
+          `\nALTER TABLE ?? ALTER COLUMN ?? DROP DEFAULT;\n`,
+          [t, n.cn],
+          shouldSanitize,
+        );
+      }
+
+      // Handle unique constraint changes
+      // Use ADD CONSTRAINT / DROP CONSTRAINT instead of manually creating indexes
+      // PostgreSQL will automatically create a unique index when a UNIQUE constraint is added
+      const nIsUnique = !!n.unique;
+      const oIsUnique = !!o.unique;
+      if (nIsUnique !== oIsUnique) {
+        if (nIsUnique) {
+          // Adding unique constraint
+          const columnName = n.cn || o.cn || n.cno || o.cno;
+          if (!columnName) {
+            throw new Error('Column name is required to add unique constraint');
+          }
+          if (!n.cn) {
+            n.cn = columnName;
+          }
+
+          query = this.addUniqueConstraintToQuery(n, t, query, shouldSanitize);
+        } else {
+          // Dropping unique constraint
+          const constraintName = this.getUniqueConstraintName(o, t);
+
+          // Use DROP CONSTRAINT IF EXISTS to avoid errors if constraint doesn't exist
+          query += this.genQuery(
+            `\nALTER TABLE ?? DROP CONSTRAINT IF EXISTS ??;\n`,
+            [t, constraintName],
+            shouldSanitize,
+          );
+        }
       }
     }
+    return query;
+  }
+
+  /**
+   * Queries PostgreSQL to find unique constraint name by table and column name
+   * @param tableName - Table name
+   * @param columnName - Column name
+   * @param schema - Schema name (optional)
+   * @returns Constraint name or null if not found
+   */
+  private async queryUniqueConstraintName(
+    tableName: string,
+    columnName: string,
+    schema?: string,
+  ): Promise<string | null> {
+    try {
+      const schemaName = schema || this.schema;
+      // Extract table name without schema prefix if present
+      const tableOnly = tableName.includes('.')
+        ? tableName.split('.').pop()
+        : tableName;
+
+      const result = await this.sqlClient.raw(
+        `
+        SELECT conname as constraint_name
+        FROM pg_constraint pc
+        JOIN pg_namespace n ON n.oid = pc.connamespace
+        JOIN pg_class rel ON rel.oid = pc.conrelid
+        JOIN pg_attribute attr ON attr.attrelid = pc.conrelid
+        WHERE pc.contype = 'u'
+          AND n.nspname = ?
+          AND rel.relname = ?
+          AND attr.attname = ?
+          AND array_length(pc.conkey, 1) = 1
+          AND pc.conkey[1] = attr.attnum
+        LIMIT 1
+        `,
+        [schemaName, tableOnly, columnName],
+      );
+
+      if (result.rows && result.rows.length > 0) {
+        return result.rows[0].constraint_name;
+      }
+      return null;
+    } catch (e) {
+      log.api('Error querying unique constraint name:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Generates a unique constraint name from column metadata or generates a random one
+   * @param n - Column object
+   * @param tableName - Optional table name (can be extracted from n.tn)
+   * @returns Constraint name
+   */
+  private getUniqueConstraintName(n: any, tableName?: string): string {
+    // Try to get constraint name from internal_meta first
+    if (n.internal_meta) {
+      let internalMeta = n.internal_meta;
+      if (typeof internalMeta === 'string') {
+        try {
+          internalMeta = JSON.parse(internalMeta);
+        } catch {
+          internalMeta = {};
+        }
+      }
+      if (internalMeta?.unique_constraint_name) {
+        return internalMeta.unique_constraint_name;
+      }
+    }
+
+    // Generate constraint name using IDs if available
+    if (n.base_id && n.fk_model_id && n.id) {
+      return `uk_${n.base_id}_${n.fk_model_id}_${n.id}`;
+    }
+
+    // Fallback: use table and column name, or generate random name
+    const columnName = n.cn || n.cno || 'col';
+    const tName = tableName || n.tn || 'table';
+    const baseName = `uk_${tName}_${columnName}`
+      .replace(/[^a-zA-Z0-9_]/g, '_')
+      .slice(0, 50); // Leave room for random suffix
+
+    // Generate random suffix to ensure uniqueness
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    return `${baseName}_${randomSuffix}`.slice(0, 63); // PostgreSQL identifier limit is 63 characters
+  }
+
+  /**
+   * Stores constraint name in column's internal_meta
+   * @param n - Column object
+   * @param constraintName - Constraint name to store
+   */
+  private storeUniqueConstraintName(n: any, constraintName: string): void {
+    if (!n.internal_meta || !n.internal_meta.unique_constraint_name) {
+      if (!n.internal_meta) n.internal_meta = {};
+      if (typeof n.internal_meta === 'string') {
+        try {
+          n.internal_meta = JSON.parse(n.internal_meta);
+        } catch {
+          n.internal_meta = {};
+        }
+      }
+      n.internal_meta.unique_constraint_name = constraintName;
+    }
+  }
+
+  /**
+   * Adds unique constraint SQL to the query
+   * @param n - Column object
+   * @param tableName - Optional table name (can be extracted from n.tn)
+   * @param query - Existing query string
+   * @param shouldSanitize - Whether to sanitize the query
+   * @returns Updated query string
+   */
+  private addUniqueConstraintToQuery(
+    n: any,
+    tableName?: string,
+    query: string = '',
+    shouldSanitize: boolean = true,
+  ): string {
+    // Check n.unique for unique constraint
+    if (!n.unique) {
+      return query;
+    }
+
+    const columnName = n.cn || n.cno;
+    if (!columnName) {
+      throw new Error('Column name is required to add unique constraint');
+    }
+
+    // Get table name from parameter or column object
+    const t = tableName || n.tn;
+    if (!t) {
+      throw new Error('Table name is required to add unique constraint');
+    }
+
+    // Generate or get constraint name
+    const constraintName = this.getUniqueConstraintName(n, t);
+
+    // Store constraint name in internal_meta
+    this.storeUniqueConstraintName(n, constraintName);
+
+    // Add DROP CONSTRAINT and ADD CONSTRAINT to query
+    query += this.genQuery(
+      `\nALTER TABLE ?? DROP CONSTRAINT IF EXISTS ??;\n`,
+      [t, constraintName],
+      shouldSanitize,
+    );
+    query += this.genQuery(
+      `\nALTER TABLE ?? ADD CONSTRAINT ?? UNIQUE (??);\n`,
+      [t, constraintName, columnName],
+      shouldSanitize,
+    );
+
     return query;
   }
 
@@ -3263,11 +3639,14 @@ class PGClient extends KnexClient {
     const result = new Result();
     log.api(`${_func}:args:`, args);
 
-    const indexName = args.indexName || null;
+    let indexName = args.indexName || null;
 
     try {
       args.table = args.schema ? `${args.schema}.${args.tn}` : args.tn;
 
+      if (indexName) {
+        indexName = args.schema ? `${args.schema}.${indexName}` : indexName;
+      }
       // s = await this.sqlClient.schema.index(Object.keys(args.columns));
       await this.sqlClient.raw(
         this.sqlClient.schema

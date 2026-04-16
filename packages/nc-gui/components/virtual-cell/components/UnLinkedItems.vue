@@ -1,15 +1,30 @@
 <script lang="ts" setup>
 import type { ColumnType, LinkToAnotherRecordType } from 'nocodb-sdk'
-import { RelationTypes, isLinksOrLTAR, isSystemColumn } from 'nocodb-sdk'
+import {
+  PermissionEntity,
+  PermissionKey,
+  RelationTypes,
+  isBtLikeV2Junction,
+  isDateOrDateTimeCol,
+  isLinksOrLTAR,
+} from 'nocodb-sdk'
 import InboxIcon from '~icons/nc-icons/inbox'
 
-const props = defineProps<{ modelValue: boolean; column: any; hideBackBtn?: boolean }>()
+const props = defineProps<{
+  modelValue: boolean
+  column: any
+  hideBackBtn?: boolean
+  /** Breadcrumb trail passed from parent (across dropdown teleport boundary) */
+  parentBreadcrumbs?: string[]
+}>()
 
-const emit = defineEmits(['update:modelValue', 'addNewRecord', 'attachLinkedRecord'])
+const emit = defineEmits(['update:modelValue', 'addNewRecord', 'attachLinkedRecord', 'escape'])
 
 const vModel = useVModel(props, 'modelValue', emit)
 
 const { isMobileMode } = useGlobal()
+
+const { isUIAllowed } = useRoles()
 
 const injectedColumn = inject(ColumnInj)
 
@@ -36,19 +51,38 @@ const {
   childrenExcludedListPagination,
   relatedTableDisplayValueProp,
   displayValueTypeAndFormatProp,
+  relatedTableDisplayValueColumn,
   link,
   relatedTableMeta,
   meta,
   unlink,
   row,
   resetChildrenExcludedOffsetCount,
+  loadRelatedTableMeta,
+  attachmentCol,
+  fields,
+  refreshCurrentRow,
+  rowId,
+  externalBaseUserRoles,
+  isLinkedTableAccessible,
 } = useLTARStoreOrThrow()
 
 const { addLTARRef, isNew, removeLTARRef, state: rowState } = useSmartsheetRowStoreOrThrow()
 
+const { showRecordPlanLimitExceededModal } = useEeConfig()
+
 const isPublic = inject(IsPublicInj, ref(false))
 
+const isTemplateMode = inject(IsTemplateModeInj, ref(false))
+
+// Use prop-based breadcrumbs (injection doesn't work across dropdown teleport boundary)
+const parentBreadcrumbs = computed(() => props.parentBreadcrumbs || [])
+
 const isExpandedFormCloseAfterSave = ref(false)
+
+const isNewRecord = ref(false)
+
+const isBlueprintMode = ref(false)
 
 isChildrenExcludedLoading.value = true
 
@@ -60,14 +94,34 @@ const reloadTrigger = inject(ReloadRowDataHookInj, createEventHook())
 
 const reloadViewDataTrigger = inject(ReloadViewDataHookInj, createEventHook())
 
+const injectedRow = inject(RowInj)!
+
 const relation = computed(() => {
   return injectedColumn!.value?.colOptions?.type
 })
 
+const isSingleTargetLink = computed(() => {
+  return isBtLikeV2Junction(injectedColumn!.value) || relation.value === 'oo' || relation.value === 'bt'
+})
+
 const linkRow = async (row: Record<string, any>, id: number) => {
   if (isNew.value) {
-    addLTARRef(row, injectedColumn?.value as ColumnType)
-    if (relation.value === 'oo' || relation.value === 'bt') {
+    await addLTARRef(row, injectedColumn?.value as ColumnType)
+
+    // Update the cell value directly on the row so the parent template re-renders
+    const colTitle = injectedColumn?.value?.title
+    if (colTitle && injectedRow.value) {
+      if (isSingleTargetLink.value) {
+        injectedRow.value.row[colTitle] = row
+      } else {
+        if (!Array.isArray(injectedRow.value.row[colTitle])) {
+          injectedRow.value.row[colTitle] = []
+        }
+        injectedRow.value.row[colTitle] = [...(injectedRow.value.row[colTitle] || []), row]
+      }
+    }
+
+    if (isSingleTargetLink.value) {
       isChildrenExcludedListLinked.value.forEach((isLinked, idx) => {
         if (isLinked) {
           isChildrenExcludedListLinked.value[idx] = false
@@ -104,6 +158,7 @@ watch(
   vModel,
   (nextVal, prevVal) => {
     if (nextVal && !prevVal) {
+      refreshCurrentRow()
       /** reset query and limit */
       childrenExcludedListPagination.query = ''
       childrenExcludedListPagination.page = 1
@@ -137,7 +192,9 @@ const newRowState = computed(() => {
 
     if (colOpt.type === RelationTypes.MANY_TO_MANY && colOpt1?.type === RelationTypes.MANY_TO_MANY) {
       return (
-        colOpt.fk_parent_column_id === colOpt1.fk_child_column_id && colOpt.fk_child_column_id === colOpt1.fk_parent_column_id
+        colOpt.fk_parent_column_id === colOpt1.fk_child_column_id &&
+        colOpt.fk_child_column_id === colOpt1.fk_parent_column_id &&
+        colOpt.fk_mm_model_id === colOpt1.fk_mm_model_id
       )
     } else {
       return (
@@ -158,19 +215,6 @@ const newRowState = computed(() => {
       [colInRelatedTable.title as string]: row?.value && [row.value.row],
     }
   }
-})
-
-const attachmentCol = computedInject(FieldsInj, (_fields) => {
-  return (relatedTableMeta.value.columns ?? []).filter((col) => isAttachment(col))[0]
-})
-
-const fields = computedInject(FieldsInj, (_fields) => {
-  return (relatedTableMeta.value.columns ?? [])
-    .filter((col) => !isSystemColumn(col) && !isPrimary(col) && !isLinksOrLTAR(col) && !isAttachment(col))
-    .sort((a, b) => {
-      return (a.meta?.defaultViewColOrder ?? Infinity) - (b.meta?.defaultViewColOrder ?? Infinity)
-    })
-    .slice(0, isMobileMode.value ? 1 : 3)
 })
 
 const totalItemsToShow = computed(() => {
@@ -206,6 +250,9 @@ watch(expandedFormDlg, () => {
 })
 
 watch(filterQueryRef, () => {
+  // Don't focus input on open dropdown in mobile mode
+  if (isMobileMode.value) return
+
   filterQueryRef.value?.focus()
 })
 
@@ -219,12 +266,29 @@ const onClick = (refRow: any, id: string) => {
 }
 
 const addNewRecord = () => {
+  if (showRecordPlanLimitExceededModal()) return
+  // Don't allow creating new record if linked table is not accessible
+  if (!isLinkedTableAccessible.value) return
+
   expandedFormRow.value = {}
   expandedFormDlg.value = true
   isExpandedFormCloseAfterSave.value = true
+  isNewRecord.value = true
+  isBlueprintMode.value = false
 }
 
 const onCreatedRecord = (record: any) => {
+  // Blueprint mode: store the record data as a blueprint in ltarState (no real record created)
+  if (isBlueprintMode.value) {
+    const blueprint = { ...record, _isBlueprint: true }
+    addLTARRef(blueprint, injectedColumn?.value as ColumnType)
+    loadChildrenList(false, rowState.value)
+    isBlueprintMode.value = false
+    isNewRecord.value = false
+    vModel.value = false
+    return
+  }
+
   addLTARRef(record, injectedColumn?.value as ColumnType)
 
   reloadTrigger?.trigger({
@@ -232,7 +296,16 @@ const onCreatedRecord = (record: any) => {
   })
   reloadViewDataTrigger?.trigger({
     shouldShowLoading: false,
+    isFromLinkRecord: true,
+    relatedTableMetaId: relatedTableMeta.value.id,
+    rowId: rowId.value!,
   })
+
+  if (!isNewRecord.value) {
+    vModel.value = false
+
+    return
+  }
 
   const msgVNode = h(
     'div',
@@ -250,7 +323,7 @@ const onCreatedRecord = (record: any) => {
       h(
         'span',
         {
-          class: 'text-gray-500',
+          class: 'text-nc-content-gray-muted',
         },
         t('activity.gotSavedLinkedSuccessfully', {
           tableName: relatedTableMeta.value?.title,
@@ -263,6 +336,12 @@ const onCreatedRecord = (record: any) => {
   message.success(msgVNode)
 
   vModel.value = false
+  isNewRecord.value = false
+}
+
+const onDeletedRecord = async () => {
+  await loadChildrenList()
+  loadChildrenExcludedList(rowState.value, true)
 }
 
 const linkedShortcuts = (e: KeyboardEvent) => {
@@ -293,7 +372,10 @@ watch(childrenExcludedListPagination, () => {
 
 onMounted(() => {
   window.addEventListener('keydown', linkedShortcuts)
+  loadRelatedTableMeta()
 
+  // Don't focus input on open dropdown in mobile mode
+  if (isMobileMode.value) return
   setTimeout(() => {
     filterQueryRef.value?.focus()
   }, 100)
@@ -309,40 +391,68 @@ const onFilterChange = () => {
   childrenExcludedListPagination.page = 1
   resetChildrenExcludedOffsetCount()
 }
+
+const isSearchInputFocused = ref(false)
+
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    if (!childrenExcludedListPagination.query) emit('escape')
+    filterQueryRef.value?.blur()
+  } else if (e.key === 'Enter') {
+    if (
+      childrenExcludedListPagination.query &&
+      ncIsArray(childrenExcludedList.value?.list) &&
+      childrenExcludedList.value?.list.length
+    ) {
+      onClick(childrenExcludedList.value?.list[0], '0')
+    }
+  }
+}
 </script>
 
 <template>
   <div class="nc-modal-link-record h-full w-full overflow-hidden" :class="{ active: vModel }" @keydown.enter.stop>
     <div class="flex flex-col h-full">
-      <div class="nc-dropdown-link-record-header bg-gray-100 py-2 rounded-t-xl flex justify-between pl-3 pr-2 gap-2">
+      <div class="nc-dropdown-link-record-header bg-nc-bg-gray-light py-2 rounded-t-xl flex justify-between pl-3 pr-2 gap-2">
         <div class="flex-1 gap-2 flex items-center">
           <button
             v-if="!hideBackBtn"
-            class="!text-brand-500 hover:!text-brand-700 p-1.5 flex"
+            class="!text-nc-content-brand hover:!text-nc-brand-700 p-1.5 flex"
             @click="emit('attachLinkedRecord')"
           >
             <GeneralIcon icon="ncArrowLeft" class="flex-none h-4 w-4" />
           </button>
 
-          <div class="flex-1 nc-dropdown-link-record-search-wrapper flex items-center py-0.5 rounded-md">
+          <div class="flex-1 nc-dropdown-link-record-search-wrapper flex items-center rounded-md">
+            <!-- Utilize SmartsheetToolbarFilterInput component to filter the records for Date or DateTime column -->
+            <SmartsheetToolbarFilterInput
+              v-if="relatedTableDisplayValueColumn && isDateOrDateTimeCol(relatedTableDisplayValueColumn)"
+              class="nc-filter-value-select rounded-md min-w-34"
+              :column="relatedTableDisplayValueColumn"
+              :filter="{
+                comparison_op: 'eq',
+                comparison_sub_op: 'exactDate',
+                value: childrenExcludedListPagination.query,
+              }"
+              @update-filter-value="childrenExcludedListPagination.query = $event"
+              @click.stop
+            />
             <a-input
+              v-else
               ref="filterQueryRef"
               v-model:value="childrenExcludedListPagination.query"
               :bordered="false"
               placeholder="Search records to link..."
               class="w-full nc-excluded-search min-h-4 !pl-0"
               size="small"
+              autocomplete="off"
+              @focus="isSearchInputFocused = true"
+              @blur="isSearchInputFocused = false"
               @change="onFilterChange"
-              @keydown.capture.stop="
-                (e) => {
-                  if (e.key === 'Escape') {
-                    filterQueryRef?.blur()
-                  }
-                }
-              "
+              @keydown.capture.stop="handleKeyDown"
             >
               <template #prefix>
-                <GeneralIcon icon="search" class="nc-search-icon mr-2 h-4 w-4 text-gray-500" />
+                <GeneralIcon icon="search" class="nc-search-icon mr-2 h-4 w-4 text-nc-content-gray-muted" />
               </template>
             </a-input>
           </div>
@@ -362,7 +472,7 @@ const onFilterChange = () => {
               <div
                 v-for="(_x, i) in Array.from({ length: 10 })"
                 :key="i"
-                class="flex flex-row gap-3 px-3 py-2 transition-all relative border-b-1 border-gray-200 hover:bg-gray-50"
+                class="flex flex-row gap-3 px-3 py-2 transition-all relative border-b-1 border-nc-border-gray-medium hover:c"
               >
                 <div class="flex items-center">
                   <a-skeleton-image class="!h-11 !w-11 !rounded-md overflow-hidden children:(!h-full !w-full)" />
@@ -386,16 +496,20 @@ const onFilterChange = () => {
                 v-for="(refRow, id) in childrenExcludedList?.list ?? []"
                 :key="id"
                 :attachment="attachmentCol"
+                :display-value-column="relatedTableDisplayValueColumn"
                 :display-value-type-and-format-prop="displayValueTypeAndFormatProp"
                 :fields="fields"
                 :is-linked="isChildrenExcludedListLinked[Number.parseInt(id)]"
                 :is-loading="isChildrenExcludedListLoading[Number.parseInt(id)]"
+                :is-selected="!!(isSearchInputFocused && childrenExcludedListPagination.query && Number.parseInt(id) === 0)"
                 :related-table-display-value-prop="relatedTableDisplayValueProp"
                 :row="refRow"
                 data-testid="nc-excluded-list-item"
                 @link-or-unlink="onClick(refRow, id)"
                 @expand="
                   () => {
+                    // Don't allow expanding if linked table is not accessible
+                    if (!isLinkedTableAccessible) return
                     expandedFormRow = refRow
                     expandedFormDlg = true
                   }
@@ -406,27 +520,71 @@ const onFilterChange = () => {
             </template>
           </div>
         </template>
-        <div v-else class="h-full my-auto py-2 flex flex-col gap-3 items-center justify-center text-gray-500">
+        <div v-else class="h-full my-auto py-2 flex flex-col gap-3 items-center justify-center text-nc-content-gray-muted">
           <InboxIcon class="w-16 h-16 mx-auto" />
 
-          <p v-if="childrenExcludedListPagination.query">{{ $t('msg.noRecordsMatchYourSearchQuery') }}</p>
-          <p v-else>
+          <p v-if="childrenExcludedListPagination.query" class="mb-0">{{ $t('msg.noRecordsMatchYourSearchQuery') }}</p>
+          <p v-else class="mb-0">
             {{ $t('msg.noRecordsAvailForLinking') }}
           </p>
+          <div class="flex">
+            <PermissionsTooltip
+              v-if="
+                !isPublic &&
+                !isDataReadOnly &&
+                !isTemplateMode &&
+                isUIAllowed('dataEdit', externalBaseUserRoles) &&
+                !isForm &&
+                !relatedTableMeta?.synced
+              "
+              :entity="PermissionEntity.TABLE"
+              :entity-id="relatedTableMeta?.id"
+              :permission="PermissionKey.TABLE_RECORD_ADD"
+            >
+              <template #default="{ isAllowed }">
+                <NcButton
+                  v-e="['c:row-expand:open']"
+                  size="small"
+                  class="!hover:(bg-nc-bg-default text-nc-content-brand) !h-7 !text-small"
+                  type="secondary"
+                  :disabled="!isAllowed"
+                  @click="addNewRecord"
+                >
+                  <div class="flex items-center gap-1"><MdiPlus v-if="!isMobileMode" /> {{ $t('activity.newRecord') }}</div>
+                </NcButton>
+              </template>
+            </PermissionsTooltip>
+          </div>
         </div>
       </div>
-      <div class="nc-dropdown-link-record-footer bg-gray-100 p-2 rounded-b-xl flex items-center justify-between min-h-11">
+      <div class="nc-dropdown-link-record-footer bg-nc-bg-gray-light p-2 rounded-b-xl flex items-center justify-between min-h-11">
         <div class="flex">
-          <NcButton
-            v-if="!isPublic && !isDataReadOnly"
-            v-e="['c:row-expand:open']"
-            size="small"
-            class="!hover:(bg-white text-brand-500) !h-7 !text-small"
-            type="secondary"
-            @click="addNewRecord"
+          <PermissionsTooltip
+            v-if="
+              !isPublic &&
+              !isDataReadOnly &&
+              !isTemplateMode &&
+              isUIAllowed('dataEdit', externalBaseUserRoles) &&
+              !isForm &&
+              !relatedTableMeta?.synced
+            "
+            :entity="PermissionEntity.TABLE"
+            :entity-id="relatedTableMeta?.id"
+            :permission="PermissionKey.TABLE_RECORD_ADD"
           >
-            <div class="flex items-center gap-1"><MdiPlus v-if="!isMobileMode" /> {{ $t('activity.newRecord') }}</div>
-          </NcButton>
+            <template #default="{ isAllowed }">
+              <NcButton
+                v-e="['c:row-expand:open']"
+                size="small"
+                class="!hover:(bg-nc-bg-default text-nc-content-brand) !h-7 !text-small"
+                type="secondary"
+                :disabled="!isAllowed"
+                @click="addNewRecord"
+              >
+                <div class="flex items-center gap-1"><MdiPlus v-if="!isMobileMode" /> {{ $t('activity.newRecord') }}</div>
+              </NcButton>
+            </template>
+          </PermissionsTooltip>
         </div>
         <template
           v-if="
@@ -457,32 +615,34 @@ const onFilterChange = () => {
       <LazySmartsheetExpandedForm
         v-if="expandedFormDlg"
         v-model="expandedFormDlg"
-        :load-row="!isPublic"
+        :load-row="!isPublic && !isBlueprintMode"
         :close-after-save="isExpandedFormCloseAfterSave"
         :meta="relatedTableMeta"
         :new-record-header="
-          isExpandedFormCloseAfterSave
-            ? $t('activity.tableNameCreateNewRecord', {
-                tableName: relatedTableMeta?.title,
-              })
+          isBlueprintMode
+            ? `New ${relatedTableMeta?.title} Record`
+            : isExpandedFormCloseAfterSave
+            ? $t('activity.tableNameCreateNewRecord', { tableName: relatedTableMeta?.title })
             : undefined
         "
         :row="{
           row: expandedFormRow,
           oldRow: {},
-          rowMeta:
-            Object.keys(expandedFormRow).length > 0
-              ? {}
-              : {
-                  new: true,
-                },
+          rowMeta: !isNewRecord
+            ? {}
+            : {
+                new: true,
+              },
         }"
         :row-id="extractPkFromRow(expandedFormRow, relatedTableMeta.columns as ColumnType[])"
         :state="newRowState"
+        :blueprint-mode="isBlueprintMode"
+        :breadcrumbs="isBlueprintMode ? [...parentBreadcrumbs, meta?.title || ''] : undefined"
         use-meta-fields
         maintain-default-view-order
-        :skip-reload="true"
-        new-record-submit-btn-text="Create & Link"
+        skip-reload
+        :new-record-submit-btn-text="!isNewRecord ? undefined : isBlueprintMode ? 'Save Record' : 'Create & Link'"
+        @deleted-record="onDeletedRecord"
         @created-record="onCreatedRecord"
       />
     </Suspense>
@@ -493,23 +653,26 @@ const onFilterChange = () => {
 :deep(.ant-skeleton-element .ant-skeleton-image-svg) {
   @apply !w-7;
 }
+:deep(.nc-filter-input-wrapper) {
+  height: 28px;
+}
 </style>
 
 <style lang="scss">
 .nc-dropdown-link-record-search-wrapper {
   .nc-search-icon {
-    @apply flex-none text-gray-500;
+    @apply flex-none text-nc-content-gray-muted;
   }
 
   &:focus-within {
     .nc-search-icon {
-      @apply text-gray-600;
+      @apply text-nc-content-gray-subtle2;
     }
   }
 
   input {
     &::placeholder {
-      @apply text-gray-500;
+      @apply text-nc-content-gray-muted;
     }
   }
 }

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { PlanFeatureTypes } from 'nocodb-sdk'
+
 interface Props {
   isFullscreen?: boolean
 }
@@ -7,7 +9,11 @@ defineProps<Props>()
 
 const emits = defineEmits(['rename', 'duplicate', 'showDetails', 'clearData', 'delete'])
 
-const { activeError } = useExtensionHelperOrThrow()
+const { activeError, extension } = useExtensionHelperOrThrow()
+
+const { extensionAccess } = useExtensions()
+
+const { showEEFeatures } = useEeConfig()
 </script>
 
 <template>
@@ -18,27 +24,56 @@ const { activeError } = useExtensionHelperOrThrow()
       </NcButton>
 
       <template #overlay>
-        <NcMenu>
+        <NcMenu variant="small">
+          <NcMenuItemCopyId
+            :id="extension.id!"
+            data-testid="nc-extension-item-action-copy-id"
+            :tooltip="$t('labels.clickToCopyExtensionID')"
+            :label="
+              $t('labels.extensionIdColon', {
+                extensionId: extension.id,
+              })
+            "
+          />
+          <NcDivider v-if="extensionAccess.create || extensionAccess.update || extensionAccess.delete" />
           <template v-if="!activeError">
-            <NcMenuItem data-rec="true" @click="emits('rename')">
+            <NcMenuItem v-if="extensionAccess.create" data-rec="true" @click="emits('rename')">
               <GeneralIcon icon="edit" />
               Rename
             </NcMenuItem>
-            <NcMenuItem data-rec="true" @click="emits('duplicate')">
-              <GeneralIcon icon="duplicate" />
-              Duplicate
-            </NcMenuItem>
+
+            <PaymentUpgradeBadgeProvider
+              v-if="extensionAccess.create && showEEFeatures"
+              :feature="PlanFeatureTypes.FEATURE_EXTENSIONS"
+            >
+              <template #default="{ click }">
+                <NcMenuItem
+                  data-rec="true"
+                  class="group"
+                  @click="click(PlanFeatureTypes.FEATURE_EXTENSIONS, () => emits('duplicate'))"
+                >
+                  <GeneralIcon icon="duplicate" />
+                  Duplicate
+                  <LazyPaymentUpgradeBadge
+                    :feature="PlanFeatureTypes.FEATURE_EXTENSIONS"
+                    :content="$t('upgrade.upgradeToAddMoreExtensions')"
+                  />
+                </NcMenuItem>
+              </template>
+            </PaymentUpgradeBadgeProvider>
+
             <NcMenuItem data-rec="true" @click="emits('showDetails')">
               <GeneralIcon icon="info" />
               Details
             </NcMenuItem>
-            <NcDivider />
+
+            <NcDivider v-if="extensionAccess.update || extensionAccess.delete" />
           </template>
-          <NcMenuItem data-rec="true" class="!text-red-500 !hover:bg-red-50" @click="emits('clearData')">
+          <NcMenuItem v-if="extensionAccess.update" data-rec="true" danger @click="emits('clearData')">
             <GeneralIcon icon="reload" />
             Clear data
           </NcMenuItem>
-          <NcMenuItem data-rec="true" class="!text-red-500 !hover:bg-red-50" @click="emits('delete')">
+          <NcMenuItem v-if="extensionAccess.delete" data-rec="true" danger @click="emits('delete')">
             <GeneralIcon icon="delete" />
             Delete
           </NcMenuItem>
@@ -47,5 +82,3 @@ const { activeError } = useExtensionHelperOrThrow()
     </NcDropdown>
   </div>
 </template>
-
-<style scoped lang="scss"></style>

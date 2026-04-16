@@ -1,27 +1,30 @@
 import type { AttachmentReqType, AttachmentType } from 'nocodb-sdk'
 import { populateUniqueFileName } from 'nocodb-sdk'
 import DOMPurify from 'isomorphic-dompurify'
+import { zip as fflateZip } from 'fflate'
 import RenameFile from './RenameFile.vue'
-import MdiPdfBox from '~icons/mdi/pdf-box'
-import MdiFileWordOutline from '~icons/mdi/file-word-outline'
-import MdiFilePowerpointBox from '~icons/mdi/file-powerpoint-box'
-import MdiFileExcelOutline from '~icons/mdi/file-excel-outline'
-import IcOutlineInsertDriveFile from '~icons/ic/outline-insert-drive-file'
-
-export const getReadableFileSize = (sizeInBytes: number) => {
-  const i = Math.min(Math.floor(Math.log(sizeInBytes) / Math.log(1024)), 4)
-  return `${(sizeInBytes / 1024 ** i).toFixed(2) * 1} ${['B', 'kB', 'MB', 'GB', 'TB'][i]}`
-}
+import MdiPdfBox from '~icons/nc-icons-v2/file-type-pdf'
+import MdiFileWordOutline from '~icons/nc-icons-v2/file-type-word'
+import MdiFilePowerpointBox from '~icons/nc-icons-v2/file-type-presentation'
+import MdiFileExcelOutline from '~icons/nc-icons-v2/file-type-csv'
+import IcOutlineInsertDriveFile from '~icons/nc-icons-v2/file-type-unknown'
 
 export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
   (updateModelValue: (data: string | Record<string, any>[]) => void) => {
     const { $api } = useNuxtApp()
+
+    const { isUIAllowed } = useRoles()
 
     const baseURL = $api.instance.defaults.baseURL
 
     const { row } = useSmartsheetRowStoreOrThrow()
 
     const { fetchSharedViewAttachment } = useSharedView()
+
+    const { showStoragePlanLimitExceededModal, maxAttachmentsAllowedInCell, showUpgradeToAddMoreAttachmentsInCell } =
+      useEeConfig()
+
+    const { batchUploadFiles } = useAttachment()
 
     const isReadonly = inject(ReadonlyInj, ref(false))
 
@@ -33,9 +36,15 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
 
     const meta = inject(MetaInj, ref())
 
+    const isSharedForm = computed(() => {
+      return isForm.value && isPublic.value
+    })
+
     const column = inject(ColumnInj, ref())
 
     const editEnabled = inject(EditModeInj, ref(false))
+
+    const isEditAllowed = computed(() => (!isPublic.value && !isReadonly.value && isUIAllowed('dataEdit')) || isSharedForm.value)
 
     /** keep user selected File object */
     const storedFiles = ref<AttachmentType[]>([])
@@ -53,6 +62,13 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
 
     const permissionGranted = ref(false)
 
+    // User can drag and drop files multiple times so we have to keep track of that and reduce count after upload are done
+    const uploadingCount = ref(0)
+
+    const isUploading = computed(() => {
+      return uploadingCount.value > 0
+    })
+
     const { base } = storeToRefs(useBase())
 
     const { api, isLoading } = useApi()
@@ -68,7 +84,7 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
     const defaultAttachmentMeta = {
       ...(appInfo.value.ee && {
         // Maximum Number of Attachments per cell
-        maxNumberOfAttachments: Math.max(1, +appInfo.value.ncMaxAttachmentsAllowed || 50) || 50,
+        maxNumberOfAttachments: maxAttachmentsAllowedInCell.value,
         // Maximum File Size per file
         maxAttachmentSize: Math.max(1, +appInfo.value.ncAttachmentFieldSize || 20) || 20,
         supportedAttachmentMimeTypes: ['*'],
@@ -105,13 +121,15 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
         attachments.value.splice(i, 1)
         selectedVisibleItems.value.splice(i, 1)
 
-        updateModelValue(JSON.stringify(attachments.value))
+        updateModelValue(attachments.value)
       }
     }
 
     /** save a file on select / drop, either locally (in-memory) or in the db */
     async function onFileSelect(selectedFiles: FileList | File[], selectedFileUrls?: AttachmentReqType[]) {
       if (!selectedFiles.length && !selectedFileUrls?.length) return
+
+      if (showStoragePlanLimitExceededModal()) return
 
       const attachmentMeta = {
         ...defaultAttachmentMeta,
@@ -128,14 +146,10 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
         if (appInfo.value.ee) {
           // verify number of files
           if (
-            visibleItems.value.length + (selectedFiles.length || selectedFileUrls?.length || 0) >
-            attachmentMeta.maxNumberOfAttachments
+            showUpgradeToAddMoreAttachmentsInCell({
+              totalAttachments: visibleItems.value.length + (selectedFiles.length || selectedFileUrls?.length || 0),
+            })
           ) {
-            message.error(
-              `You can only upload at most ${attachmentMeta.maxNumberOfAttachments} file${
-                attachmentMeta.maxNumberOfAttachments > 1 ? 's' : ''
-              } to this cell.`,
-            )
             return
           }
 
@@ -220,15 +234,10 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
       }
 
       if (files.length) {
+        uploadingCount.value++
         try {
-          const data = await api.storage.upload(
-            {
-              path: [NOCO, base.value.id, meta.value?.id, column.value?.id].join('/'),
-            },
-            {
-              files,
-            },
-          )
+          const data = await batchUploadFiles(files, [NOCO, base.value.id, meta.value?.id, column.value?.id].join('/'))
+
           // add suffix in duplicate file title
           for (const uploadedFile of data) {
             newAttachments.push({
@@ -241,17 +250,20 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
             })
           }
         } catch (e: any) {
-          message.error(e.message || t('msg.error.internalError'))
+          message.error((await extractSdkResponseErrorMsg(e)) || t('msg.error.internalError'))
+        } finally {
+          uploadingCount.value--
         }
       } else if (imageUrls.length) {
-        const data = uploadViaUrl(imageUrls)
+        const data = await uploadViaUrl(imageUrls)
         if (!data) return
         newAttachments.push(...data)
       }
-      if (newAttachments?.length) updateModelValue(JSON.stringify([...attachments.value, ...newAttachments]))
+      if (newAttachments?.length) updateModelValue([...attachments.value, ...newAttachments])
     }
 
     async function uploadViaUrl(url: AttachmentReqType | AttachmentReqType[], returnError = false) {
+      uploadingCount.value++
       const imageUrl = Array.isArray(url) ? url : [url]
       try {
         const data = await api.storage.uploadByUrl(
@@ -268,7 +280,17 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
         }
         message.error("File couldn't be uploaded. Verify URL & try again.")
         return null
+      } finally {
+        uploadingCount.value--
       }
+    }
+
+    function updateAttachmentTitle(idx: number, title: string) {
+      if (attachments.value[idx]) {
+        attachments.value[idx]!.title = title
+      }
+
+      updateModelValue(attachments.value)
     }
 
     async function renameFile(attachment: AttachmentType, idx: number, updateSelectedFile?: boolean) {
@@ -277,12 +299,11 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
         const { close } = useDialog(RenameFile, {
           title: attachment.title,
           onRename: (newTitle: string) => {
-            attachments.value[idx].title = newTitle
-            updateModelValue(JSON.stringify(attachments.value))
+            updateAttachmentTitle(idx, newTitle)
             close()
 
             if (updateSelectedFile) {
-              selectedFile.value = { ...attachment, title: newTitle }
+              selectedFile.value = { ...attachment }
             }
 
             isRenameModalOpen.value = false
@@ -297,13 +318,24 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
       })
     }
 
+    async function renameFileInline(idx: number, newTitle: string, updateSelectedFile?: boolean) {
+      updateAttachmentTitle(idx, newTitle)
+
+      if (updateSelectedFile) {
+        selectedFile.value = { ...attachments.value[idx] }
+      }
+
+      isRenameModalOpen.value = false
+    }
+
     /** save files on drop */
     async function onDrop(droppedFiles: FileList | File[] | null, event: DragEvent) {
-      if (isReadonly.value) return
+      if (isReadonly.value || !isEditAllowed.value) return
+
       if (droppedFiles) {
         // set files
         await onFileSelect(droppedFiles)
-      } else {
+      } else if (event) {
         event.preventDefault()
 
         // Sanitize the dataTransfer HTML string
@@ -337,8 +369,116 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
 
     /** bulk download selected files */
     async function bulkDownloadAttachments() {
-      await Promise.all(selectedVisibleItems.value.map(async (v, i) => v && (await downloadAttachment(visibleItems.value[i]))))
-      selectedVisibleItems.value = Array.from({ length: visibleItems.value.length }, () => false)
+      const items: AttachmentType[] = selectedVisibleItems.value
+        .map((v, i) => (v ? visibleItems.value[i] : undefined))
+        .filter(Boolean)
+
+      if (items.length === 0) return
+      if (items.length === 1) {
+        return downloadAttachment(items[0]!)
+      }
+
+      if (!meta.value || !column.value) return
+      const modelId = meta.value.id
+      const columnId = column.value.id
+      const rowId = extractPkFromRow(unref(row).row, meta.value.columns!)
+
+      if (!modelId || !columnId || !rowId) {
+        console.error('Missing modelId, columnId or rowId')
+        message.error('Failed to download file')
+      }
+
+      const filesData: { name: string; data: Uint8Array }[] = []
+
+      for (const item of items) {
+        const src = item.url || item.path
+        if (!src) {
+          console.error('Missing src')
+          message.error('Failed to download file')
+          continue
+        }
+
+        const apiPromise = isPublic.value
+          ? () => fetchSharedViewAttachment(columnId!, rowId!, src)
+          : () =>
+              $api.dbDataTableRow.attachmentDownload(modelId!, columnId!, rowId!, {
+                urlOrPath: src,
+              })
+
+        let res
+
+        try {
+          res = await apiPromise()
+        } catch {}
+
+        if (!res) {
+          console.error('Invalid response')
+          message.error('Failed to download file')
+          continue
+        }
+
+        let response: Response
+        if (res.path) {
+          response = await fetch(`${baseURL}/${res.path}`)
+        } else if (res.url) {
+          response = await fetch(`${res.url}`)
+        } else {
+          console.error('Invalid blob response')
+          message.error('Failed to download file')
+          continue
+        }
+
+        const arrayBuffer = await response.arrayBuffer()
+        const fileName = item.title || src.split('/').pop() || 'file'
+
+        filesData.push({
+          name: fileName,
+          data: new Uint8Array(arrayBuffer),
+        })
+      }
+
+      if (filesData.length === 0) {
+        message.error('No files to download')
+        return
+      }
+
+      // Create a zip object
+      const zip: Record<string, Uint8Array> = {}
+
+      // Add files to zip object
+      filesData.forEach(({ name, data }) => {
+        zip[name] = data
+      })
+
+      try {
+        // Use fflate to create zip
+        const zipData = await new Promise<Uint8Array>((resolve, reject) => {
+          fflateZip(zip, (err, data) => {
+            if (err) {
+              reject(err)
+            } else {
+              resolve(data)
+            }
+          })
+        })
+
+        // Create blob and download
+        const blob = new Blob([zipData], { type: 'application/zip' })
+        const zipURL = URL.createObjectURL(blob)
+
+        try {
+          window.open(zipURL, '_self')
+        } catch (e) {
+          console.error('Error opening blob window', e)
+          message.error('Failed to download file')
+          return undefined
+        } finally {
+          setTimeout(() => URL.revokeObjectURL(zipURL), 1000)
+        }
+      } catch (e) {
+        console.error('Error creating zip file', e)
+        message.error('Failed to create zip file')
+      }
     }
 
     /** download a file */
@@ -359,9 +499,9 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
 
         await apiPromise().then((res) => {
           if (res?.path) {
-            window.open(`${baseURL}/${res.path}`, '_blank')
+            window.open(`${baseURL}/${res.path}`, '_self')
           } else if (res?.url) {
-            window.open(res.url, '_blank')
+            window.open(res.url, '_self')
           } else {
             message.error('Failed to download file')
           }
@@ -427,6 +567,7 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
       FileIcon,
       removeFile,
       renameFile,
+      renameFileInline,
       downloadAttachment,
       updateModelValue,
       selectedFile,
@@ -440,6 +581,10 @@ export const [useProvideAttachmentCell, useAttachmentCell] = useInjectionState(
       videoStream,
       permissionGranted,
       isRenameModalOpen,
+      updateAttachmentTitle,
+      isEditAllowed,
+      isSharedForm,
+      isUploading,
     }
   },
   'useAttachmentCell',

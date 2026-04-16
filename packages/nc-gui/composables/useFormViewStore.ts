@@ -18,6 +18,10 @@ const [useProvideFormViewStore, useFormViewStore] = useInjectionState(
 
     const { t } = useI18n()
 
+    const { appInfo } = useGlobal()
+
+    const baseStore = useBase()
+
     const { isMysql } = useBase()
 
     const { getMeta } = useMetas()
@@ -48,6 +52,7 @@ const [useProvideFormViewStore, useFormViewStore] = useInjectionState(
         formState: formState.value,
         isMysql,
         getMeta,
+        baseId: baseStore.baseId,
       })
     })
 
@@ -113,7 +118,11 @@ const [useProvideFormViewStore, useFormViewStore] = useInjectionState(
           },
         ]
 
-        const additionalRules = extractFieldValidator(parseProp(column.meta).validators ?? [], column)
+        const additionalRules = extractFieldValidator(
+          parseProp(column.meta).validators ?? [],
+          column,
+          appInfo.value.ncMaxTextLength,
+        )
         rules = [...rules, ...additionalRules]
 
         if (rules.length) {
@@ -180,11 +189,16 @@ const [useProvideFormViewStore, useFormViewStore] = useInjectionState(
     )
 
     const updateColMeta = useDebounceFn(async (col: Record<string, any>) => {
-      if (col.id && isEditable) {
+      if (col?.id && isEditable) {
         validateActiveField(col)
 
         try {
-          await $api.dbView.formColumnUpdate(col.id, col)
+          await $api.internal.postOperation(
+            viewMeta.value!.fk_workspace_id!,
+            viewMeta.value!.base_id!,
+            { operation: 'formColumnUpdate', formColumnId: col.id },
+            col,
+          )
         } catch (e: any) {
           message.error(await extractSdkResponseErrorMsg(e))
         }
@@ -205,11 +219,18 @@ const [useProvideFormViewStore, useFormViewStore] = useInjectionState(
     const loadAllviewFilters = async () => {
       if (!viewMeta.value?.id) return
       try {
-        const formViewFilters = (await $api.dbTableFilter.read(viewMeta.value.id, { includeAllFilters: true })).list || []
+        const formViewFilters =
+          (
+            await $api.internal.getOperation(viewMeta.value!.fk_workspace_id!, viewMeta.value!.base_id!, {
+              operation: 'filterList',
+              viewId: viewMeta.value.id,
+              includeAllFilters: true,
+            })
+          ).list || []
 
         if (!formViewFilters.length) return
 
-        const formFilter = new FormFilters({ data: formViewFilters })
+        const formFilter = new FormFilters({ data: formViewFilters, baseId: viewMeta.value.base_id })
 
         const allFilters = formFilter.getNestedGroupedFilters()
 

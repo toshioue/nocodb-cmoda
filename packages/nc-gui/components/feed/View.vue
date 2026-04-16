@@ -2,9 +2,11 @@
 import FeedRecents from './Recents/index.vue'
 import FeedChangelog from './Changelog/index.vue'
 import FeedYoutube from './Youtube/index.vue'
-import FeedTwitter from './Twitter.vue'
+// import FeedTwitter from './Twitter.vue'
 // import FeedRoadmap from './Roadmap.vue'
 const { activeTab } = useProductFeed()
+
+const { hideSidebar } = storeToRefs(useSidebarStore())
 
 const { $e } = useNuxtApp()
 
@@ -44,12 +46,12 @@ const tabs: Array<{
     title: 'Youtube',
     container: FeedYoutube,
   },
-  {
+  /*  {
     key: 'twitter',
     icon: 'ncTwitter',
     title: 'Twitter',
     container: FeedTwitter,
-  },
+  }, */
 ]
 
 const router = useRouter()
@@ -60,10 +62,15 @@ watch(activeTab, (val) => {
 })
 
 onMounted(() => {
+  hideSidebar.value = true
   const tab = router.currentRoute.value.query.tab as string
   if (tab && tabs.some((t) => t.key === tab)) {
     activeTab.value = tab
   }
+})
+
+onBeforeUnmount(() => {
+  hideSidebar.value = false
 })
 </script>
 
@@ -71,21 +78,21 @@ onMounted(() => {
   <FeedHeader />
 
   <div class="flex flex-col h-full">
-    <NcTabs v-model:activeKey="activeTab" centered>
-      <a-tab-pane v-for="tab in tabs" :key="tab.key" class="bg-gray-50 !h-full">
+    <NcTabs v-model:active-key="activeTab" centered>
+      <a-tab-pane v-for="tab in tabs" :key="tab.key" class="bg-nc-bg-gray-extralight !h-full">
         <template #tab>
           <div class="flex gap-2 items-center">
             <GeneralIcon
               :class="{
-                'text-brand-500': activeTab === tab.key,
-                'text-gray-600': activeTab !== tab.key,
+                'text-nc-content-brand': activeTab === tab.key,
+                'text-nc-content-gray-subtle2': activeTab !== tab.key,
               }"
               :icon="tab.icon as any"
             />
             <span
               :class="{
-                'text-brand-500 font-medium': activeTab === tab.key,
-                'text-gray-700': activeTab !== tab.key,
+                'text-nc-content-brand font-medium': activeTab === tab.key,
+                'text-nc-content-gray-subtle': activeTab !== tab.key,
               }"
               class="text-sm"
               >{{ tab.title }}

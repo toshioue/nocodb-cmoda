@@ -30,6 +30,7 @@ export class OrgTokensController {
   @Acl('apiTokenList', {
     scope: 'org',
     blockApiTokenAccess: true,
+    blockOAuthTokenAccess: true,
   })
   async apiTokenList(@Req() req: NcRequest) {
     return await getConditionalHandler(
@@ -37,6 +38,7 @@ export class OrgTokensController {
       this.orgTokensEeService.apiTokenListEE,
     )({
       query: req.query,
+      req: req,
       user: req['user'],
     });
   }
@@ -46,6 +48,7 @@ export class OrgTokensController {
   @Acl('apiTokenCreate', {
     scope: 'org',
     blockApiTokenAccess: true,
+    blockOAuthTokenAccess: true,
   })
   async apiTokenCreate(@Req() req: NcRequest, @Body() body: ApiTokenReqType) {
     return await this.orgTokensService.apiTokenCreate({
@@ -60,6 +63,7 @@ export class OrgTokensController {
     scope: 'org',
     // allowedRoles: [OrgUserRoles.SUPER],
     blockApiTokenAccess: true,
+    blockOAuthTokenAccess: true,
   })
   async apiTokenDelete(
     @Req() req: NcRequest,

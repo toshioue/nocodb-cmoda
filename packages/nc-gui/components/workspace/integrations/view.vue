@@ -6,6 +6,7 @@ const { isUIAllowed } = useRoles()
 const workspaceStore = useWorkspace()
 
 const { loadRoles } = useRoles()
+
 const { activeWorkspace: _activeWorkspace } = storeToRefs(workspaceStore)
 const { loadCollaborators } = workspaceStore
 
@@ -47,7 +48,7 @@ onBeforeMount(() => {
 
 <template>
   <div v-if="currentWorkspace" class="flex w-full flex-col nc-workspace-integrations">
-    <div class="flex gap-2 items-center min-w-0 p-2 h-[var(--topbar-height)] border-b-1 border-gray-200">
+    <div class="flex gap-2 items-center min-w-0 p-2 h-[var(--topbar-height)] border-b-1 border-nc-border-gray-medium">
       <div class="flex-1 nc-breadcrumb nc-no-negative-margin pl-1">
         <div class="nc-breadcrumb-item capitalize">
           {{ currentWorkspace?.title }}
@@ -57,10 +58,9 @@ onBeforeMount(() => {
           {{ $t('general.integrations') }}
         </h1>
       </div>
-
-      <SmartsheetTopbarCmdK />
     </div>
-    <NcTabs v-model:activeKey="activeViewTab">
+
+    <NcTabs v-model:active-key="activeViewTab">
       <template #leftExtra>
         <div class="w-3"></div>
       </template>
@@ -73,7 +73,7 @@ onBeforeMount(() => {
             </div>
           </template>
           <div class="h-[calc(100vh-92px)]">
-            <WorkspaceIntegrationsTab />
+            <WorkspaceIntegrationsTab show-filter />
           </div>
         </a-tab-pane>
       </template>
@@ -88,14 +88,14 @@ onBeforeMount(() => {
                 class="tab-info flex-none"
                 :class="{
                   'bg-primary-selected': activeViewTab === 'connections',
-                  'bg-gray-50': activeViewTab !== 'connections',
+                  'bg-nc-bg-gray-extralight': activeViewTab !== 'connections',
                 }"
               >
                 {{ integrationPaginationData.totalRows }}
               </div>
             </div>
           </template>
-          <div class="h-[calc(100vh-92px)] p-6">
+          <div class="px-6 h-[calc(100vh-92px)]">
             <WorkspaceIntegrationsConnectionsTab />
           </div>
         </a-tab-pane>
@@ -119,11 +119,9 @@ onBeforeMount(() => {
   @apply !pl-0;
 }
 :deep(.ant-tabs-tab) {
-  @apply pt-2 pb-3;
+  @apply pt-1.5 pb-2;
 }
-:deep(.ant-tabs-content) {
-  @apply nc-content-max-w;
-}
+
 .ant-tabs-content-top {
   @apply !h-full;
 }

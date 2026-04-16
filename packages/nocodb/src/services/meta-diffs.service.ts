@@ -1,13 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import {
   AppEvents,
+  ClientType,
+  isAIPromptCol,
   isLinksOrLTAR,
+  isMMOrMMLike,
   isVirtualCol,
   ModelTypes,
   RelationTypes,
+  SqlUiFactory,
   UITypes,
 } from 'nocodb-sdk';
 import { pluralize, singularize } from 'inflection';
+import type { UserType } from 'nocodb-sdk';
 import type { LinksColumn, LinkToAnotherRecordColumn } from '~/models';
 import type { NcContext } from '~/interface/config';
 import { AppHooksService } from '~/services/app-hooks/app-hooks.service';
@@ -17,8 +22,12 @@ import getTableNameAlias, { getColumnNameAlias } from '~/helpers/getTableName';
 import { getUniqueColumnAliasName } from '~/helpers/getUniqueName';
 import mapDefaultDisplayValue from '~/helpers/mapDefaultDisplayValue';
 import { NcError } from '~/helpers/catchError';
+import { normalizeDr } from '~/helpers/dbHelpers';
 import NcHelp from '~/utils/NcHelp';
 import NcConnectionMgrv2 from '~/utils/common/NcConnectionMgrv2';
+import Noco from '~/Noco';
+import NocoCache from '~/cache/NocoCache';
+import { CacheScope, MetaTable } from '~/utils/globals';
 import { Base, Column, Model, Source } from '~/models';
 
 // todo:move enum and types
@@ -36,6 +45,7 @@ export enum MetaDiffType {
   VIEW_COLUMN_REMOVE = 'VIEW_COLUMN_REMOVE',
   TABLE_RELATION_ADD = 'TABLE_RELATION_ADD',
   TABLE_RELATION_REMOVE = 'TABLE_RELATION_REMOVE',
+  TABLE_RELATION_CHANGED = 'TABLE_RELATION_CHANGED',
   TABLE_VIRTUAL_M2M_REMOVE = 'TABLE_VIRTUAL_M2M_REMOVE',
 }
 
@@ -113,6 +123,7 @@ type MetaDiffChange = {
       rcn?: string;
       relationType: RelationTypes;
       cstn?: string;
+      dr?: string;
     }
   | {
       type: MetaDiffType.TABLE_COLUMN_PROPS_CHANGED;
@@ -122,6 +133,17 @@ type MetaDiffChange = {
       cn: string;
       column: Column;
       colId?: string;
+    }
+  | {
+      type: MetaDiffType.TABLE_RELATION_CHANGED;
+      tn?: string;
+      rtn?: string;
+      cn?: string;
+      rcn?: string;
+      colId: string;
+      column: Column;
+      relationType: RelationTypes;
+      dr: string | null;
     }
 );
 
@@ -136,7 +158,7 @@ export class MetaDiffsService {
     source: Source,
   ): Promise<Array<MetaDiff>> {
     // if meta base then return empty array
-    if (source.is_meta) {
+    if (source.isMeta()) {
       return [];
     }
 
@@ -172,6 +194,7 @@ export class MetaDiffsService {
       rcn: string;
       found?: any;
       cstn?: string;
+      dr?: string;
     }> = (
       await sqlClient.relationListAll({ schema: source.getConfig()?.schema })
     )?.data?.list;
@@ -241,7 +264,13 @@ export class MetaDiffsService {
 
         const [oldCol] = oldMeta.columns.splice(oldColIdx, 1);
 
-        if (oldCol.dt !== column.dt) {
+        if (
+          oldCol.dt !== column.dt ||
+          // if mysql and data type is set or enum then compare dtxp as well
+          (['mysql', 'mysql2'].includes(source.type) &&
+            ['set', 'enum'].includes(column.dt) &&
+            column.dtxp !== oldCol.dtxp)
+        ) {
           tableProp.detectedChanges.push({
             type: MetaDiffType.TABLE_COLUMN_TYPE_CHANGE,
             msg: `Column type changed(${column.cn})`,
@@ -268,7 +297,7 @@ export class MetaDiffsService {
       }
       for (const column of oldMeta.columns) {
         if (
-          [
+          (<UITypes[]>[
             UITypes.LinkToAnotherRecord,
             UITypes.Links,
             UITypes.Rollup,
@@ -276,7 +305,17 @@ export class MetaDiffsService {
             UITypes.Formula,
             UITypes.QrCode,
             UITypes.Barcode,
-          ].includes(column.uidt)
+            UITypes.Button,
+          ]).includes(column.uidt) ||
+          isAIPromptCol(column) ||
+          // skip alias columns of CreatedTime, LastModifiedTime, CreatedBy, LastModifiedBy
+          ((<UITypes[]>[
+            UITypes.CreatedTime,
+            UITypes.LastModifiedTime,
+            UITypes.LastModifiedBy,
+            UITypes.CreatedBy,
+          ]).includes(column.uidt) &&
+            !column.system)
         ) {
           if (isLinksOrLTAR(column.uidt)) {
             virtualRelationColumns.push(column);
@@ -320,12 +359,72 @@ export class MetaDiffsService {
       );
       const parentCol = await colOpt.getParentColumn(context);
       const childCol = await colOpt.getChildColumn(context);
+
+      if (!parentCol || !childCol) {
+        // Parent or child column is missing - mark relation for removal
+        const ownerModel = await relationCol.getModel(context);
+        if (ownerModel) {
+          const ownerTable = changes.find(
+            (t) => t.table_name === ownerModel.table_name,
+          );
+          if (ownerTable) {
+            ownerTable.detectedChanges.push({
+              type: MetaDiffType.TABLE_RELATION_REMOVE,
+              msg: `Relation removed (${
+                !parentCol ? 'parent' : 'child'
+              } column missing)`,
+              colId: relationCol.id,
+              column: relationCol,
+            });
+          }
+        }
+        continue;
+      }
+
       const parentModel = await parentCol.getModel(context);
       const childModel = await childCol.getModel(context);
 
-      // many to many relation
-      if (colOpt.type === RelationTypes.MANY_TO_MANY) {
+      if (!parentModel || !childModel) {
+        // Parent or child model is missing - mark relation for removal
+        const ownerModel =
+          parentModel || childModel || (await relationCol.getModel(context));
+        if (ownerModel) {
+          const ownerTable = changes.find(
+            (t) => t.table_name === ownerModel.table_name,
+          );
+          if (ownerTable) {
+            ownerTable.detectedChanges.push({
+              type: MetaDiffType.TABLE_RELATION_REMOVE,
+              msg: `Relation removed (${
+                !parentModel ? 'parent' : 'child'
+              } table missing)`,
+              colId: relationCol.id,
+              column: relationCol,
+            });
+          }
+        }
+        continue;
+      }
+
+      // many to many relation (or any v2 junction-table-based relation)
+      if (isMMOrMMLike(relationCol)) {
         const m2mModel = await colOpt.getMMModel(context);
+
+        if (!m2mModel) {
+          // M2M model is missing - mark relation for removal
+          const ownerTable = changes.find(
+            (t) => t.table_name === childModel.table_name,
+          );
+          if (ownerTable) {
+            ownerTable.detectedChanges.push({
+              type: MetaDiffType.TABLE_VIRTUAL_M2M_REMOVE,
+              msg: `Many to many removed (junction table missing)`,
+              colId: relationCol.id,
+              column: relationCol,
+            });
+          }
+          continue;
+        }
 
         const relatedTable = tableList.find(
           (t) => t.tn === parentModel.table_name,
@@ -337,7 +436,7 @@ export class MetaDiffsService {
             .find((t) => t.table_name === childModel.table_name)
             .detectedChanges.push({
               type: MetaDiffType.TABLE_VIRTUAL_M2M_REMOVE,
-              msg: `Many to many removed(${relatedTable.tn} removed)`,
+              msg: `Many to many removed(${parentModel.table_name} removed)`,
               colId: relationCol.id,
               column: relationCol,
             });
@@ -424,6 +523,36 @@ export class MetaDiffsService {
         } else {
           dbRelation.found[colOpt.type] = true;
         }
+
+        // detect ON DELETE changes on an existing FK — metadata stores
+        // the raw DB rule (uppercased), so normalize both sides the same
+        // way before comparing.
+        const normalizedDbDr = normalizeDr(dbRelation.dr);
+        const normalizedMetaDr = normalizeDr(colOpt.dr);
+        if (normalizedDbDr !== normalizedMetaDr) {
+          changes
+            .find(
+              (t) =>
+                t.table_name ===
+                (colOpt.type === RelationTypes.BELONGS_TO ||
+                (colOpt.type === RelationTypes.ONE_TO_ONE &&
+                  relationCol.meta?.bt)
+                  ? childModel.table_name
+                  : parentModel.table_name),
+            )
+            ?.detectedChanges.push({
+              type: MetaDiffType.TABLE_RELATION_CHANGED,
+              tn: childModel.table_name,
+              rtn: parentModel.table_name,
+              cn: childCol.column_name,
+              rcn: parentCol.column_name,
+              msg: `Relation ON DELETE changed`,
+              colId: relationCol.id,
+              column: relationCol,
+              relationType: colOpt.type as RelationTypes,
+              dr: normalizedDbDr,
+            });
+        }
       } else {
         changes
           .find(
@@ -463,6 +592,7 @@ export class MetaDiffsService {
             msg: `New relation added`,
             relationType: RelationTypes.BELONGS_TO,
             cstn: relation.cstn,
+            dr: normalizeDr(relation.dr),
           });
       }
       if (
@@ -479,6 +609,7 @@ export class MetaDiffsService {
             rcn: relation.rcn,
             msg: `New relation added`,
             relationType: RelationTypes.HAS_MANY,
+            dr: normalizeDr(relation.dr),
           });
       }
     }
@@ -567,7 +698,13 @@ export class MetaDiffsService {
 
         const [oldCol] = oldMeta.columns.splice(oldColIdx, 1);
 
-        if (oldCol.dt !== column.dt) {
+        if (
+          oldCol.dt !== column.dt ||
+          // if mysql and data type is set or enum then compare dtxp as well
+          (['mysql', 'mysql2'].includes(source.type) &&
+            ['set', 'enum'].includes(column.dt) &&
+            column.dtxp !== oldCol.dtxp)
+        ) {
           tableProp.detectedChanges.push({
             type: MetaDiffType.TABLE_COLUMN_TYPE_CHANGE,
             msg: `Column type changed(${column.cn})`,
@@ -630,7 +767,7 @@ export class MetaDiffsService {
     for (const source of base.sources) {
       try {
         // skip meta base
-        if (source.is_meta) continue;
+        if (source.isMeta()) continue;
 
         // @ts-ignore
         const sqlClient = await NcConnectionMgrv2.getSqlClient(source);
@@ -647,7 +784,7 @@ export class MetaDiffsService {
 
   async baseMetaDiff(
     context: NcContext,
-    param: { baseId: string; sourceId: string },
+    param: { baseId: string; sourceId: string; user: UserType },
   ) {
     const base = await Base.getWithInfo(context, param.baseId);
     const source = await Source.get(context, param.sourceId);
@@ -662,19 +799,32 @@ export class MetaDiffsService {
 
   async syncBaseMeta(
     context: NcContext,
-    base: Base,
-    source: Source,
-    throwOnFail = false,
+    {
+      base,
+      source,
+      throwOnFail = false,
+      logger,
+      user,
+    }: {
+      base: Base;
+      source: Source;
+      throwOnFail?: boolean;
+      logger?: (message: string) => void;
+      user: UserType;
+    },
   ) {
-    if (source.is_meta) {
+    if (source.isMeta()) {
       if (throwOnFail) NcError.badRequest('Cannot sync meta source');
       return;
     }
 
     const virtualColumnInsert: Array<() => Promise<void>> = [];
 
+    logger?.(`Getting meta diff for ${source.alias}`);
+
     // @ts-ignore
     const sqlClient = await NcConnectionMgrv2.getSqlClient(source);
+    const sqlUi = SqlUiFactory.create({ client: source.type ?? ClientType.PG });
     const changes = await this.getMetaDiff(context, sqlClient, base, source);
 
     /* Get all relations */
@@ -690,7 +840,15 @@ export class MetaDiffsService {
         );
       });
 
+      if (detectedChanges.length === 0) {
+        logger?.(`No changes detected for ${table_name}`);
+        continue;
+      }
+
+      logger?.(`Applying changes for ${table_name}`);
+
       for (const change of detectedChanges) {
+        logger?.(`Applying change: ${change.msg}`);
         switch (change.type) {
           case MetaDiffType.TABLE_NEW:
             {
@@ -711,6 +869,7 @@ export class MetaDiffsService {
                   source,
                 ),
                 type: ModelTypes.TABLE,
+                user_id: user.id,
               });
 
               for (const column of columns) {
@@ -738,6 +897,7 @@ export class MetaDiffsService {
                 table_name: table_name,
                 title: getTableNameAlias(table_name, base.prefix, source),
                 type: ModelTypes.VIEW,
+                user_id: user.id,
               });
 
               for (const column of columns) {
@@ -793,7 +953,15 @@ export class MetaDiffsService {
                 { client: source.type },
                 {},
               );
-              column.uidt = metaFact.getUIDataType(column);
+
+              // check if new type is compatible with old uidt
+              const allowedDatatypes = sqlUi.getDataTypeListForUiType(column);
+
+              // if UIDT not compatible with new type then change uidt
+              if (!allowedDatatypes?.includes(column.dt)) {
+                column.uidt = metaFact.getUIDataType(column);
+              }
+
               column.title = change.column.title;
               await Column.update(context, change.column.id, column);
             }
@@ -823,6 +991,28 @@ export class MetaDiffsService {
           case MetaDiffType.TABLE_VIRTUAL_M2M_REMOVE:
             await change.column.delete(context);
             break;
+          case MetaDiffType.TABLE_RELATION_CHANGED:
+            {
+              // update the LTAR column's stored dr in place — no column
+              // recreation so filters/views/links keep referencing the
+              // same colId.
+              await Noco.ncMeta.metaUpdate(
+                context.workspace_id,
+                context.base_id,
+                MetaTable.COL_RELATIONS,
+                { dr: change.dr },
+                { fk_column_id: change.colId },
+              );
+              await NocoCache.del(
+                context,
+                `${CacheScope.COL_RELATION}:${change.colId}`,
+              );
+              await NocoCache.del(
+                context,
+                `${CacheScope.COLUMN}:${change.colId}`,
+              );
+            }
+            break;
           case MetaDiffType.TABLE_RELATION_ADD:
             {
               virtualColumnInsert.push(async () => {
@@ -836,6 +1026,17 @@ export class MetaDiffsService {
                   source_id: source.id,
                   table_name: change.tn,
                 });
+
+                // Skip relation creation if either the parent or child table is missing.
+                // This can happen if the database user has access limited to specific tables,
+                // making it unable to create the relation. In such cases, we simply skip.
+                if (!parentModel || !childModel) {
+                  logger?.(
+                    `Skipping relation creation for ${change.tn} and ${change.rtn} because one of the tables is missing or the database user lacks access.`,
+                  );
+                  return;
+                }
+
                 const parentCol = await parentModel
                   .getColumns(context)
                   .then((cols) =>
@@ -853,6 +1054,8 @@ export class MetaDiffsService {
                   system: true,
                 });
 
+                const dr = normalizeDr(change.dr);
+
                 if (change.relationType === RelationTypes.BELONGS_TO) {
                   const title = getUniqueColumnAliasName(
                     childModel.columns,
@@ -868,6 +1071,7 @@ export class MetaDiffsService {
                     fk_child_column_id: childCol.id,
                     virtual: false,
                     fk_index_name: change.cstn,
+                    dr,
                   });
                 } else if (change.relationType === RelationTypes.HAS_MANY) {
                   const title = getUniqueColumnAliasName(
@@ -884,6 +1088,7 @@ export class MetaDiffsService {
                     fk_child_column_id: childCol.id,
                     virtual: false,
                     fk_index_name: change.cstn,
+                    dr,
                     meta: {
                       plural: pluralize(childModel.title),
                       singular: singularize(childModel.title),
@@ -895,26 +1100,44 @@ export class MetaDiffsService {
             break;
         }
       }
+      logger?.(`Changes applied for ${table_name}`);
     }
 
+    logger?.(`Processing virtual column changes`);
+
     await NcHelp.executeOperations(virtualColumnInsert, source.type);
+
+    logger?.(`Virtual column changes applied`);
+
+    logger?.(`Processing many to many relation changes`);
 
     // populate m2m relations
     await this.extractAndGenerateManyToManyRelations(
       context,
       await source.getModels(context),
     );
+
+    logger?.(`Many to many relation changes applied`);
   }
 
-  async metaDiffSync(context: NcContext, param: { baseId: string; req: any }) {
+  async metaDiffSync(
+    context: NcContext,
+    param: { baseId: string; logger?: (message: string) => void; req: any },
+  ) {
     const base = await Base.getWithInfo(context, param.baseId);
     for (const source of base.sources) {
-      await this.syncBaseMeta(context, base, source);
+      await this.syncBaseMeta(context, {
+        base,
+        source,
+        logger: param.logger,
+        user: param.req.user,
+      });
     }
 
     this.appHooksService.emit(AppEvents.META_DIFF_SYNC, {
       base,
       req: param.req,
+      context,
     });
 
     return true;
@@ -925,18 +1148,26 @@ export class MetaDiffsService {
     param: {
       baseId: string;
       sourceId: string;
+      logger?: (message: string) => void;
       req: any;
     },
   ) {
     const base = await Base.getWithInfo(context, param.baseId);
     const source = await Source.get(context, param.sourceId);
 
-    await this.syncBaseMeta(context, base, source, true);
+    await this.syncBaseMeta(context, {
+      base,
+      source,
+      throwOnFail: true,
+      logger: param.logger,
+      user: param.req.user,
+    });
 
     this.appHooksService.emit(AppEvents.META_DIFF_SYNC, {
       base,
       source,
       req: param.req,
+      context,
     });
 
     return true;
@@ -958,7 +1189,7 @@ export class MetaDiffsService {
         );
         if (
           colOpt &&
-          colOpt.type === RelationTypes.MANY_TO_MANY &&
+          isMMOrMMLike(col) &&
           colOpt.fk_mm_model_id === assocModel.id &&
           colOpt.fk_child_column_id === colChildOpt.fk_parent_column_id &&
           colOpt.fk_mm_child_column_id === colChildOpt.fk_child_column_id
@@ -999,12 +1230,23 @@ export class MetaDiffsService {
         normalColumns.length < 5 &&
         assocModel.primaryKeys.length === 2
       ) {
+        // Ensure colOptions are populated
+        if (!belongsToCols[0].colOptions || !belongsToCols[1].colOptions) {
+          // Skip if colOptions are missing (corrupted data)
+          continue;
+        }
+
         const modelA = await belongsToCols[0].colOptions.getRelatedTable(
           context,
         );
         const modelB = await belongsToCols[1].colOptions.getRelatedTable(
           context,
         );
+
+        if (!modelA || !modelB) {
+          // Skip if related models are missing (deleted or corrupted data)
+          continue;
+        }
 
         await modelA.getColumns(context);
         await modelB.getColumns(context);
@@ -1078,6 +1320,11 @@ export class MetaDiffsService {
         for (const btCol of [belongsToCols[0], belongsToCols[1]]) {
           const colOpt = await btCol.colOptions;
           const model = await colOpt.getRelatedTable(context);
+
+          if (!model) {
+            // Skip if related model is missing
+            continue;
+          }
 
           for (const col of await model.getColumns(context)) {
             if (!isLinksOrLTAR(col.uidt)) continue;

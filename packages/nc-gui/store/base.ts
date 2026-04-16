@@ -1,18 +1,14 @@
-import type { BaseType, OracleUi, SourceType, TableType } from 'nocodb-sdk'
+import type { BaseType, SourceType, TableType } from 'nocodb-sdk'
 import { SqlUiFactory } from 'nocodb-sdk'
 import { isString } from '@vue/shared'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 
 export const useBase = defineStore('baseStore', () => {
-  const { $e } = useNuxtApp()
-
   const { api, isLoading } = useApi()
 
   const router = useRouter()
 
   const route = router.currentRoute
-
-  const { setTheme, theme } = useTheme()
 
   const { loadRoles } = useRoles()
 
@@ -20,9 +16,25 @@ export const useBase = defineStore('baseStore', () => {
 
   const forcedProjectId = ref<string>()
 
-  const baseId = computed(() => forcedProjectId.value || (route.value.params.baseId as string))
-
   const basesStore = useBases()
+
+  const managedApp = ref<any>(null)
+
+  const managedAppVersions = ref<any[]>([])
+
+  const managedAppVersionsInfo = computed(() => {})
+
+  const isManagedAppMaster = ref(false)
+
+  const isManagedAppInstaller = ref(false)
+
+  const baseId = computed(() => {
+    // In shared base mode, use activeProjectId from basesStore which has the correct base ID
+    if (route.value.params.typeOrId === 'base') {
+      return forcedProjectId.value || basesStore.activeProjectId || (route.value.params.baseId as string)
+    }
+    return forcedProjectId.value || (route.value.params.baseId as string)
+  })
 
   const tablesStore = useTablesStore()
 
@@ -65,18 +77,30 @@ export const useBase = defineStore('baseStore', () => {
     }
   })
 
+  const isPrivateBase = computed(() => false)
+
+  const showBaseAccessRequestOverlay = computed(() => false)
+
   const sqlUis = computed(() => {
     const temp: Record<string, any> = {}
     for (const source of sources.value) {
       if (source.id) {
-        temp[source.id] = SqlUiFactory.create({ client: source.type }) as Exclude<
-          ReturnType<(typeof SqlUiFactory)['create']>,
-          typeof OracleUi
-        >
+        temp[source.id] = SqlUiFactory.create({ client: source.type })
       }
     }
     return temp
   })
+
+  /**
+   * @Note - Always use this fn inside computed as `sqlUis` is computed property
+   */
+  function getSqlUiBySourceId(sourceId?: string): any {
+    if (sourceId && sqlUis.value[sourceId]) {
+      return sqlUis.value[sourceId]
+    }
+
+    return Object.values(sqlUis.value)[0]
+  }
 
   function getBaseType(sourceId?: string) {
     return sources.value.find((source) => source.id === sourceId)?.type || ClientType.MYSQL
@@ -88,10 +112,6 @@ export const useBase = defineStore('baseStore', () => {
 
   function isSqlite(sourceId?: string) {
     return getBaseType(sourceId) === ClientType.SQLITE
-  }
-
-  function isMssql(sourceId?: string) {
-    return getBaseType(sourceId) === 'mssql'
   }
 
   function isPg(sourceId?: string) {
@@ -197,7 +217,7 @@ export const useBase = defineStore('baseStore', () => {
   }
 
   async function saveTheme(_theme: Partial<ThemeConfig>) {
-    const fullTheme = {
+    /* const fullTheme = {
       primaryColor: theme.value.primaryColor,
       accentColor: theme.value.accentColor,
       ..._theme,
@@ -210,10 +230,9 @@ export const useBase = defineStore('baseStore', () => {
         theme: fullTheme,
       },
     })
-
+*/
     // setTheme(fullTheme)
-
-    $e('c:themes:change')
+    // $e('c:themes:change')
   }
 
   async function hasEmptyOrNullFilters() {
@@ -224,14 +243,24 @@ export const useBase = defineStore('baseStore', () => {
     // base.value = {}
     // tables.value = []
     baseMetaInfo.value = undefined
-    setTheme()
+    // setTheme()
   }
 
   const setProject = (baseVal: BaseType) => {
     sharedProject.value = baseVal
   }
 
-  const baseUrl = ({ id, type: _type, isSharedBase }: { id: string; type: 'database'; isSharedBase?: boolean }) => {
+  const baseUrl = ({
+    id,
+    type: _type,
+    isSharedBase,
+    projectPage,
+  }: {
+    id: string
+    type: 'database'
+    isSharedBase?: boolean
+    projectPage?: ProjectPageType
+  }) => {
     if (isSharedBase) {
       const typeOrId = route.value.params.typeOrId as string
       const baseId = route.value.params.baseId as string
@@ -239,8 +268,18 @@ export const useBase = defineStore('baseStore', () => {
       return `/${typeOrId}/${baseId}`
     }
 
-    return `/nc/${id}`
+    const basUrl = `/nc/${id}`
+
+    if (projectPage) {
+      return `${basUrl}/settings/${baseSettingsTabToSlug[projectPage] || projectPage}`
+    }
+
+    return basUrl
   }
+
+  const loadManagedApp = async () => {}
+
+  const loadCurrentVersion = async () => {}
 
   watch(
     () => route.value.params.baseType,
@@ -261,34 +300,37 @@ export const useBase = defineStore('baseStore', () => {
     },
   )
 
-  const navigateToProjectPage = async ({ page }: { page: 'all-table' | 'collaborator' | 'data-source' }) => {
-    await router.push({
-      name: 'index-typeOrId-baseId-index-index',
-      params: {
-        typeOrId: route.value.params.typeOrId,
-        baseId: route.value.params.baseId,
-      },
-      query: {
-        page,
-      },
-    })
+  const navigateToProjectPage = async ({
+    page,
+    action,
+  }: {
+    page: 'overview' | 'collaborator' | 'data-source'
+    action?: string
+  }) => {
+    const wsId = route.value.params.typeOrId
+    const bId = route.value.params.baseId
+    const slug = baseSettingsTabToSlug[page] || page
+    const query = action ? { action } : undefined
+
+    navigateTo({ path: `/${wsId}/${bId}/settings/${slug}`, query })
   }
 
   return {
     base,
     sources,
     tables,
+    baseId,
     loadRoles,
     loadProject,
     updateProject,
     loadTables,
     isMysql,
-    isMssql,
     isPg,
     isSqlite,
     isSnowflake,
     isDatabricks,
     sqlUis,
+    getSqlUiBySourceId,
     isSharedBase,
     isSharedErd,
     loadProjectMetaInfo,
@@ -306,6 +348,15 @@ export const useBase = defineStore('baseStore', () => {
     getBaseType,
     navigateToProjectPage,
     idUserMap,
+    isPrivateBase,
+    showBaseAccessRequestOverlay,
+    isManagedAppMaster,
+    isManagedAppInstaller,
+    managedApp,
+    loadManagedApp,
+    loadCurrentVersion,
+    managedAppVersions,
+    managedAppVersionsInfo,
   }
 })
 

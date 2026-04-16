@@ -1,7 +1,9 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import type { BaseType, OracleUi, ProjectUserReqType, RequestParams, SourceType } from 'nocodb-sdk'
+import type { BaseType, ProjectUserReqType, RequestParams, SourceType } from 'nocodb-sdk'
 import { SqlUiFactory } from 'nocodb-sdk'
 import { isString } from '@vue/shared'
+import type Record from '~icons/*'
+import { extensionUserPrefsManager } from '~/helpers/extensionUserPrefsManager'
 
 // todo: merge with base store
 export const useBases = defineStore('basesStore', () => {
@@ -12,6 +14,12 @@ export const useBases = defineStore('basesStore', () => {
   const { loadRoles } = useRoles()
 
   const { isUIAllowed } = useRoles()
+
+  const baseCreateMode = ref<NcBaseCreateMode | null>(null)
+
+  const baseRoles = ref<Record<string, any>>({})
+
+  const workspaceBasesMap = ref<Map<string, Map<string, NcProject>>>(new Map())
 
   const bases = ref<Map<string, NcProject>>(new Map())
 
@@ -25,6 +33,9 @@ export const useBases = defineStore('basesStore', () => {
   const router = useRouter()
   const route = router.currentRoute
 
+  const isProjectsLoading = ref(false)
+  const isProjectsLoaded = ref(false)
+
   const activeProjectId = computed(() => {
     if (route.value.params.typeOrId === 'base') {
       return basesList.value?.[0]?.id
@@ -32,6 +43,8 @@ export const useBases = defineStore('basesStore', () => {
 
     return route.value.params.baseId as string | undefined
   })
+
+  const baseHomeSearchQuery = ref<string>('')
 
   const openedProject = computed(() => (activeProjectId.value ? bases.value.get(activeProjectId.value) : undefined))
   const openedProjectBasesMap = computed(() => {
@@ -47,6 +60,13 @@ export const useBases = defineStore('basesStore', () => {
     return basesMap
   })
 
+  const resolvedProject = computed(() => {
+    if (openedProject.value) return openedProject.value
+
+    const lastVisitedBaseId = ncLastVisitedBase().get()
+    return basesList.value?.find((b) => b.id === lastVisitedBaseId) || basesList.value?.[0]
+  })
+
   const isDataSourceLimitReached = computed(() => Number(openedProject.value?.sources?.length) > 9)
 
   const workspaceStore = useWorkspace()
@@ -55,8 +75,6 @@ export const useBases = defineStore('basesStore', () => {
   const { api } = useApi()
 
   const { getBaseUrl } = useGlobal()
-
-  const isProjectsLoading = ref(false)
 
   async function getBaseUsers({ baseId, searchText, force = false }: { baseId: string; searchText?: string; force?: boolean }) {
     if (!baseId) return { users: [], totalRows: 0 }
@@ -108,7 +126,7 @@ export const useBases = defineStore('basesStore', () => {
     await api.auth.baseUserRemove(baseId, user.id)
   }
 
-  const loadProjects = async (page: 'recent' | 'shared' | 'starred' | 'workspace' = 'recent') => {
+  const loadProjects = async (page: 'recent' | 'shared' | 'starred' | 'workspace' = 'recent', _?: string) => {
     // if shared base then get the shared base and create a list
     if (route.value.params.typeOrId === 'base' && route.value.params.baseId) {
       try {
@@ -126,7 +144,7 @@ export const useBases = defineStore('basesStore', () => {
           ...(bases.value.get(base.id!) || {}),
           ...base,
           sources: [...(base.sources ?? bases.value.get(base.id!)?.sources ?? [])],
-          isExpanded: route.value.params.baseId === base.id || bases.value.get(base.id!)?.isExpanded,
+          isExpanded: true,
           isLoading: false,
         })
 
@@ -136,6 +154,8 @@ export const useBases = defineStore('basesStore', () => {
           return router.push('/error/404')
         }
         throw e
+      } finally {
+        isProjectsLoaded.value = true
       }
     }
 
@@ -167,11 +187,14 @@ export const useBases = defineStore('basesStore', () => {
       }, new Map())
 
       await updateIfBaseOrderIsNullOrDuplicate()
-    } catch (e) {
+
+      return _projects
+    } catch (e: any) {
       console.error(e)
-      message.error(e.message)
+      message.error(await extractSdkResponseErrorMsg(e))
     } finally {
       isProjectsLoading.value = false
+      isProjectsLoaded.value = true
     }
   }
 
@@ -182,8 +205,6 @@ export const useBases = defineStore('basesStore', () => {
     if (!base) return false
 
     return tableStore.baseTables.get(baseId)!.length === 0
-
-    return false
   }
 
   function isProjectPopulated(baseId: string) {
@@ -191,6 +212,11 @@ export const useBases = defineStore('basesStore', () => {
     if (!base) return false
 
     return !!(base.sources?.length && tableStore.baseTables.get(baseId))
+  }
+
+  function setProjectsLoaded() {
+    isProjectsLoading.value = false
+    isProjectsLoaded.value = true
   }
 
   // actions
@@ -236,7 +262,7 @@ export const useBases = defineStore('basesStore', () => {
         break
       }
     }
-    return sqlUi as Exclude<ReturnType<(typeof SqlUiFactory)['create']>, typeof OracleUi>
+    return sqlUi
   }
 
   const updateProject = async (baseId: string, baseUpdatePayload: BaseType) => {
@@ -257,7 +283,6 @@ export const useBases = defineStore('basesStore', () => {
   const createProject = async (basePayload: {
     title: string
     workspaceId?: string
-    type: string
     linkedDbProjectIds?: string[]
     meta?: Record<string, unknown>
   }) => {
@@ -283,7 +308,7 @@ export const useBases = defineStore('basesStore', () => {
     await api.base.delete(baseId)
     bases.value.delete(baseId)
     tableStore.baseTables.delete(baseId)
-
+    extensionUserPrefsManager.deleteBase(baseId)
     await loadProjects()
   }
 
@@ -313,17 +338,19 @@ export const useBases = defineStore('basesStore', () => {
     bases.value.clear()
   }
 
-  const navigateToProject = async ({ baseId, page }: { baseId: string; page?: 'collaborators' }) => {
+  const navigateToProject = async ({ baseId, page, query }: { baseId: string; page?: 'collaborators'; query?: any }) => {
     if (!baseId) return
 
     const base = bases.value.get(baseId)
     if (!base) return
 
-    if (page) {
-      return await navigateTo(`/nc/${baseId}?page=${page}`)
-    }
-
-    await navigateTo(`/nc/${baseId}`)
+    return await navigateTo({
+      path: `/nc/${baseId}`,
+      query: {
+        ...(page ? { page } : {}),
+        ...(query || {}),
+      },
+    })
   }
 
   async function updateIfBaseOrderIsNullOrDuplicate() {
@@ -380,7 +407,42 @@ export const useBases = defineStore('basesStore', () => {
 
   const toggleStarred = async (..._args: any) => {}
 
+  watch(
+    () => route.value.params.baseId,
+    () => {
+      baseHomeSearchQuery.value = ''
+    },
+  )
+
+  watch(activeProjectId, () => {
+    ncLastVisitedBase().set(activeProjectId.value)
+  })
+
+  const getBaseRoles = async (_baseId: string) => {
+    // this is a placeholder function
+  }
+
+  /**
+   * Teams section start here
+   */
+  const isLoadingBaseTeams = ref(true)
+
+  const basesTeams = ref<Map<string, Record<string, any>[]>>(new Map())
+
+  const getBaseTeams = async (..._args: any[]) => {}
+
+  const baseTeamList = async (..._args: any[]) => {}
+  const baseTeamGet = async (..._args: any[]) => {}
+  const baseTeamAdd = async (..._args: any[]) => {}
+  const baseTeamUpdate = async (..._args: any[]) => {}
+  const baseTeamRemove = async (..._args: any[]) => {}
+
+  /**
+   * Teams section end here
+   */
+
   return {
+    baseCreateMode,
     bases,
     basesList,
     loadProjects,
@@ -396,6 +458,8 @@ export const useBases = defineStore('basesStore', () => {
     isProjectEmpty,
     isProjectPopulated,
     isProjectsLoading,
+    isProjectsLoaded,
+    setProjectsLoaded,
     activeProjectId,
     openedProject,
     openedProjectBasesMap,
@@ -409,6 +473,21 @@ export const useBases = defineStore('basesStore', () => {
     basesUser,
     clearBasesUser,
     isDataSourceLimitReached,
+    baseHomeSearchQuery,
+    getBaseRoles,
+    baseRoles,
+    workspaceBasesMap,
+
+    // Base Teams
+    isLoadingBaseTeams,
+    basesTeams,
+    getBaseTeams,
+    baseTeamList,
+    baseTeamGet,
+    baseTeamAdd,
+    baseTeamUpdate,
+    baseTeamRemove,
+    resolvedProject,
   }
 })
 

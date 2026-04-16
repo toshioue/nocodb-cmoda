@@ -1,6 +1,7 @@
 <script lang="ts" setup>
-import { storeToRefs } from 'pinia'
 import InfiniteLoading from 'v3-infinite-loading'
+
+const emits = defineEmits(['close'])
 
 const notificationStore = useNotification()
 
@@ -22,29 +23,29 @@ const { unreadNotifications, readNotifications, readPageInfo, unreadPageInfo, no
     :style="!isMobileMode ? 'width: min(80svw, 520px);' : ''"
     :class="{
       'max-h-[70vh] h-[620px]': !isMobileMode,
-      'h-[100svh] w-[100svw]': isMobileMode,
+      'nc-h-screen nc-w-screen': isMobileMode,
     }"
     class="!rounded-lg pt-4"
   >
     <div class="space-y-3">
       <div class="flex px-6 justify-between items-center">
-        <span class="text-md font-bold text-gray-800" @click.stop> {{ $t('general.notification') }}s </span>
+        <span class="text-md font-bold text-nc-content-gray" @click.stop> {{ $t('general.notification') }}s </span>
 
-        <NcButton v-if="isMobileMode" size="small" type="secondary">
-          <GeneralIcon icon="close" class="text-gray-700" />
+        <NcButton v-if="isMobileMode" size="small" type="secondary" @click="emits('close')">
+          <GeneralIcon icon="close" class="text-nc-content-gray-subtle" />
         </NcButton>
       </div>
       <div
         v-if="notificationTab !== 'read'"
         :class="{
-          'text-gray-400': !unreadNotifications?.length,
+          'text-nc-content-gray-disabled': !unreadNotifications?.length,
         }"
-        class="cursor-pointer right-5 pointer-events-auto top-12.5 z-2 absolute text-[13px] text-gray-600 font-weight-semibold"
+        class="cursor-pointer right-5 pointer-events-auto top-12.5 z-2 absolute text-[13px] text-nc-content-gray-subtle2 font-weight-semibold"
         @click.stop="markAllAsRead"
       >
         {{ $t('activity.markAllAsRead') }}
       </div>
-      <NcTabs v-model:activeKey="notificationTab">
+      <NcTabs v-model:active-key="notificationTab">
         <a-tab-pane key="unread">
           <template #tab>
             <span
@@ -53,7 +54,7 @@ const { unreadNotifications, readNotifications, readPageInfo, unreadPageInfo, no
               }"
               class="text-xs"
             >
-              Unread
+              {{ $t('general.unread') }}
             </span>
           </template>
           <div
@@ -65,7 +66,7 @@ const { unreadNotifications, readNotifications, readPageInfo, unreadPageInfo, no
           >
             <template v-if="!unreadNotifications?.length">
               <div class="text-sm !text-gray-500">{{ $t('msg.noNewNotifications') }}</div>
-              <GeneralIcon icon="inbox" class="!text-40px !text-gray-500" />
+              <GeneralIcon icon="inbox" class="!text-40px !text-nc-content-gray-muted" />
             </template>
             <template v-else>
               <NotificationItem v-for="item in unreadNotifications" :key="item.id" :item="item" />
@@ -86,7 +87,7 @@ const { unreadNotifications, readNotifications, readPageInfo, unreadPageInfo, no
               }"
               class="text-xs"
             >
-              Read
+              {{ $t('general.read') }}
             </span>
           </template>
 
@@ -98,8 +99,8 @@ const { unreadNotifications, readNotifications, readPageInfo, unreadPageInfo, no
             }"
           >
             <template v-if="!readNotifications?.length">
-              <div class="text-sm text-gray-500">{{ $t('msg.noNewNotifications') }}</div>
-              <GeneralIcon icon="inbox" class="!text-40px text-gray-500" />
+              <div class="text-sm text-nc-content-gray-muted">{{ $t('msg.noNewNotifications') }}</div>
+              <GeneralIcon icon="inbox" class="!text-40px text-nc-content-gray-muted" />
             </template>
             <template v-else>
               <NotificationItem v-for="item in readNotifications" :key="item.id" :item="item" />

@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import type { editor as MonacoEditor } from 'monaco-editor'
-import { languages, editor as monacoEditor } from 'monaco-editor'
-
+import { initializeMonaco } from '../../lib/monaco'
 import PlaceholderContentWidget from './Placeholder'
 
 interface Props {
@@ -13,8 +11,8 @@ interface Props {
   placeholder?: string
   readOnly?: boolean
   autoFocus?: boolean
-  monacoConfig?: Partial<MonacoEditor.IStandaloneEditorConstructionOptions>
-  monacoCustomTheme?: Partial<MonacoEditor.IStandaloneThemeData>
+  monacoConfig?: any
+  monacoCustomTheme?: any
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -23,43 +21,109 @@ const props = withDefaults(defineProps<Props>(), {
   validate: true,
   disableDeepCompare: false,
   autoFocus: true,
-  monacoConfig: () => ({} as Partial<MonacoEditor.IStandaloneEditorConstructionOptions>),
-  monacoCustomTheme: () => ({} as Partial<MonacoEditor.IStandaloneThemeData>),
+  monacoConfig: () => ({} as any),
+  monacoCustomTheme: () => ({} as any),
 })
 
 const emits = defineEmits(['update:modelValue'])
 
-const { modelValue } = toRefs(props)
+const { modelValue, readOnly } = toRefs(props)
 
-const { hideMinimap, lang, validate, disableDeepCompare, readOnly, autoFocus, monacoConfig, monacoCustomTheme, placeholder } =
-  props
+const { hideMinimap, lang, validate, disableDeepCompare, autoFocus, monacoConfig, monacoCustomTheme, placeholder } = props
 
-const vModel = computed<string>({
+const { isDark } = useTheme()
+
+let isInitialLoad = false
+
+const vModel = computed({
   get: () => {
-    if (typeof modelValue.value === 'object') {
-      return JSON.stringify(modelValue.value, null, 2)
-    } else {
-      return modelValue.value ?? ''
+    const value = modelValue.value
+
+    // If value is null or undefined, return null
+    if (ncIsNull(value) || ncIsUndefined(value)) {
+      return null
     }
+
+    // If value is not a string, convert it to a formatted JSON string
+    if (typeof value !== 'string') {
+      return JSON.stringify(value, null, 2)
+    }
+
+    // Handle JSON-specific cases on the initial load
+    if (lang === 'json' && !isInitialLoad) {
+      try {
+        // if null string, return '"null"'
+        if (value.trim() === 'null') {
+          return '"null"'
+        }
+        // If value is a valid JSON string, leave it as is
+        JSON.parse(value)
+      } catch (e) {
+        // If value is an invalid JSON string, convert it to a JSON string format
+        return JSON.stringify(value)
+      } finally {
+        // Ensure this block runs only once during the initial load
+        isInitialLoad = true
+      }
+    }
+
+    return value
   },
   set: (newVal: string | Record<string, any>) => {
-    if (typeof modelValue.value === 'object') {
-      try {
-        emits('update:modelValue', typeof newVal === 'object' ? newVal : JSON.parse(newVal))
-      } catch (e) {
-        console.error(e)
+    try {
+      // if the new value is null, emit null
+      if (newVal === 'null') {
+        emits('update:modelValue', null)
       }
-    } else {
-      emits('update:modelValue', newVal)
+      // If the current value is an object, attempt to parse and update
+      else if (typeof modelValue.value === 'object') {
+        // If the new value is 'null', emit null
+        const parsedValue = typeof newVal === 'object' ? newVal : JSON.parse(newVal)
+        emits('update:modelValue', parsedValue)
+      } else {
+        // Directly emit new value if it's not an object
+        emits('update:modelValue', newVal)
+      }
+    } catch (e) {
+      console.error('Failed to parse JSON:', e)
     }
   },
 })
 
 const isValid = ref(true)
 
+const error = ref('')
+
 const root = ref<HTMLDivElement>()
 
-let editor: MonacoEditor.IStandaloneCodeEditor
+let editor: any
+
+// Add loading state
+const isLoading = ref(true)
+const loadError = ref(false)
+
+const retryLoad = async () => {
+  loadError.value = false
+  isLoading.value = true
+
+  try {
+    await initializeMonaco()
+    // Dynamically import Monaco Editor
+    const monaco = await import('monaco-editor')
+    const { editor: monacoEditor } = monaco
+
+    // Re-run the initialization logic
+    if (root.value && lang) {
+      monacoEditor.createModel(vModel.value || '', lang)
+      // ... rest of initialization
+      isLoading.value = false
+    }
+  } catch (error) {
+    console.error('Failed to retry Monaco Editor:', error)
+    loadError.value = true
+    isLoading.value = false
+  }
+}
 
 const format = (space = monacoConfig.tabSize || 2) => {
   try {
@@ -73,82 +137,118 @@ const format = (space = monacoConfig.tabSize || 2) => {
 defineExpose({
   format,
   isValid,
+  error,
 })
 
+// ⛔ all top-level awaits come *after* macros
+
+// Make this component async by awaiting Monaco initialization
+await initializeMonaco()
+
 onMounted(async () => {
-  if (root.value && lang) {
-    const model = monacoEditor.createModel(vModel.value, lang)
+  try {
+    await initializeMonaco()
 
-    if (lang === 'json') {
-      // configure the JSON language support with schemas and schema associations
-      languages.json.jsonDefaults.setDiagnosticsOptions({
-        validate: validate as boolean,
-      })
-    }
+    // Dynamically import Monaco Editor
+    const monaco = await import('monaco-editor')
+    const { languages, editor: monacoEditor } = monaco
 
-    let isCustomTheme = false
+    if (root.value && lang) {
+      const model = monacoEditor.createModel(vModel.value || '', lang)
 
-    if (Object.keys(monacoCustomTheme).length) {
-      monacoEditor.defineTheme('custom', monacoCustomTheme)
-      isCustomTheme = true
-    }
-
-    editor = monacoEditor.create(root.value, {
-      model,
-      contextmenu: false,
-      theme: isCustomTheme ? 'custom' : 'vs',
-      foldingStrategy: 'indentation',
-      selectOnLineNumbers: true,
-      language: props.lang,
-      scrollbar: {
-        verticalScrollbarSize: 1,
-        horizontalScrollbarSize: 1,
-      },
-      lineNumbers: 'off',
-      tabSize: monacoConfig.tabSize || 2,
-      automaticLayout: true,
-      readOnly,
-      bracketPairColorization: {
-        enabled: true,
-        independentColorPoolPerBracketType: true,
-      },
-      minimap: {
-        enabled: !hideMinimap,
-      },
-      ...(lang === 'json' ? { detectIndentation: false, insertSpaces: true } : {}),
-      ...monacoConfig,
-    })
-
-    editor.onDidChangeModelContent(async () => {
-      try {
-        isValid.value = true
-
-        if (disableDeepCompare || lang !== 'json') {
-          vModel.value = editor.getValue()
-        } else {
-          const obj = JSON.parse(editor.getValue())
-
-          if (!obj || !deepCompare(vModel.value, obj)) vModel.value = obj
-        }
-      } catch (e) {
-        isValid.value = false
-        console.log(e)
+      if (lang === 'json') {
+        // configure the JSON language support with schemas and schema associations
+        languages.json.jsonDefaults.setDiagnosticsOptions({
+          validate: validate as boolean,
+        })
       }
-    })
 
-    if (placeholder) {
-      // eslint-disable-next-line no-new
-      new PlaceholderContentWidget(placeholder, editor)
+      let isCustomTheme = false
+
+      if (Object.keys(monacoCustomTheme).length) {
+        monacoEditor.defineTheme('custom', monacoCustomTheme as any)
+        isCustomTheme = true
+      }
+
+      editor = monacoEditor.create(root.value, {
+        model,
+        contextmenu: false,
+        theme: isCustomTheme ? 'custom' : isDark.value ? 'vs-dark' : 'vs-light',
+        foldingStrategy: 'indentation',
+        selectOnLineNumbers: true,
+        language: props.lang,
+        scrollbar: {
+          verticalScrollbarSize: 1,
+          horizontalScrollbarSize: 1,
+        },
+        lineNumbers: 'off',
+        tabSize: monacoConfig.tabSize || 2,
+        automaticLayout: true,
+        readOnly: readOnly.value,
+        bracketPairColorization: {
+          enabled: true,
+          independentColorPoolPerBracketType: true,
+        },
+        minimap: {
+          enabled: !hideMinimap,
+        },
+        ...(lang === 'json' ? { detectIndentation: false, insertSpaces: true } : {}),
+        ...monacoConfig,
+      })
+
+      editor.onDidChangeModelContent(async () => {
+        try {
+          isValid.value = true
+          error.value = ''
+
+          if (disableDeepCompare || lang !== 'json') {
+            emits('update:modelValue', editor.getValue())
+          } else {
+            const obj = JSON.parse(editor.getValue())
+
+            if (!obj || !deepCompare(vModel.value, obj)) emits('update:modelValue', obj)
+          }
+        } catch (e) {
+          isValid.value = false
+          const err = await extractSdkResponseErrorMsg(e as Error)
+          error.value = err
+          console.log(err)
+        }
+      })
+
+      if (placeholder) {
+        // eslint-disable-next-line no-new
+        new PlaceholderContentWidget(placeholder, editor)
+      }
+
+      const activeDrawerOrModal = isDrawerOrModalExist()
+
+      if (!activeDrawerOrModal && autoFocus) {
+        // auto focus on json cells only
+        editor.focus()
+      }
+
+      if (activeDrawerOrModal?.classList.contains('json-modal') && autoFocus) {
+        setTimeout(() => {
+          const lineCount = editor.getModel()?.getLineCount() ?? 0
+          const lastLineLength = editor.getModel()?.getLineContent(lineCount).length ?? 0
+          const endPosition = { lineNumber: lineCount, column: lastLineLength + 1 }
+          editor.setPosition(endPosition)
+          editor.revealPositionInCenter(endPosition)
+          editor.focus()
+        }, 200)
+      }
+
+      if (lang === 'json') {
+        format()
+      }
     }
 
-    if (!isDrawerOrModalExist() && autoFocus) {
-      // auto focus on json cells only
-      editor.focus()
-    }
-
-    if (lang === 'json') {
-      format()
-    }
+    isLoading.value = false
+  } catch (error) {
+    console.error('Failed to initialize Monaco Editor:', error)
+    loadError.value = true
+    isLoading.value = false
   }
 })
 
@@ -157,32 +257,60 @@ watch(vModel, (v) => {
 
   const editorValue = editor?.getValue()
   if (!disableDeepCompare && lang === 'json') {
-    if (!editorValue || !deepCompare(JSON.parse(v), JSON.parse(editorValue))) {
-      editor.setValue(v)
+    try {
+      if (!editorValue || !deepCompare(JSON.parse(v), JSON.parse(editorValue))) {
+        editor.setValue(v)
+      }
+    } catch (e) {
+      console.error('Failed to parse JSON:', e)
     }
   } else {
     if (editorValue !== v) editor.setValue(v)
   }
 })
 
-watch(
-  () => readOnly,
-  (v) => {
-    if (!editor) return
+watch(readOnly, (v) => {
+  if (!editor) return
 
-    editor.updateOptions({ readOnly: v })
-  },
-)
+  editor.updateOptions({ readOnly: v })
+})
+
+watch(isDark, async () => {
+  if (Object.keys(monacoCustomTheme).length) return
+  const monaco = await import('monaco-editor')
+  if (isDark.value) {
+    monaco.editor.setTheme('vs-dark')
+  } else {
+    monaco.editor.setTheme('vs-light')
+  }
+})
 </script>
 
 <template>
-  <div ref="root"></div>
+  <div class="relative h-full w-full flex flex-col">
+    <!-- Loading State -->
+    <MonacoLoading v-if="isLoading" class="absolute inset-0" />
+
+    <!-- Error State -->
+    <div v-else-if="loadError" class="absolute inset-0 flex items-center justify-center bg-nc-red-50">
+      <div class="text-center">
+        <div class="text-nc-content-red-dark mb-2">Failed to load Monaco Editor</div>
+        <NcButton @click="retryLoad"> Retry </NcButton>
+      </div>
+    </div>
+
+    <!-- Monaco Editor -->
+    <div ref="root" class="h-full w-full flex-1" :class="{ 'opacity-0': isLoading || loadError }" />
+  </div>
 </template>
 
 <style scoped lang="scss">
 :deep(.monaco-editor) {
   background-color: transparent !important;
   border-radius: 8px !important;
+  .view-line * {
+    font-family: 'DM Mono', monospace !important;
+  }
 }
 
 :deep(.overflow-guard) {

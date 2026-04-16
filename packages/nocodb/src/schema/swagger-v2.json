@@ -39,7 +39,7 @@
   ],
   "servers": [
     {
-      "url": "http://localhost:8080"
+      "url": "https://app.nocodb.com"
     }
   ],
   "paths": {
@@ -1569,7 +1569,6 @@
                         "fk_model_id": "md_5mipbdg6ketmv8",
                         "title": "Sheet-1",
                         "type": 3,
-                        "is_default": true,
                         "show_system_fields": null,
                         "lock_type": "collaborative",
                         "uuid": "24a6d0bb-e45d-4b1a-bfef-f492d870de9f",
@@ -2651,6 +2650,10 @@
                     "roles": {
                       "type": "string",
                       "example": "viewer"
+                    },
+                    "fk_custom_url_id": {
+                      "$ref": "#/components/schemas/StringOrNull",
+                      "description": "ID of custom url"
                     }
                   }
                 },
@@ -2742,8 +2745,7 @@
               "examples": {
                 "Example 1": {
                   "value": {
-                    "roles": "editor",
-                    "password": "password123"
+                    "roles": "viewer"
                   }
                 }
               }
@@ -2794,13 +2796,25 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SharedBaseReq"
+                "allOf":[
+                  {
+                    "$ref": "#/components/schemas/SharedBaseReq"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "custom_url_path": {
+                        "$ref": "#/components/schemas/StringOrNull",
+                        "description": "Custom url path"
+                      }
+                    }
+                  }
+                ]
               },
               "examples": {
                 "Example 1": {
                   "value": {
-                    "password": "password123",
-                    "roles": "editor"
+                    "roles": "viewer"
                   }
                 }
               }
@@ -3268,7 +3282,6 @@
                           },
                           "fk_model_id": "md_rsu68aqjsbyqtl",
                           "id": "vw_p2jcatxz4mvcfw",
-                          "is_default": 1,
                           "lock_type": "collaborative",
                           "meta": {},
                           "order": 1,
@@ -3530,7 +3543,6 @@
                           "fk_model_id": "md_rsu68aqjsbyqtl",
                           "title": "Table1",
                           "type": 3,
-                          "is_default": 1,
                           "show_system_fields": null,
                           "lock_type": "collaborative",
                           "uuid": null,
@@ -4348,7 +4360,6 @@
                           },
                           "fk_model_id": "md_rsu68aqjsbyqtl",
                           "id": "vw_p2jcatxz4mvcfw",
-                          "is_default": 1,
                           "lock_type": "collaborative",
                           "meta": {},
                           "order": 1,
@@ -4949,7 +4960,6 @@
                       "created_at": "2023-03-02 17:46:31",
                       "fk_model_id": "md_mhs9z4r2ak98x0",
                       "id": "vw_lg052cnc1c26kf",
-                      "is_default": 1,
                       "lock_type": "collaborative",
                       "meta": "{\"allowCSVDownload\":true}",
                       "order": 1,
@@ -5179,7 +5189,6 @@
                           "created_at": "2023-03-02 17:46:31",
                           "fk_model_id": "md_mhs9z4r2ak98x0",
                           "id": "vw_lg052cnc1c26kf",
-                          "is_default": 1,
                           "lock_type": "collaborative",
                           "meta": {},
                           "order": 1,
@@ -5301,7 +5310,20 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SharedViewReq"
+                "allOf":[
+                  {
+                    "$ref": "#/components/schemas/SharedViewReq"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "custom_url_path": {
+                        "$ref": "#/components/schemas/StringOrNull",
+                        "description": "Custom url path"
+                      }
+                    }
+                  }
+                ]
               }
             }
           },
@@ -6355,7 +6377,6 @@
                       "fk_model_id": "md_8hr3xndx8umuce",
                       "title": "Grid-1",
                       "type": 3,
-                      "is_default": null,
                       "show_system_fields": null,
                       "lock_type": "collaborative",
                       "uuid": null,
@@ -6630,7 +6651,6 @@
                       "fk_model_id": "md_8hr3xndx8umuce",
                       "title": "Form-1",
                       "type": 1,
-                      "is_default": null,
                       "show_system_fields": null,
                       "lock_type": "collaborative",
                       "uuid": null,
@@ -6931,7 +6951,6 @@
                       "fk_model_id": "md_8hr3xndx8umuce",
                       "title": "Gallery-1",
                       "type": 2,
-                      "is_default": null,
                       "show_system_fields": null,
                       "lock_type": "collaborative",
                       "uuid": null,
@@ -7105,7 +7124,6 @@
                       "fk_model_id": "md_8hr3xndx8umuce",
                       "title": "Kanban-1",
                       "type": 4,
-                      "is_default": null,
                       "show_system_fields": null,
                       "lock_type": "collaborative",
                       "uuid": null,
@@ -7321,7 +7339,6 @@
                       "created_at": "2023-03-02 17:46:31",
                       "fk_model_id": "md_mhs9z4r2ak98x0",
                       "id": "vw_lg052cnc1c26kf",
-                      "is_default": 1,
                       "lock_type": "collaborative",
                       "meta": {},
                       "order": 1,
@@ -8217,7 +8234,6 @@
                           "created_at": "2023-03-02 17:46:31",
                           "fk_model_id": "md_mhs9z4r2ak98x0",
                           "id": "vw_lg052cnc1c26kf",
-                          "is_default": 1,
                           "lock_type": "collaborative",
                           "meta": {},
                           "order": 1,
@@ -8493,7 +8509,6 @@
                           "created_at": "2023-03-02 17:46:31",
                           "fk_model_id": "md_mhs9z4r2ak98x0",
                           "id": "vw_lg052cnc1c26kf",
-                          "is_default": 1,
                           "lock_type": "collaborative",
                           "meta": {},
                           "order": 1,
@@ -8903,7 +8918,8 @@
               "mm",
               "hm",
               "bt",
-              "oo"
+              "oo",
+              "ln"
             ]
           },
           "name": "relationType",
@@ -9072,64 +9088,6 @@
           }
         ],
         "description": "List all nested list data in a given shared view"
-      }
-    },
-    "/api/v2/public/shared-view/{sharedViewUuid}/rows/export/{type}": {
-      "parameters": [
-        {
-          "schema": {
-            "type": "string",
-            "example": "76d44b86-bc65-4500-8956-ab512c80ab25"
-          },
-          "name": "sharedViewUuid",
-          "in": "path",
-          "required": true,
-          "description": "Shared View UUID"
-        },
-        {
-          "schema": {
-            "type": "string",
-            "enum": [
-              "csv",
-              "excel"
-            ],
-            "example": "csv"
-          },
-          "name": "type",
-          "in": "path",
-          "required": true,
-          "description": "Export Type"
-        }
-      ],
-      "get": {
-        "summary": "Export Rows in Share View",
-        "operationId": "public-csv-export",
-        "description": "Export all rows in Share View in a CSV / Excel Format",
-        "wrapped": true,
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/octet-stream": {
-                "schema": {}
-              }
-            },
-            "headers": {
-              "nc-export-offset": {
-                "schema": {
-                  "type": "integer"
-                },
-                "description": "The starting offset of the next set of rows"
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          }
-        },
-        "tags": [
-          "Public", "Internal"
-        ]
       }
     },
     "/api/v2/public/shared-view/{sharedViewUuid}/nested/{columnName}": {
@@ -9433,120 +9391,6 @@
         ],
         "description": "",
         "parameters": []
-      }
-    },
-    "/api/v2/meta/audits": {
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/xc-token"
-        }
-      ],
-      "get": {
-        "summary": "List Audits",
-        "operationId": "utils-audit-list",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "list": {
-                      "x-stoplight": {
-                        "id": "5zto1xohsngbu"
-                      },
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Audit",
-                        "x-stoplight": {
-                          "id": "d22zkup0c0l80"
-                        }
-                      }
-                    }
-                  },
-                  "required": [
-                    "list"
-                  ]
-                },
-                "examples": {
-                  "Example 1": {
-                    "value": {
-                      "list": [
-                        {
-                          "id": "adt_3sii7erfwrlegb",
-                          "user": "w@nocodb.com",
-                          "display_name": "NocoDB",
-                          "ip": null,
-                          "source_id": null,
-                          "base_id": "p_63b4q0qengen1x",
-                          "fk_model_id": "md_5mipbdg6ketmv8",
-                          "row_id": "1",
-                          "op_type": "COMMENT",
-                          "op_sub_type": null,
-                          "status": null,
-                          "description": "bar",
-                          "details": null,
-                          "created_at": "2023-03-13T09:39:14.225Z",
-                          "updated_at": "2023-03-13T09:39:14.225Z"
-                        },
-                        {
-                          "id": "adt_fezs668qbxj8gc",
-                          "user": "w@nocodb.com",
-                          "display_name": "NocoDB",
-                          "ip": null,
-                          "source_id": null,
-                          "base_id": "p_63b4q0qengen1x",
-                          "fk_model_id": "md_5mipbdg6ketmv8",
-                          "row_id": "1",
-                          "op_type": "COMMENT",
-                          "op_sub_type": null,
-                          "status": null,
-                          "description": "foo",
-                          "details": null,
-                          "created_at": "2023-03-13T09:39:13.321Z",
-                          "updated_at": "2023-03-13T09:39:13.321Z"
-                        }
-                      ]
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          }
-        },
-        "description": "List all audits",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "example": "10"
-            },
-            "in": "query",
-            "name": "row_id",
-            "required": true,
-            "description": "Row ID"
-          },
-          {
-            "schema": {
-              "$ref": "#/components/schemas/Id",
-              "example": "md_c6csq89tl37jm5"
-            },
-            "in": "query",
-            "name": "fk_model_id",
-            "required": true,
-            "description": "Foreign Key to Model"
-          },
-          {
-            "$ref": "#/components/parameters/xc-token"
-          }
-        ],
-        "tags": [
-          "Utils", "Internal"
-        ]
       }
     },
     "/api/v2/meta/comments": {
@@ -9888,283 +9732,6 @@
         ]
       }
     },
-    "/api/v2/meta/projects/audits": {
-      "parameters": [
-        {
-          "$ref": "#/components/parameters/xc-auth"
-        }
-      ],
-      "get": {
-        "summary": "List Audits in Project",
-        "operationId": "project-audit-list",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "list": {
-                      "type": "array",
-                      "uniqueItems": true,
-                      "items": {
-                        "$ref": "#/components/schemas/Audit"
-                      }
-                    },
-                    "pageInfo": {
-                      "$ref": "#/components/schemas/Paginated"
-                    }
-                  },
-                  "required": [
-                    "list",
-                    "pageInfo"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          }
-        },
-        "description": "List all audit data in the given project",
-        "parameters": [
-          {
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "in": "query",
-            "name": "offset"
-          },
-          {
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "in": "query",
-            "name": "limit"
-          },
-          {
-            "schema": {
-              "properties": {
-                "created_at": {
-                  "type": "string",
-                  "description": "Sort direction",
-                  "enum": [
-                    "asc",
-                    "desc"
-                  ],
-                  "example": "desc"
-                },
-                "user": {
-                  "type": "string",
-                  "description": "Sort direction",
-                  "enum": [
-                    "asc",
-                    "desc"
-                  ],
-                  "example": "desc"
-                }
-              },
-              "type": "object"
-            },
-            "in": "query",
-            "name": "orderBy"
-          },
-          {
-            "$ref": "#/components/parameters/xc-auth"
-          }
-        ],
-        "tags": [
-          "Utils", "Internal"
-        ]
-      }
-    },
-    "/api/v2/meta/bases/{baseId}/audits": {
-      "parameters": [
-        {
-          "schema": {
-            "$ref": "#/components/schemas/Id",
-            "example": "p_124hhlkbeasewh",
-            "type": "string"
-          },
-          "name": "baseId",
-          "in": "path",
-          "required": true,
-          "description": "Unique Base ID"
-        }
-      ],
-      "get": {
-        "summary": "List Audits in Base",
-        "operationId": "base-audit-list",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "list": {
-                      "type": "array",
-                      "uniqueItems": true,
-                      "items": {
-                        "$ref": "#/components/schemas/Audit"
-                      }
-                    },
-                    "pageInfo": {
-                      "$ref": "#/components/schemas/Paginated"
-                    }
-                  },
-                  "required": [
-                    "list",
-                    "pageInfo"
-                  ]
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          }
-        },
-        "description": "List all audit data in the given base",
-        "parameters": [
-          {
-            "schema": {
-              "type": "integer",
-              "minimum": 0
-            },
-            "in": "query",
-            "name": "offset"
-          },
-          {
-            "schema": {
-              "type": "integer",
-              "minimum": 1
-            },
-            "in": "query",
-            "name": "limit"
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "in": "query",
-            "name": "sourceId"
-          },
-          {
-            "schema": {
-              "properties": {
-                "created_at": {
-                  "type": "string",
-                  "description": "Sort direction",
-                  "enum": [
-                    "asc",
-                    "desc"
-                  ],
-                  "example": "desc"
-                },
-                "user": {
-                  "type": "string",
-                  "description": "Sort direction",
-                  "enum": [
-                    "asc",
-                    "desc"
-                  ],
-                  "example": "desc"
-                }
-              },
-              "type": "object"
-            },
-            "in": "query",
-            "name": "orderBy"
-          },
-          {
-            "$ref": "#/components/parameters/xc-token"
-          }
-        ],
-        "tags": [
-          "Base", "Internal"
-        ]
-      }
-    },
-    "/api/v2/meta/audits/rows/{rowId}/update": {
-      "parameters": [
-        {
-          "schema": {
-            "example": "1"
-          },
-          "name": "rowId",
-          "in": "path",
-          "required": true,
-          "description": "Unique Row ID"
-        }
-      ],
-      "post": {
-        "summary": "Update Audit Row",
-        "operationId": "utils-audit-row-update",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Audit"
-                },
-                "examples": {
-                  "Example 1": {
-                    "value": {
-                      "user": "w@nocodb.com",
-                      "row_id": "1",
-                      "fk_model_id": "md_5mipbdg6ketmv8",
-                      "op_type": "COMMENT",
-                      "description": "Table Sheet-1 : field Column A got changed from foo to bar",
-                      "base_id": "p_63b4q0qengen1x",
-                      "id": "adt_vx58jpp0loo8qy"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/BadRequest"
-          }
-        },
-        "tags": [
-          "Utils", "Internal"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AuditRowUpdateReq"
-              },
-              "examples": {
-                "Example 1": {
-                  "value": {
-                    "column_name": "baz",
-                    "fk_model_id": "md_ehn5izr99m7d45",
-                    "row_id": "1",
-                    "prev_value": "foo",
-                    "value": "bar"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "description": "Update Audit Row",
-        "parameters": [
-          {
-            "$ref": "#/components/parameters/xc-token"
-          }
-        ]
-      }
-    },
     "/api/v2/meta/tables/{tableId}/hooks": {
       "parameters": [
         {
@@ -10419,7 +9986,7 @@
         ]
       }
     },
-    "/api/v2/meta/tables/{tableId}/hooks/samplePayload/{operation}/{version}": {
+    "/api/v2/meta/tables/{tableId}/hooks/samplePayload/{event}/{operation}/{version}": {
       "parameters": [
         {
           "schema": {
@@ -10431,6 +9998,22 @@
           "in": "path",
           "required": true,
           "description": "Unique Table ID"
+        },
+        {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "field",
+              "view",
+              "after",
+              "before",
+              "manual"
+            ]
+          },
+          "name": "event",
+          "in": "path",
+          "required": true,
+          "description": "Hook Event"
         },
         {
           "schema": {
@@ -10454,7 +10037,8 @@
             "type": "string",
             "enum": [
               "v1",
-              "v2"
+              "v2",
+              "v3"
             ]
           },
           "name": "version",
@@ -10877,13 +10461,13 @@
         ]
       }
     },
-    "/api/v2/meta/plugins/{pluginTitle}/status": {
+    "/api/v2/meta/plugins/{pluginId}/status": {
       "parameters": [
         {
           "schema": {
             "type": "string"
           },
-          "name": "pluginTitle",
+          "name": "pluginId",
           "in": "path",
           "required": true,
           "description": "Plugin Title"
@@ -11114,10 +10698,8 @@
                   "client": {
                     "description": "DB Type",
                     "enum": [
-                      "mssql",
                       "mysql",
                       "mysql2",
-                      "oracledb",
                       "pg",
                       "snowflake",
                       "sqlite3",
@@ -11205,7 +10787,7 @@
                       "teleEnabled": false,
                       "errorReportingEnabled": true,
                       "auditEnabled": true,
-                      "ncSiteUrl": "http://localhost:8080",
+                      "ncSiteUrl": "https://app.nocodb.com",
                       "ee": false,
                       "ncAttachmentFieldSize": 20971520,
                       "ncMaxAttachmentsAllowed": 10
@@ -11303,7 +10885,7 @@
                       "teleEnabled": false,
                       "errorReportingEnabled": true,
                       "auditEnabled": true,
-                      "ncSiteUrl": "http://localhost:8080",
+                      "ncSiteUrl": "https://app.nocodb.com",
                       "ee": false,
                       "ncAttachmentFieldSize": 20971520,
                       "ncMaxAttachmentsAllowed": 10,
@@ -11649,6 +11231,20 @@
           },
           {
             "$ref": "#/components/parameters/xc-token"
+          },
+          {
+            "schema": {
+              "enum": [
+                "workspacePics",
+                "profilePics",
+                "organizationPics"
+              ],
+              "type": "string",
+              "example": "workspacePics"
+            },
+            "name": "scope",
+            "in": "query",
+            "description": "The scope of the attachment"
           }
         ],
         "description": "Upload attachment"
@@ -11688,6 +11284,20 @@
           },
           {
             "$ref": "#/components/parameters/xc-token"
+          },
+          {
+            "schema": {
+              "enum": [
+                "workspacePics",
+                "profilePics",
+                "organizationPics"
+              ],
+              "type": "string",
+              "example": "workspacePics"
+            },
+            "name": "scope",
+            "in": "query",
+            "description": "The scope of the attachment"
           }
         ],
         "description": "Upload attachment by URL. Used in Airtable Migration."
@@ -11951,7 +11561,7 @@
             },
             "in": "query",
             "name": "where",
-            "description": "Enables you to define specific conditions for filtering records in your API response. Multiple conditions can be combined using logical operators such as 'and' and 'or'. Each condition consists of three parts: a field name, a comparison operator, and a value.\n\nExample: `where=(field1,eq,value1)~and(field2,eq,value2)` will filter records where 'field1' is equal to 'value1' AND 'field2' is equal to 'value2'. \n\nYou can also use other comparison operators like 'ne' (not equal), 'gt' (greater than), 'lt' (less than), and more, to create complex filtering rules.\n\nIf `viewId` query parameter is also included, then the filters included here will be applied over the filtering configuration defined in the view. \n\nPlease remember to maintain the specified format, and do not include spaces between the different condition components"
+            "description": "Enables you to define specific conditions for filtering records in your API response. Multiple conditions can be combined using logical operators such as 'and' and 'or'. Each condition consists of three parts: a field name, a comparison operator, and a value.\n\nExample: `where=(field1,eq,value1)~and(field2,eq,value2)` will filter records where 'field1' is equal to 'value1' AND 'field2' is equal to 'value2'. \n\nYou can also use other comparison operators like 'neq' (not equal), 'gt' (greater than), 'lt' (less than), and more, to create complex filtering rules.\n\nIf `viewId` query parameter is also included, then the filters included here will be applied over the filtering configuration defined in the view. \n\nPlease remember to maintain the specified format, and do not include spaces between the different condition components"
           },
           {
             "schema": {
@@ -12523,7 +12133,7 @@
             },
             "in": "query",
             "name": "where",
-            "description": "Enables you to define specific conditions for filtering record count in your API response. Multiple conditions can be combined using logical operators such as 'and' and 'or'. Each condition consists of three parts: a field name, a comparison operator, and a value.\n\nExample: `where=(field1,eq,value1)~and(field2,eq,value2)` will filter records where 'field1' is equal to 'value1' AND 'field2' is equal to 'value2'. \n\nYou can also use other comparison operators like 'ne' (not equal), 'gt' (greater than), 'lt' (less than), and more, to create complex filtering rules.\n\nIf `viewId` query parameter is also included, then the filters included here will be applied over the filtering configuration defined in the view. \n\nPlease remember to maintain the specified format, and do not include spaces between the different condition components"
+            "description": "Enables you to define specific conditions for filtering record count in your API response. Multiple conditions can be combined using logical operators such as 'and' and 'or'. Each condition consists of three parts: a field name, a comparison operator, and a value.\n\nExample: `where=(field1,eq,value1)~and(field2,eq,value2)` will filter records where 'field1' is equal to 'value1' AND 'field2' is equal to 'value2'. \n\nYou can also use other comparison operators like 'neq' (not equal), 'gt' (greater than), 'lt' (less than), and more, to create complex filtering rules.\n\nIf `viewId` query parameter is also included, then the filters included here will be applied over the filtering configuration defined in the view. \n\nPlease remember to maintain the specified format, and do not include spaces between the different condition components"
           },
           {
             "$ref": "#/components/parameters/xc-token"
@@ -12622,7 +12232,7 @@
             },
             "in": "query",
             "name": "where",
-            "description": "Enables you to define specific conditions for filtering linked records in your API response. Multiple conditions can be combined using logical operators such as 'and' and 'or'. Each condition consists of three parts: a field name, a comparison operator, and a value.\n\nExample: `where=(field1,eq,value1)~and(field2,eq,value2)` will filter linked records where 'field1' is equal to 'value1' AND 'field2' is equal to 'value2'. \n\nYou can also use other comparison operators like 'ne' (not equal), 'gt' (greater than), 'lt' (less than), and more, to create complex filtering rules.\n\nPlease remember to maintain the specified format, and do not include spaces between the different condition components"
+            "description": "Enables you to define specific conditions for filtering linked records in your API response. Multiple conditions can be combined using logical operators such as 'and' and 'or'. Each condition consists of three parts: a field name, a comparison operator, and a value.\n\nExample: `where=(field1,eq,value1)~and(field2,eq,value2)` will filter linked records where 'field1' is equal to 'value1' AND 'field2' is equal to 'value2'. \n\nYou can also use other comparison operators like 'neq' (not equal), 'gt' (greater than), 'lt' (less than), and more, to create complex filtering rules.\n\nPlease remember to maintain the specified format, and do not include spaces between the different condition components"
           },
           {
             "schema": {
@@ -12648,7 +12258,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -12940,6 +12550,50 @@
         },
         {
           "$ref": "#/components/parameters/xc-token"
+        }
+      ]
+    },
+    "/api/v2/public/export/{publicDataUuid}/{exportAs}": {
+      "post": {
+        "summary": "Trigger export as job",
+        "operationId": "public-export-data",
+        "description": "Trigger export as job",
+        "tags": [
+          "Public"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "parameters": [
+        {
+          "schema": {
+            "$ref": "#/components/schemas/Id",
+            "example": "vw124dflkcvasewh",
+            "type": "string"
+          },
+          "name": "publicDataUuid",
+          "in": "path",
+          "required": true,
+          "description": "Unique View ID"
+        },
+        {
+          "schema": {
+            "type": "string",
+            "enum": [
+              "csv"
+            ]
+          },
+          "name": "exportAs",
+          "in": "path",
+          "required": true,
+          "description": "Export as format"
         }
       ]
     }
@@ -13402,46 +13056,6 @@
           "id": "n44nqsmhm56c7"
         }
       },
-      "AuditRowUpdateReq": {
-        "description": "Model for Audit Row Update Request",
-        "examples": [
-          {
-            "column_name": "baz",
-            "fk_model_id": "md_ehn5izr99m7d45",
-            "row_id": "rec0Adp9PMG9o7uJy",
-            "prev_value": "foo",
-            "value": "bar"
-          }
-        ],
-        "title": "Audit Row Update Request Model",
-        "type": "object",
-        "properties": {
-          "column_name": {
-            "type": "string",
-            "description": "Column Name",
-            "example": "baz"
-          },
-          "fk_model_id": {
-            "type": "string",
-            "description": "Foreign Key to Model",
-            "example": "md_ehn5izr99m7d45"
-          },
-          "row_id": {
-            "type": "string",
-            "example": "rec0Adp9PMG9o7uJy",
-            "description": "Row ID"
-          },
-          "prev_value": {
-            "description": "The previous value before the action"
-          },
-          "value": {
-            "description": "The current value after the action"
-          }
-        },
-        "x-stoplight": {
-          "id": "2fzwvc4m1k5or"
-        }
-      },
       "Source": {
         "description": "Model for Source",
         "examples": [
@@ -13523,10 +13137,8 @@
           "type": {
             "description": "DB Type",
             "enum": [
-              "mssql",
               "mysql",
               "mysql2",
-              "oracledb",
               "pg",
               "snowflake",
               "sqlite3",
@@ -13698,10 +13310,8 @@
           "type": {
             "description": "DB Type",
             "enum": [
-              "mssql",
               "mysql",
               "mysql2",
-              "oracledb",
               "pg",
               "snowflake",
               "sqlite3",
@@ -14014,7 +13624,10 @@
               "Links",
               "User",
               "CreatedBy",
-              "LastModifiedBy"
+              "LastModifiedBy",
+              "Meta",
+              "Colour",
+              "UUID"
             ],
             "type": "string"
           },
@@ -14968,7 +14581,7 @@
             "fk_view_id": "vw_s1pf4umdnikoyn",
             "help": null,
             "id": "fvc_8z1i7t8aswkqxx",
-            "label": "dsdsds",
+            "label": "First name",
             "order": 1,
             "required": false,
             "show": 1,
@@ -15058,7 +14671,7 @@
             "fk_view_id": "vw_s1pf4umdnikoyn",
             "help": null,
             "id": "fvc_8z1i7t8aswkqxx",
-            "label": "dsdsds",
+            "label": "First name",
             "order": 1,
             "required": false,
             "show": 1,
@@ -16372,7 +15985,7 @@
                 },
                 {
                   "id": "sl_ihyva6jx6dg0fc",
-                  "fk_column_id": "cl_g0a89q9xdry3lu",
+                  "fk_column_id": "cl_ga89q9xdry3lu",
                   "title": "a",
                   "color": "#cfdffe",
                   "order": 1,
@@ -16485,7 +16098,9 @@
               "bt",
               "hm",
               "mm",
-              "oo"
+              "oo",
+              "mo",
+              "om"
             ],
             "type": "string",
             "description": "The type of the relationship"
@@ -16534,7 +16149,8 @@
             "order": "string",
             "type": "string",
             "ur": "string",
-            "virtual": true
+            "virtual": true,
+            "version": 2
           }
         ],
         "properties": {
@@ -16584,6 +16200,9 @@
           },
           "ur": {
             "type": "string"
+          },
+          "version": {
+            "type": "number"
           },
           "virtual": {
             "$ref": "#/components/schemas/Bool"
@@ -16935,7 +16554,9 @@
           "GeoData",
           "Geometry",
           "JSON",
-          "SpecificDBType"
+          "SpecificDBType",
+          "Colour",
+          "UUID"
         ],
         "type": "string"
       },
@@ -17455,7 +17076,10 @@
             "type": "string",
             "enum": [
               "hm",
-              "mm"
+              "mm",
+              "om",
+              "mo",
+              "oo"
             ]
           },
           "fk_child_column_id": {
@@ -18811,7 +18435,7 @@
             "type": "number"
           },
           "pageSize": {
-            "description": "The number of pages",
+            "description": "The number of records per page",
             "example": 10,
             "type": "number"
           },
@@ -19212,6 +18836,18 @@
             "description": "Base Title",
             "example": "my-base",
             "type": "string"
+          },
+          "fk_custom_url_id": {
+            "$ref": "#/components/schemas/StringOrNull",
+            "description": "ID of custom url"
+          },
+          "is_sandbox": {
+            "$ref": "#/components/schemas/Bool",
+            "description": "Indicates if the base is a sandbox"
+          },
+          "is_sandbox_master": {
+            "$ref": "#/components/schemas/Bool",
+            "description": "Indicates if the base is a sandbox master"
           }
         },
         "x-stoplight": {
@@ -19351,6 +18987,10 @@
           "meta": {
             "$ref": "#/components/schemas/BaseMeta",
             "description": "Base Meta"
+          },
+          "fk_workspace_id": {
+            "description": "Workspace ID",
+            "type": "string"
           }
         },
         "required": [
@@ -19423,7 +19063,8 @@
               "guest",
               "owner",
               "viewer",
-              "creator"
+              "creator",
+              "inherit"
             ],
             "type": "string",
             "description": "Base User Role"
@@ -19436,6 +19077,40 @@
         "x-stoplight": {
           "id": "3bvgqk9tn16ur"
         }
+      },
+      "ProjectUserUpdateReq": {
+        "description": "Model for Base User Request",
+        "examples": [
+          {
+            "roles": "owner"
+          }
+        ],
+        "title": "Base User Request Model",
+        "type": "object",
+        "properties": {
+          "email": {
+            "format": "email",
+            "type": "string",
+            "description": "Base User Email"
+          },
+          "roles": {
+            "enum": [
+              "no-access",
+              "commenter",
+              "editor",
+              "guest",
+              "owner",
+              "viewer",
+              "creator",
+              "inherit"
+            ],
+            "type": "string",
+            "description": "Base User Role"
+          }
+        },
+        "required": [
+          "roles"
+        ]
       },
       "ProjectUserMetaReq": {
         "description": "Model for Base User Meta Request",
@@ -19645,19 +19320,12 @@
         "description": "Model for Shared Base Request",
         "examples": [
           {
-            "password": "password123",
-            "roles": "editor"
+            "roles": "viewer"
           }
         ],
         "title": "Shared Base Request Model",
         "type": "object",
         "properties": {
-          "password": {
-            "minLength": 8,
-            "type": "string",
-            "description": "Password to protect the base",
-            "example": "password123"
-          },
           "roles": {
             "enum": [
               "commenter",
@@ -19666,7 +19334,7 @@
             ],
             "type": "string",
             "description": "The role given the target user",
-            "example": "editor"
+            "example": "viewer"
           }
         },
         "x-stoplight": {
@@ -19683,7 +19351,6 @@
             "created_at": "2023-03-02 17:46:31",
             "fk_model_id": "md_mhs9z4r2ak98x0",
             "id": "vw_lg052cnc1c26kf",
-            "is_default": 1,
             "lock_type": "collaborative",
             "meta": {},
             "order": 1,
@@ -19721,7 +19388,6 @@
                 "created_at": "2023-03-02 17:46:31",
                 "fk_model_id": "md_mhs9z4r2ak98x0",
                 "id": "vw_lg052cnc1c26kf",
-                "is_default": 1,
                 "lock_type": "collaborative",
                 "meta": {},
                 "order": 1,
@@ -19813,7 +19479,8 @@
         "examples": [
           {
             "meta": {},
-            "password": "123456789"
+            "password": "123456789",
+            "custom_url_path": "feedback-form"
           }
         ],
         "title": "Shared View Request Model",
@@ -20476,7 +20143,6 @@
                 },
                 "fk_model_id": "md_rsu68aqjsbyqtl",
                 "id": "vw_p2jcatxz4mvcfw",
-                "is_default": 1,
                 "lock_type": "collaborative",
                 "meta": {},
                 "order": 1,
@@ -20864,7 +20530,8 @@
             "bio": "foo",
             "location": "Istanbul",
             "created_at": "2019-08-24",
-            "avatar": "https://dummyimage.com/300.png"
+            "avatar": "https://dummyimage.com/300.png",
+            "meta": {}
           }
         ],
         "title": "User Model",
@@ -20914,9 +20581,16 @@
           "avatar": {
             "type": "string"
           },
+          "is_new_user": {
+            "type": "boolean"
+          },
           "token_version": {
             "description": "Access token version",
             "type": "string"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/Meta",
+            "description": "Meta data for user"
           }
         },
         "required": [
@@ -21070,7 +20744,6 @@
             "created_at": "2023-03-02 17:46:31",
             "fk_model_id": "md_mhs9z4r2ak98x0",
             "id": "vw_lg052cnc1c26kf",
-            "is_default": 1,
             "lock_type": "collaborative",
             "meta": {},
             "order": 1,
@@ -21142,10 +20815,6 @@
             "$ref": "#/components/schemas/Bool",
             "description": "Should show system fields in this view?"
           },
-          "is_default": {
-            "$ref": "#/components/schemas/Bool",
-            "description": "Is this view default view for the model?"
-          },
           "title": {
             "description": "View Title",
             "type": "string"
@@ -21177,6 +20846,14 @@
               }
             ],
             "description": "Associated View Model"
+          },
+          "owned_by": {
+            "$ref": "#/components/schemas/Id",
+            "description": "ID of view owner user"
+          },
+          "fk_custom_url_id": {
+            "$ref": "#/components/schemas/StringOrNull",
+            "description": "ID of custom url"
           }
         },
         "required": [
@@ -21438,6 +21115,10 @@
           "show_system_fields": {
             "$ref": "#/components/schemas/Bool",
             "description": "Should this view show system fields?"
+          },
+          "owned_by": {
+            "$ref": "#/components/schemas/Id",
+            "description": "ID of view owner user"
           }
         }
       },
@@ -22010,6 +21691,10 @@
           "title": {
             "type": "string"
           },
+          "sso_only_access": {
+            "description": "SSO only access",
+            "type": "boolean"
+          },
           "updated_at": {}
         },
         "title": "Workspace",
@@ -22083,6 +21768,40 @@
           }
         },
         "type": "object"
+      },
+      "CustomUrl": {
+        "description": "Model for Custom Url",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id associated to the Custom url"
+          },
+          "fk_workspace_id": {
+            "type": "string",
+            "description": "Workspace ID"
+          },
+          "base_id": {
+            "type": "string",
+            "description": "Base ID"
+          },
+          "fk_model_id": {
+            "type": "string",
+            "description": "Model ID"
+          },
+          "view_id": {
+            "type": "string",
+            "description": "View ID"
+          },
+          "original_path": {
+            "type": "string",
+            "description": "Original url used for redirection purpose"
+          },
+          "custom_path": {
+            "type": "string",
+            "description": "Custom url path"
+          }
+        }
       }
     },
     "responses": {
@@ -22375,7 +22094,6 @@
                       "created_at": "2023-03-02 17:46:31",
                       "fk_model_id": "md_mhs9z4r2ak98x0",
                       "id": "vw_lg052cnc1c26kf",
-                      "is_default": 1,
                       "lock_type": "collaborative",
                       "meta": {},
                       "order": 1,
@@ -22524,6 +22242,12 @@
         "type": "apiKey",
         "in": "header",
         "description": "Auth Token is a JWT Token generated based on the logged-in user. By default, the token is only valid for 10 hours. However, you can change the value by defining it using environment variable `NC_JWT_EXPIRES_IN`."
+      },
+      "bearerAuth": {
+        "name": "Authorization",
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Bearer token authentication. Use 'Authorization: Bearer <token>' header format. This is an alternative to the xc-token header."
       },
       "xc-shared-base-id": {
         "name": "Shared Base ID",

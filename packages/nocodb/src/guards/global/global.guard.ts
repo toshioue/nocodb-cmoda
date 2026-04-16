@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { lastValueFrom, Observable } from 'rxjs';
-import { extractRolesObj } from 'nocodb-sdk';
+
 import type { Request } from 'express';
 import type { ExecutionContext } from '@nestjs/common';
 import { JwtStrategy } from '~/strategies/jwt.strategy';
+import { getApiTokenFromHeader } from '~/helpers';
 
 @Injectable()
 export class GlobalGuard extends AuthGuard(['jwt']) {
@@ -17,36 +18,42 @@ export class GlobalGuard extends AuthGuard(['jwt']) {
 
     const req = context.switchToHttp().getRequest();
 
-    if (req.headers?.['xc-auth']) {
+    if (req.headers?.['xc-auth'] || req.cookies?.nc_token) {
       try {
         result = await this.extractBoolVal(super.canActivate(context));
+        if (result && req.context) {
+          req.context.user = {
+            id: req.user.id,
+            email: req.user.email,
+            email_verified: req.user.email_verified,
+          };
+        }
       } catch (e) {
         console.log(e);
       }
     }
 
-    if (result && !req.headers['xc-shared-base-id']) {
-      if (
-        req.path.indexOf('/user/me') === -1 &&
-        req.header('xc-preview') &&
-        ['owner', 'creator'].some((role) => req.user.roles?.[role])
-      ) {
-        return (req.user = {
-          ...req.user,
-          isAuthorized: true,
-          roles: extractRolesObj(req.header('xc-preview')),
-        });
-      }
-    }
-
     if (result) return true;
 
-    if (req.headers['xc-token']) {
+    if (getApiTokenFromHeader(req)) {
       let canActivate = false;
       try {
         const guard = new (AuthGuard('authtoken'))(context);
         canActivate = await this.extractBoolVal(guard.canActivate(context));
       } catch {}
+
+      // If API token validation failed and we have a Bearer token, try OAuth token validation
+      if (
+        !canActivate &&
+        req.headers?.authorization?.toLowerCase().startsWith('bearer ')
+      ) {
+        try {
+          const oauthGuard = new (AuthGuard('oauth-token'))(context);
+          canActivate = await this.extractBoolVal(
+            oauthGuard.canActivate(context),
+          );
+        } catch {}
+      }
 
       if (canActivate) {
         return this.authenticate(req, {
@@ -85,6 +92,14 @@ export class GlobalGuard extends AuthGuard(['jwt']) {
   ): Promise<any> {
     const u = await this.jwtStrategy.validate(req, user);
     req.user = u;
+
+    if (req.context) {
+      req.context.user = {
+        id: req.user.id,
+        email: req.user.email,
+        email_verified: req.user.email_verified,
+      };
+    }
     return true;
   }
 

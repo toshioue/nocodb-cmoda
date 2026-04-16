@@ -1,28 +1,40 @@
 <script lang="ts" setup>
-import { type ViewType } from 'nocodb-sdk'
-import { ViewTypes } from 'nocodb-sdk'
+import { PlanFeatureTypes, PlanTitles, type TableType, ViewTypes, viewTypeAlias } from 'nocodb-sdk'
+import type { NcDropdownPlacement } from '#imports'
 
 const props = defineProps<{
   // Prop used to align the dropdown to the left in sidebar
   alignLeftLevel: number | undefined
   source: Source
+  placement?: NcDropdownPlacement
 }>()
 
 const { $e } = useNuxtApp()
 
 const alignLeftLevel = toRef(props, 'alignLeftLevel')
 
-const { refreshCommandPalette } = useCommandPalette()
 const viewsStore = useViewsStore()
-const { loadViews, navigateToView } = viewsStore
+const { loadViews, onOpenViewCreateModal } = viewsStore
+const { isListViewEnabled } = storeToRefs(viewsStore)
+const { showUpgradeToUseListView } = viewsStore
+
+const { isAiFeaturesEnabled } = useNocoAi()
+
+const { blockListView, blockTimelineView, showEEFeatures, showUpgradeToUseTimelineView } = useEeConfig()
 
 const table = inject(SidebarTableInj)!
 const base = inject(ProjectInj)!
 
 const isViewListLoading = ref(false)
-const toBeCreateType = ref<ViewTypes>()
+const toBeCreateType = ref<ViewTypes | 'AI'>()
 
 const isOpen = ref(false)
+
+const isSqlView = computed(() => (table.value as TableType)?.type === 'view')
+
+const isSyncedTable = computed(() => (table.value as TableType)?.synced)
+
+const isPgSource = computed(() => props.source?.type === 'pg')
 
 const overlayClassName = computed(() => {
   if (alignLeftLevel.value === 1) return 'nc-view-create-dropdown nc-view-create-dropdown-left-1'
@@ -62,7 +74,7 @@ async function onOpenModal({
   coverImageColumnId,
 }: {
   title?: string
-  type: ViewTypes
+  type: ViewTypes | 'AI'
   copyViewId?: string
   groupingFieldColumnId?: string
   calendarRange?: Array<{
@@ -73,114 +85,109 @@ async function onOpenModal({
 }) {
   if (isViewListLoading.value) return
 
+  $e('c:view:create:navdraw', { view: type === 'AI' ? type : viewTypeAlias[type] })
+
   toBeCreateType.value = type
 
   isViewListLoading.value = true
   await loadViews({
-    tableId: table.value.id!,
+    tableId: table.value?.id as string,
+    baseId: base.value.id!,
   })
 
   isOpen.value = false
   isViewListLoading.value = false
 
-  const isDlgOpen = ref(true)
-
-  const { close } = useDialog(resolveComponent('DlgViewCreate'), {
-    'modelValue': isDlgOpen,
+  onOpenViewCreateModal({
     title,
     type,
-    'tableId': table.value.id,
-    'selectedViewId': copyViewId,
-    calendarRange,
+    copyViewId,
     groupingFieldColumnId,
+    calendarRange,
     coverImageColumnId,
-    'onUpdate:modelValue': closeDialog,
-    'onCreated': async (view: ViewType) => {
-      closeDialog()
-
-      refreshCommandPalette()
-
-      await loadViews({
-        tableId: table.value.id!,
-        force: true,
-      })
-
-      table.value.meta = {
-        ...(table.value.meta as object),
-        hasNonDefaultViews: true,
-      }
-
-      navigateToView({
-        view,
-        tableId: table.value.id!,
-        baseId: base.value.id!,
-        doNotSwitchTab: true,
-      })
-
-      $e('a:view:create', { view: view.type })
-    },
+    baseId: base.value.id!,
+    tableId: table.value.id!,
+    sourceId: table.value?.source_id,
   })
-
-  function closeDialog() {
-    isOpen.value = false
-    isDlgOpen.value = false
-
-    close(1000)
-  }
 }
 </script>
 
 <template>
-  <NcDropdown v-model:visible="isOpen" :overlay-class-name="overlayClassName" destroy-popup-on-hide @click.stop="isOpen = true">
+  <NcDropdown
+    v-model:visible="isOpen"
+    :overlay-class-name="overlayClassName"
+    :placement="placement || 'bottomLeft'"
+    destroy-popup-on-hide
+    @click.stop="isOpen = true"
+  >
     <slot />
     <template #overlay>
-      <NcMenu class="max-w-48">
-        <NcMenuItem @click.stop="onOpenModal({ type: ViewTypes.GRID })">
+      <NcMenu class="max-w-fit" variant="small">
+        <NcMenuItem inner-class="w-full" @click.stop="onOpenModal({ type: ViewTypes.GRID })">
           <div class="item" data-testid="sidebar-view-create-grid">
             <div class="item-inner">
               <GeneralViewIcon :meta="{ type: ViewTypes.GRID }" />
-              <div>Grid</div>
+              <div>{{ $t('objects.viewType.grid') }}</div>
             </div>
 
             <GeneralLoader v-if="toBeCreateType === ViewTypes.GRID && isViewListLoading" />
-            <GeneralIcon v-else class="plus" icon="plus" />
           </div>
         </NcMenuItem>
 
-        <NcMenuItem v-if="!source.is_data_readonly" @click="onOpenModal({ type: ViewTypes.FORM })">
-          <div class="item" data-testid="sidebar-view-create-form">
-            <div class="item-inner">
-              <GeneralViewIcon :meta="{ type: ViewTypes.FORM }" />
-              <div>Form</div>
+        <NcTooltip
+          :title="isSyncedTable ? $t('tooltip.formViewCreationNotSupportedForSyncedTable') : $t('tooltip.sourceDataIsReadonly')"
+          :disabled="!source.is_data_readonly && !isSqlView && !isSyncedTable"
+          class="w-full"
+        >
+          <NcMenuItem
+            :disabled="!!source.is_data_readonly || isSqlView || isSyncedTable"
+            inner-class="w-full"
+            @click="onOpenModal({ type: ViewTypes.FORM })"
+          >
+            <div class="item" data-testid="sidebar-view-create-form">
+              <div class="item-inner">
+                <GeneralViewIcon
+                  :meta="{ type: ViewTypes.FORM }"
+                  :class="{
+                    '!opacity-50': !!source.is_data_readonly || isSqlView || isSyncedTable,
+                  }"
+                />
+                <div>{{ $t('objects.viewType.form') }}</div>
+              </div>
+
+              <GeneralLoader v-if="toBeCreateType === ViewTypes.FORM && isViewListLoading" />
             </div>
-
-            <GeneralLoader v-if="toBeCreateType === ViewTypes.FORM && isViewListLoading" />
-            <GeneralIcon v-else class="plus" icon="plus" />
-          </div>
-        </NcMenuItem>
-        <NcMenuItem @click="onOpenModal({ type: ViewTypes.GALLERY })">
+          </NcMenuItem>
+        </NcTooltip>
+        <NcMenuItem inner-class="w-full" @click="onOpenModal({ type: ViewTypes.GALLERY })">
           <div class="item" data-testid="sidebar-view-create-gallery">
             <div class="item-inner">
               <GeneralViewIcon :meta="{ type: ViewTypes.GALLERY }" />
-              <div>Gallery</div>
+              <div>{{ $t('objects.viewType.gallery') }}</div>
             </div>
 
             <GeneralLoader v-if="toBeCreateType === ViewTypes.GALLERY && isViewListLoading" />
-            <GeneralIcon v-else class="plus" icon="plus" />
           </div>
         </NcMenuItem>
-        <NcMenuItem data-testid="sidebar-view-create-kanban" @click="onOpenModal({ type: ViewTypes.KANBAN })">
+        <NcMenuItem
+          inner-class="w-full"
+          data-testid="sidebar-view-create-kanban"
+          @click="onOpenModal({ type: ViewTypes.KANBAN })"
+        >
           <div class="item">
             <div class="item-inner">
               <GeneralViewIcon :meta="{ type: ViewTypes.KANBAN }" />
-              <div>Kanban</div>
+              <div>{{ $t('objects.viewType.kanban') }}</div>
             </div>
 
             <GeneralLoader v-if="toBeCreateType === ViewTypes.KANBAN && isViewListLoading" />
-            <GeneralIcon v-else class="plus" icon="plus" />
           </div>
         </NcMenuItem>
-        <NcMenuItem data-testid="sidebar-view-create-calendar" @click="onOpenModal({ type: ViewTypes.CALENDAR })">
+        <NcMenuItem
+          inner-class="w-full"
+          data-testid="sidebar-view-create-calendar"
+          @click="onOpenModal({ type: ViewTypes.CALENDAR })"
+        >
           <div class="item">
             <div class="item-inner">
               <GeneralViewIcon :meta="{ type: ViewTypes.CALENDAR }" class="!w-4 !h-4" />
@@ -188,31 +195,138 @@ async function onOpenModal({
             </div>
 
             <GeneralLoader v-if="toBeCreateType === ViewTypes.CALENDAR && isViewListLoading" />
-            <GeneralIcon v-else class="plus" icon="plus" />
           </div>
         </NcMenuItem>
+        <NcMenuItem
+          v-if="isEeUI && showEEFeatures"
+          inner-class="w-full"
+          data-testid="sidebar-view-create-map"
+          @click="
+            () => {
+              isOpen = false
+              onOpenModal({ type: ViewTypes.MAP })
+            }
+          "
+        >
+          <div class="item">
+            <div class="item-inner">
+              <GeneralViewIcon :meta="{ type: ViewTypes.MAP }" />
+              <div>{{ $t('objects.viewType.map') }}</div>
+            </div>
+
+            <GeneralLoader v-if="toBeCreateType === ViewTypes.MAP && isViewListLoading" />
+          </div>
+        </NcMenuItem>
+        <NcTooltip
+          v-if="isListViewEnabled"
+          :title="$t('tooltip.listViewOnlyPg')"
+          :disabled="isPgSource"
+          placement="right"
+          class="w-full"
+        >
+          <NcMenuItem
+            :disabled="!isPgSource"
+            inner-class="w-full"
+            data-testid="sidebar-view-create-list"
+            @click="
+              isPgSource &&
+                showUpgradeToUseListView({
+                  successCallback: () => {
+                    onOpenModal({ type: ViewTypes.LIST })
+                  },
+                })
+            "
+          >
+            <div class="item">
+              <div class="item-inner">
+                <GeneralViewIcon :meta="{ type: ViewTypes.LIST }" :class="{ '!opacity-50': !isPgSource }" />
+                <div>{{ $t('objects.viewType.list') }}</div>
+              </div>
+
+              <template v-if="blockListView">
+                <PaymentUpgradeBadge
+                  :feature="PlanFeatureTypes.FEATURE_LIST_VIEW"
+                  :plan-title="PlanTitles.BUSINESS"
+                  remove-click
+                  show-as-lock
+                />
+              </template>
+              <template v-else>
+                <GeneralLoader v-if="toBeCreateType === ViewTypes.LIST && isViewListLoading" />
+              </template>
+            </div>
+          </NcMenuItem>
+        </NcTooltip>
+        <NcMenuItem
+          v-if="isEeUI && showEEFeatures"
+          inner-class="w-full"
+          data-testid="sidebar-view-create-timeline"
+          @click="
+            () => {
+              isOpen = false
+              showUpgradeToUseTimelineView({
+                successCallback: () => {
+                  onOpenModal({ type: ViewTypes.TIMELINE })
+                },
+              })
+            }
+          "
+        >
+          <div class="item">
+            <div class="item-inner">
+              <GeneralViewIcon :meta="{ type: ViewTypes.TIMELINE }" class="!w-4 !h-4" />
+              <div>{{ $t('objects.viewType.timeline') }}</div>
+            </div>
+
+            <template v-if="blockTimelineView">
+              <PaymentUpgradeBadge
+                :feature="PlanFeatureTypes.FEATURE_TIMELINE_VIEW"
+                :plan-title="PlanTitles.BUSINESS"
+                show-as-lock
+                remove-click
+              />
+            </template>
+            <template v-else>
+              <GeneralLoader v-if="toBeCreateType === ViewTypes.TIMELINE && isViewListLoading" />
+            </template>
+          </div>
+        </NcMenuItem>
+
+        <template v-if="isEeUI && showEEFeatures">
+          <!-- Section -->
+          <NcDivider />
+
+          <DashboardTreeViewCreateViewBtnSectionMenu @close="isOpen = false" />
+        </template>
+
+        <template v-if="isAiFeaturesEnabled">
+          <NcDivider />
+          <NcTooltip :title="`Auto suggest views for ${table?.title || 'the current table'}`" placement="right" class="w-full">
+            <NcMenuItem data-testid="sidebar-view-create-ai" @click="onOpenModal({ type: 'AI' })">
+              <div class="item">
+                <div class="item-inner">
+                  <GeneralIcon icon="ncAutoAwesome" class="!w-4 !h-4 text-nc-fill-purple-dark" />
+                  <div>{{ $t('labels.useNocoAI') }}</div>
+                </div>
+              </div>
+            </NcMenuItem>
+          </NcTooltip>
+        </template>
       </NcMenu>
     </template>
   </NcDropdown>
 </template>
 
-<style lang="scss" scoped>
-.item {
-  @apply flex flex-row items-center w-36 justify-between;
-}
-
-.item-inner {
-  @apply flex flex-row items-center gap-x-1.75;
-}
-
-.plus {
-  @apply text-gray-500;
-}
-</style>
-
 <style lang="scss">
 .nc-view-create-dropdown {
-  @apply !max-w-43 !min-w-43;
+  @apply !min-w-43;
+  .item {
+    @apply flex flex-row items-center w-full justify-between gap-x-1.75;
+  }
+
+  .item-inner {
+    @apply flex flex-row items-center gap-x-1.75;
+  }
 }
 
 .nc-view-create-dropdown-left-1 {

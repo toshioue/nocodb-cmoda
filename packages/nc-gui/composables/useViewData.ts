@@ -1,4 +1,4 @@
-import { ViewTypes } from 'nocodb-sdk'
+import { PermissionEntity, PermissionKey, ViewTypes } from 'nocodb-sdk'
 import axios from 'axios'
 import type { Api, ColumnType, FormColumnType, FormType, GalleryType, PaginatedType, TableType, ViewType } from 'nocodb-sdk'
 import type { ComputedRef, Ref } from 'vue'
@@ -20,6 +20,7 @@ export function useViewData(
   const { activeTableId, activeTable } = storeToRefs(tablesStore)
 
   const meta = computed(() => _meta.value || activeTable.value)
+
   const metaId = computed(() => _meta.value?.id || activeTableId.value)
 
   const { t } = useI18n()
@@ -33,6 +34,8 @@ export function useViewData(
   const route = router.currentRoute
 
   const { appInfo, gridViewPageSize } = useGlobal()
+
+  const { isAllowed } = usePermissions()
 
   const appInfoDefaultLimit = gridViewPageSize.value || appInfo.value.defaultLimit || 25
 
@@ -54,17 +57,29 @@ export function useViewData(
 
   const { base } = storeToRefs(useBase())
 
-  const { sharedView, fetchSharedViewData, paginationData: sharedPaginationData } = useSharedView()
+  const { fetchSharedViewData, paginationData: sharedPaginationData } = useSharedView()
 
   const { $api } = useNuxtApp()
 
-  const { sorts, nestedFilters } = useSmartsheetStoreOrThrow()
+  const {
+    sorts,
+    nestedFilters,
+    whereQueryFromUrl,
+    fetchTotalRowsWithSearchQuery,
+    totalRowsWithSearchQuery,
+    totalRowsWithoutSearchQuery,
+    isLocked,
+  } = useSmartsheetStoreOrThrow()
 
   const { isUIAllowed } = useRoles()
 
   const routeQuery = computed(() => route.value.query as Record<string, string>)
 
-  const { isPaginationLoading } = storeToRefs(useViewsStore())
+  const viewStore = useViewsStore()
+
+  const { isPaginationLoading } = storeToRefs(viewStore)
+
+  const { updateViewMeta } = viewStore
 
   const paginationData = computed({
     get: () => (isPublic.value ? sharedPaginationData.value : _paginationData.value),
@@ -96,7 +111,7 @@ export function useViewData(
   async function syncCount() {
     const { count } = await $api.dbViewRow.count(
       NOCO,
-      base?.value?.id as string,
+      meta?.value?.base_id ?? (base?.value?.id as string),
       metaId.value as string,
       viewMeta?.value?.id as string,
     )
@@ -145,9 +160,10 @@ export function useViewData(
     if (!ids?.length || ids?.some((id) => !id)) return
 
     try {
-      aggCommentCount.value = await $api.utils.commentCount({
-        ids,
+      aggCommentCount.value = await $api.internal.getOperation((meta.value as any).fk_workspace_id!, meta.value!.base_id!, {
+        operation: 'commentCount',
         fk_model_id: metaId.value as string,
+        ids,
       })
 
       for (const row of formattedData.value) {
@@ -155,6 +171,70 @@ export function useViewData(
         row.rowMeta.commentCount = +(aggCommentCount.value?.find((c: Record<string, any>) => c.row_id === id)?.count || 0)
       }
     } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const syncViewCountController = ref()
+
+  async function syncViewSearchCount(params: Parameters<Api<any>['dbViewRow']['list']>[4] = {}) {
+    /**
+     * No need to sync view search count if fetchTotalRowsWithSearchQuery is false
+     */
+    if (!fetchTotalRowsWithSearchQuery.value) return
+
+    if (syncViewCountController.value) {
+      syncViewCountController.value.cancel()
+    }
+
+    const CancelToken = axios.CancelToken
+
+    syncViewCountController.value = CancelToken.source()
+
+    try {
+      const response = !isPublic.value
+        ? await api.dbViewRow.list(
+            'noco',
+            base.value.id!,
+            metaId.value!,
+            viewMeta.value!.id!,
+            {
+              ...params,
+              offset: 0,
+              limit: 1,
+              ...(!isUIAllowed('sortSync') || isLocked.value
+                ? {
+                    sortArrJson: stringifyFilterOrSortArr(sorts.value.filter((s: any) => !s.id)),
+                  }
+                : {}),
+              ...(!isUIAllowed('filterSync') || isLocked.value
+                ? {
+                    filterArrJson: stringifyFilterOrSortArr(nestedFilters.value.filter((f: any) => !f.id)),
+                  }
+                : {}),
+              where: whereQueryFromUrl.value as string,
+              include_row_color: true,
+              include_button_filter_columns: true,
+            } as any,
+            {
+              cancelToken: syncViewCountController.value.token,
+            },
+          )
+        : await fetchSharedViewData({
+            offset: 0,
+            limit: 1,
+            sortsArr: sorts.value,
+            filtersArr: nestedFilters.value,
+            where: whereQueryFromUrl.value as string,
+          })
+
+      totalRowsWithoutSearchQuery.value = response.pageInfo?.totalRows ?? 0
+    } catch (e: any) {
+      // if the request is canceled, then do nothing
+      if (e.code === 'ERR_CANCELED') {
+        return
+      }
+      // No need to show error message here
       console.error(e)
     }
   }
@@ -185,16 +265,28 @@ export function useViewData(
             {
               ...queryParams.value,
               ...params,
-              ...(isUIAllowed('sortSync') ? {} : { sortArrJson: JSON.stringify(sorts.value) }),
-              ...(isUIAllowed('filterSync') ? {} : { filterArrJson: JSON.stringify(nestedFilters.value) }),
+              ...(!isUIAllowed('sortSync') || isLocked.value
+                ? {
+                    sortArrJson: stringifyFilterOrSortArr(sorts.value.filter((s: any) => !s.id)),
+                  }
+                : {}),
+              ...(!isUIAllowed('filterSync') || isLocked.value
+                ? {
+                    filterArrJson: stringifyFilterOrSortArr(nestedFilters.value.filter((f: any) => !f.id)),
+                  }
+                : {}),
               where: where?.value,
               ...(excludePageInfo.value ? { excludeCount: 'true' } : {}),
+              include_row_color: true,
+              include_button_filter_columns: true,
             } as any,
             {
               cancelToken: controller.value.token,
             },
           )
         : await fetchSharedViewData({ sortsArr: sorts.value, filtersArr: nestedFilters.value, where: where?.value })
+
+      syncViewSearchCount(params)
     } catch (error) {
       // if the request is canceled, then do nothing
       if (error.code === 'ERR_CANCELED') {
@@ -205,7 +297,7 @@ export function useViewData(
       if (error?.response?.data?.error === 'FORMULA_ERROR') {
         message.error(await extractSdkResponseErrorMsg(error))
 
-        await tablesStore.reloadTableMeta(metaId.value as string)
+        await tablesStore.reloadTableMeta(metaId.value as string, meta.value?.base_id)
 
         return loadData(params, shouldShowLoading)
       }
@@ -215,6 +307,8 @@ export function useViewData(
     }
     formattedData.value = formatData(response.list)
     paginationData.value = response.pageInfo || paginationData.value || {}
+
+    totalRowsWithSearchQuery.value = paginationData.value.totalRows ?? 0
 
     // if public then update sharedPaginationData
     if (isPublic.value) {
@@ -235,13 +329,6 @@ export function useViewData(
     if (viewMeta.value?.type === ViewTypes.GRID) {
       loadAggCommentsCount()
     }
-  }
-
-  async function loadGalleryData() {
-    if (!viewMeta?.value?.id) return
-    galleryData.value = isPublic.value
-      ? (sharedView.value?.view as GalleryType)
-      : await $api.dbView.galleryRead(viewMeta.value.id)
   }
 
   async function changePage(page: number) {
@@ -284,7 +371,10 @@ export function useViewData(
   async function loadFormView() {
     if (!viewMeta?.value?.id) return
     try {
-      const { columns, ...view } = await $api.dbView.formRead(viewMeta.value.id)
+      const { columns, ...view } = await $api.internal.getOperation(base.value!.fk_workspace_id!, base.value!.id!, {
+        operation: 'formViewGet',
+        formViewId: viewMeta.value.id,
+      })
       let order = 1
       const fieldById = (columns || []).reduce((o: Record<string, any>, f: Record<string, any>) => {
         if (order < f.order) {
@@ -315,6 +405,12 @@ export function useViewData(
           order: (fieldById[c.id!] && fieldById[c.id!].order) || order++,
           id: fieldById[c.id!] && fieldById[c.id!].id,
           visible: true,
+          permissions: {
+            isAllowedToEdit: isAllowed(PermissionEntity.FIELD, c.id!, PermissionKey.RECORD_FIELD_EDIT, {
+              isFormView: true,
+            }),
+            label: t('objects.permissions.formViewFieldEditPermissionRestrictionTooltip'),
+          },
         }))
         .sort((a: Record<string, any>, b: Record<string, any>) => a.order - b.order) as Record<string, any>[]
     } catch (e: any) {
@@ -323,9 +419,10 @@ export function useViewData(
   }
 
   async function updateFormView(view: FormType | undefined) {
+    if (!viewMeta?.value?.id || !view || !isUIAllowed('viewFieldEdit')) return
+
     try {
-      if (!viewMeta?.value?.id || !view) return
-      await $api.dbView.formUpdate(viewMeta.value.id, view)
+      await updateViewMeta(viewMeta.value.id, ViewTypes.FORM, view)
     } catch (e: any) {
       return message.error(`${t('msg.error.formViewUpdateFailed')}: ${await extractSdkResponseErrorMsg(e)}`)
     }
@@ -402,7 +499,6 @@ export function useViewData(
     syncCount,
     syncPagination,
     galleryData,
-    loadGalleryData,
     loadFormView,
     formColumnData,
     formViewData,

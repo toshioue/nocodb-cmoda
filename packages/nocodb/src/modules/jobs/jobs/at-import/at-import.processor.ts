@@ -1,6 +1,10 @@
 import moment from 'moment';
-import { SqlUiFactory, UITypes } from 'nocodb-sdk';
-import Airtable from 'airtable';
+import {
+  AuditV1OperationTypes,
+  generateUniqueCopyName,
+  SqlUiFactory,
+  UITypes,
+} from 'nocodb-sdk';
 import hash from 'object-hash';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
@@ -8,13 +12,25 @@ import tinycolor from 'tinycolor2';
 import { isLinksOrLTAR } from 'nocodb-sdk';
 import debug from 'debug';
 import { Injectable, Logger } from '@nestjs/common';
+import PQueue from 'p-queue';
 import { JobsLogService } from '../jobs-log.service';
 import FetchAT from './helpers/fetchAT';
 import { importData } from './helpers/readAndProcessData';
 import EntityMap from './helpers/EntityMap';
+import { ATImportEngine } from './engine';
+import type {
+  AirtableImportFailPayload,
+  AirtableImportPayload,
+  NcRequest,
+} from 'nocodb-sdk';
 import type { Job } from 'bull';
 import type { UserType } from 'nocodb-sdk';
 import type { AtImportJobData } from '~/interface/Jobs';
+import {
+  extractNonSystemProps,
+  generateAuditV1Payload,
+  transformToSnakeCase,
+} from '~/utils';
 import { type Base, Model, Source } from '~/models';
 import { sanitizeColumnName } from '~/helpers';
 import { AttachmentsService } from '~/services/attachments.service';
@@ -34,6 +50,9 @@ import { FormsService } from '~/services/forms.service';
 import { GridColumnsService } from '~/services/grid-columns.service';
 import { TelemetryService } from '~/services/telemetry.service';
 import NcConnectionMgrv2 from '~/utils/common/NcConnectionMgrv2';
+import Noco from '~/Noco';
+import { MetaTable } from '~/utils/globals';
+import { Audit } from '~/models';
 
 const logger = new Logger('at-import');
 
@@ -89,6 +108,7 @@ const selectColors = {
 @Injectable()
 export class AtImportProcessor {
   private readonly debugLog = debug('nc:jobs:at-import');
+  private attachmentQueue = new PQueue({ concurrency: 1 });
 
   constructor(
     private readonly tablesService: TablesService,
@@ -117,13 +137,34 @@ export class AtImportProcessor {
 
     const syncDB = job.data;
 
+    const parentAuditId = await Noco.ncAudit.genNanoid(MetaTable.AUDIT);
     const req = {
       user: {
         id: syncDB.user.id,
         email: syncDB.user.email,
       },
       clientIp: syncDB.clientIp,
-    } as any;
+      ncSourceId: syncDB.sourceId,
+      ncBaseId: syncDB.baseId,
+      ncParentAuditId: parentAuditId,
+    } as NcRequest;
+
+    if (Noco.isEE()) {
+      await Audit.insert(
+        await generateAuditV1Payload<AirtableImportPayload>(
+          AuditV1OperationTypes.AIRTABLE_IMPORT,
+          {
+            context,
+            details: {
+              airtable_sync_id: syncDB.syncId,
+              ...transformToSnakeCase(extractNonSystemProps(syncDB.options)),
+            },
+            req,
+            id: parentAuditId,
+          },
+        ),
+      );
+    }
 
     const sMapEM = new EntityMap('aTblId', 'ncId', 'ncName', 'ncParent');
     await sMapEM.init();
@@ -210,12 +251,25 @@ export class AtImportProcessor {
       }
       atFieldAliasToNcFieldAlias[ncTableTitle][atFieldAlias] = ncFieldAlias;
     };
+    const uniqueTableNameGen = getUniqueNameGenerator('sheet');
 
     const getNcFieldAlias = (ncTableTitle, atFieldAlias) => {
       return atFieldAliasToNcFieldAlias[ncTableTitle][atFieldAlias];
     };
 
-    const uniqueTableNameGen = getUniqueNameGenerator('sheet');
+    // Track existing table names (populate at start with existing tables)
+    const existingTableTitles: string[] = [];
+
+    // Track view names per table (key: tableId, value: array of view names)
+    const viewNamesByTable = new Map<string, string[]>();
+
+    // Helper to get or initialize view names array for a table
+    const getViewNames = (tableId: string): string[] => {
+      if (!viewNamesByTable.has(tableId)) {
+        viewNamesByTable.set(tableId, []);
+      }
+      return viewNamesByTable.get(tableId)!;
+    };
 
     // run time counter (statistics)
     const rtc = {
@@ -258,11 +312,10 @@ export class AtImportProcessor {
 
     const getAirtableSchema = async (sDB) => {
       const start = Date.now();
-
       if (!sDB.shareId)
         throw {
           message:
-            'Invalid Shared Base ID :: Ensure www.airtable.com/<SharedBaseID> is accessible. Refer https://bit.ly/3x0OdXI for details',
+            'Invalid Shared Base ID :: Ensure www.airtable.com/<SharedBaseID> is accessible. Refer https://dub.sh/import-airtable-to-nocodb for details',
         };
 
       if (sDB.shareId.startsWith('exp')) {
@@ -279,13 +332,16 @@ export class AtImportProcessor {
       if (!ft.baseId) {
         throw {
           message:
-            'Invalid Shared Base ID :: Ensure www.airtable.com/<SharedBaseID> is accessible. Refer https://bit.ly/3x0OdXI for details',
+            'Invalid Shared Base ID :: Ensure www.airtable.com/<SharedBaseID> is accessible. Refer https://dub.sh/import-airtable-to-nocodb for details',
         };
       }
 
       const file = ft.schema;
       atBaseId = ft.baseId;
-      atBase = new Airtable({ apiKey: sDB.apiKey }).base(atBaseId);
+      atBase = ATImportEngine.get().atBase({
+        apiKey: sDB.apiKey,
+        baseId: atBaseId,
+      });
       // store copy of airtable schema globally
       g_aTblSchema = file.tableSchemas;
 
@@ -310,7 +366,7 @@ export class AtImportProcessor {
 
     // base mapping table
     const aTblNcTypeMap = {
-      foreignKey: UITypes.Links,
+      foreignKey: UITypes.LinkToAnotherRecord,
       text: UITypes.SingleLineText,
       multilineText: UITypes.LongText,
       richText: UITypes.LongText,
@@ -455,7 +511,7 @@ export class AtImportProcessor {
           for (const [, value] of Object.entries(col.typeOptions.choices)) {
             // max length of option is 255 chars
             // truncate to 255 chars if character if exceeds above 255
-            (value as any).name = (value as any).name?.slice(0, 255);
+            (value as any).name = (value as any).name?.slice(0, 255).trim();
 
             // replace commas with dot for multiselect
             if (col.type === 'multiSelect') {
@@ -513,20 +569,32 @@ export class AtImportProcessor {
           rtc.view.total = tblSchema.length;
         }
 
+        // set tblSchema[i].name to not be duplicated with existing tables
+        tblSchema[i].name = generateUniqueCopyName(
+          tblSchema[i].name,
+          existingTableTitles,
+          { prefix: null, separator: '_', counterFormat: '{counter}' },
+        );
         // Enable to use aTbl identifiers as is: table.id = tblSchema[i].id;
         table.title = tblSchema[i].name;
+        // Track this table name for subsequent imports in this session
+        existingTableTitles.push(table.title);
+
         let sanitizedName = sanitizeColumnName(
           tblSchema[i].name,
           getRootDbType(),
         );
 
-        // truncate to 50 chars if character if exceeds above 50
-        // upto 64 should be fine but we are keeping it to 50 since
-        // meta base adds prefix as well
-        sanitizedName = sanitizedName?.slice(0, 50);
+        // truncate to 47 chars to leave room for _XX suffix (e.g., _2, _10)
+        sanitizedName = sanitizedName?.slice(0, 47);
 
         // check for duplicate and populate a unique name if already exist
         table.table_name = uniqueTableNameGen(sanitizedName);
+
+        // add description to table
+        if (tblSchema[i].description) {
+          table.description = tblSchema[i].description;
+        }
 
         table.columns = [];
 
@@ -581,9 +649,49 @@ export class AtImportProcessor {
             uidt: getNocoType(col),
           };
 
+          // Add description to column
+          if (col?.description) {
+            ncCol.description = col.description;
+          }
+
           // not supported datatype: pure formula field
           // allow formula based computed fields (created time/ modified time to go through)
           if (ncCol.uidt === UITypes.Formula) {
+            if (!syncDB.options.syncFormula) {
+              updateMigrationSkipLog(
+                tblSchema[i].name,
+                ncName.title,
+                col.type,
+                'column type not supported yet',
+              );
+              continue;
+            } else {
+              ncCol.formula = '""';
+              ncCol.formula_raw = '""';
+
+              let formulaTextParsed = col.typeOptions?.formulaTextParsed || '';
+              // Replace any column_*_fldId pattern with the corresponding column title
+              formulaTextParsed = formulaTextParsed.replace(
+                /{column_[^{}]*?_(fld[a-zA-Z0-9]+)}/g,
+                (match, fldId) => {
+                  const colSchema = aTbl_getColumnName(fldId);
+                  return colSchema ? `{${colSchema.cn}}` : match;
+                },
+              );
+              formulaTextParsed = formulaTextParsed.replace(
+                /column_[^{}]*?_(fld[a-zA-Z0-9]+)/g,
+                (match, fldId) => {
+                  const colSchema = aTbl_getColumnName(fldId);
+                  return colSchema ? `{${colSchema.cn}}` : match;
+                },
+              );
+              ncCol.description = formulaTextParsed;
+            }
+          }
+
+          // not supported datatype: pure button field
+          // allow button based fields
+          if (ncCol.uidt === UITypes.Button) {
             updateMigrationSkipLog(
               tblSchema[i].name,
               ncName.title,
@@ -652,10 +760,18 @@ export class AtImportProcessor {
           baseId: ncCreatedProjectSchema.id,
           table: tables[idx],
           user: syncDB.user,
+          req,
         });
         recordPerfStats(_perfStart, 'dbTable.create');
 
         updateNcTblSchema(table);
+
+        // Register table's default grid view in tracking map
+        const viewNames = getViewNames(table.id);
+        const defaultView = table.views?.[0]; // First view is default grid
+        if (defaultView?.title) {
+          viewNames.push(defaultView.title);
+        }
 
         // update mapping table
         await sMap.addToMappingTbl(aTblSchema[idx].id, table.id, table.title);
@@ -687,6 +803,7 @@ export class AtImportProcessor {
             base_roles: {
               owner: true,
             },
+            id: syncDB.user.id,
           },
         });
         recordPerfStats(_perfStart, 'dbView.list');
@@ -788,7 +905,7 @@ export class AtImportProcessor {
               const ncTbl: any = await this.columnsService.columnAdd(context, {
                 tableId: srcTableId,
                 column: {
-                  uidt: UITypes.Links,
+                  uidt: UITypes.LinkToAnotherRecord,
                   title: ncName.title,
                   column_name: ncName.column_name,
                   parentId: srcTableId,
@@ -868,7 +985,7 @@ export class AtImportProcessor {
                 updateMigrationSkipLog(
                   parentTblSchema?.title,
                   ncLinkMappingTable[x].nc.title,
-                  UITypes.Links,
+                  UITypes.LinkToAnotherRecord,
                   'Link error',
                 );
                 continue;
@@ -933,6 +1050,7 @@ export class AtImportProcessor {
                     column_name: ncName.column_name,
                   },
                   user: syncDB.user,
+                  req,
                 },
               );
               recordPerfStats(_perfStart, 'dbTableColumn.update');
@@ -1376,6 +1494,7 @@ export class AtImportProcessor {
           const _perfStart = recordPerfStart();
           await this.columnsService.columnSetAsPrimary(context, {
             columnId: ncColId,
+            req,
           });
           recordPerfStats(_perfStart, 'dbTableColumn.primaryColumnSet');
 
@@ -1441,12 +1560,13 @@ export class AtImportProcessor {
         // retrieve datatype
         const dt = table.columns.find((x) => x.title === key)?.uidt;
 
-        // always process LTAR, Lookup, and Rollup columns as we delete the key after processing
+        // always process LTAR, Lookup, Formula and Rollup columns as we delete the key after processing
         if (
           !value &&
           !isLinksOrLTAR(dt) &&
           dt !== UITypes.Lookup &&
-          dt !== UITypes.Rollup
+          dt !== UITypes.Rollup &&
+          dt !== UITypes.Formula
         ) {
           rec[key] = null;
           continue;
@@ -1516,7 +1636,7 @@ export class AtImportProcessor {
             if (value === '') {
               rec[key] = 'nc_empty';
             }
-            rec[key] = value;
+            rec[key] = value?.trim();
             break;
 
           case UITypes.MultiSelect:
@@ -1525,7 +1645,7 @@ export class AtImportProcessor {
                 if (v === '') {
                   return 'nc_empty';
                 }
-                return `${v.replace(/,/g, '.')}`;
+                return `${v.replace(/,/g, '.').trim()}`;
               })
               .join(',');
             break;
@@ -1533,27 +1653,44 @@ export class AtImportProcessor {
           case UITypes.Attachment:
             if (!syncDB.options.syncAttachment) rec[key] = null;
             else {
-              let tempArr = [];
+              const tempArr = [];
 
               try {
                 logBasic(
-                  ` :: Retrieving attachment :: ${value
+                  ` :: Retrieving ${value?.length || 0} attachment(s) :: ${value
                     ?.map((a) => a.filename?.split('?')?.[0])
                     .join(', ')}`,
                 );
                 const path = `${moment().format('YYYY/MM/DD')}/${hash(
                   syncDB.user.id,
                 )}`;
-                tempArr = await this.attachmentsService.uploadViaURL({
-                  path,
-                  urls: value?.map((attachment) => ({
-                    fileName: attachment.filename?.split('?')?.[0],
-                    url: attachment.url,
-                    size: attachment.size,
-                    mimetype: attachment.type,
-                  })),
-                  req,
-                });
+
+                // Queue each attachment download individually to process one URL at a time
+                for (const attachment of value || []) {
+                  const uploadedAttachment = await this.attachmentQueue.add(
+                    async () => {
+                      const result = await this.attachmentsService.uploadViaURL(
+                        {
+                          path,
+                          urls: [
+                            {
+                              fileName: attachment.filename?.split('?')?.[0],
+                              url: attachment.url,
+                              size: attachment.size,
+                              mimetype: attachment.type,
+                            },
+                          ],
+                          req,
+                        },
+                      );
+                      return result[0]; // uploadViaURL returns an array, we want the first item
+                    },
+                  );
+
+                  if (uploadedAttachment) {
+                    tempArr.push(uploadedAttachment);
+                  }
+                }
               } catch (e) {
                 logger.log(e);
               }
@@ -1563,15 +1700,23 @@ export class AtImportProcessor {
             break;
 
           case UITypes.SingleLineText:
-            // Barcode data
             if (value?.text) {
+              // Barcode data
               rec[key] = value.text;
+            } else if (value?.value) {
+              // AI generated text
+              rec[key] = value.value;
             }
             break;
 
           case UITypes.LongText:
             // eslint-disable-next-line no-control-regex
             rec[key] = value.replace(/\u0000/g, '');
+            break;
+
+          case UITypes.Formula:
+            // we need to delete to avoid writing
+            delete rec[key];
             break;
 
           default:
@@ -1598,7 +1743,7 @@ export class AtImportProcessor {
       const _perfStart = recordPerfStart();
 
       ncCreatedProjectSchema = await this.basesService.baseCreate({
-        base: { title: projName },
+        base: { title: projName, fk_workspace_id: context.workspace_id },
         user: { id: syncDB.user.id },
         req,
       });
@@ -1636,9 +1781,18 @@ export class AtImportProcessor {
 
           // create view
           await getViewData(galleryViews[i].id);
-          const viewName = aTblSchema[idx].views.find(
+          const aView = aTblSchema[idx].views.find(
             (x) => x.id === galleryViews[i].id,
-          )?.name;
+          );
+
+          const viewNames = getViewNames(tblId);
+          const viewName = generateUniqueCopyName(
+            aView?.name || 'Gallery',
+            viewNames,
+            { prefix: null, separator: '_', counterFormat: '{counter}' },
+          );
+          viewNames.push(viewName); // Add to tracking
+          const viewDescription = aView?.description;
 
           logBasic(
             `:: [${configuredViews + i + 1}/${rtc.view.total}] Gallery : ${
@@ -1652,6 +1806,7 @@ export class AtImportProcessor {
             tableId: tblId,
             gallery: {
               title: viewName,
+              description: viewDescription,
             },
             user: syncDB.user,
             req,
@@ -1679,9 +1834,18 @@ export class AtImportProcessor {
 
           // create view
           const vData = await getViewData(formViews[i].id);
-          const viewName = aTblSchema[idx].views.find(
+          const aView = aTblSchema[idx].views.find(
             (x) => x.id === formViews[i].id,
-          )?.name;
+          );
+
+          const viewNames = getViewNames(tblId);
+          const viewName = generateUniqueCopyName(
+            aView?.name || 'Form',
+            viewNames,
+            { prefix: null, separator: '_', counterFormat: '{counter}' },
+          );
+          viewNames.push(viewName); // Add to tracking
+          const viewDescription = aView?.description;
 
           logBasic(
             `:: [${configuredViews + i + 1}/${rtc.view.total}] Form : ${
@@ -1708,6 +1872,7 @@ export class AtImportProcessor {
           const formData = {
             title: viewName,
             heading: viewName,
+            description: viewDescription,
             subheading: desc,
             success_msg: msg,
             submit_another_form: refreshMode.includes('REFRESH_BUTTON'),
@@ -1734,13 +1899,7 @@ export class AtImportProcessor {
           await updateNcTblSchemaById(tblId);
 
           logDetailed(`   Configure show/hide columns`);
-          await nc_configureFields(
-            f.id,
-            vData,
-            aTblSchema[idx].name,
-            viewName,
-            'form',
-          );
+          await nc_configureFields(f.id, vData, aTblSchema[idx].name, 'form');
         }
       }
     };
@@ -1767,9 +1926,19 @@ export class AtImportProcessor {
           const vData = await getViewData(gridViews[i].id);
 
           // retrieve view name & associated NC-ID
-          const viewName = aTblSchema[idx].views.find(
+          const aView = aTblSchema[idx].views.find(
             (x) => x.id === gridViews[i].id,
-          )?.name;
+          );
+
+          const viewNames = getViewNames(tblId);
+          const viewName = generateUniqueCopyName(
+            aView?.name || 'Grid',
+            viewNames,
+            { prefix: null, separator: '_', counterFormat: '{counter}' },
+          );
+          viewNames.push(viewName); // Add to tracking
+          const viewDescription = aView?.description;
+
           const _perfStart = recordPerfStart();
           // const viewList: any = await api.dbView.list(tblId);
           const viewList = { list: [] };
@@ -1802,6 +1971,7 @@ export class AtImportProcessor {
                 tableId: tblId,
                 grid: {
                   title: viewName,
+                  description: viewDescription,
                 },
                 req,
               },
@@ -1823,7 +1993,6 @@ export class AtImportProcessor {
             ncViewId,
             vData,
             aTblSchema[idx].name,
-            viewName,
             'grid',
           );
 
@@ -1852,6 +2021,7 @@ export class AtImportProcessor {
       }
     };
 
+    /* TODO: AT import user handling
     const nocoAddUsers = async (aTblSchema) => {
       const userRoles = {
         owner: 'owner',
@@ -1898,6 +2068,7 @@ export class AtImportProcessor {
         recordPerfStats(_perfStart, 'auth.baseUserAdd');
       }
     };
+    */
 
     const updateNcTblSchema = (tblSchema) => {
       const tblId = tblSchema.id;
@@ -2105,7 +2276,7 @@ export class AtImportProcessor {
         const ncFilters = [];
 
         // logger.log(filter)
-        if (datatype === UITypes.Links) {
+        if (datatype === UITypes.LinkToAnotherRecord) {
           // skip filters for links; Link filters in NocoDB are only rollup counts
           // where-as in airtable, filter can be textual
           updateMigrationSkipLog(
@@ -2231,7 +2402,7 @@ export class AtImportProcessor {
         if (
           datatype === UITypes.Date ||
           datatype === UITypes.DateTime ||
-          datatype === UITypes.Links ||
+          datatype === UITypes.LinkToAnotherRecord ||
           datatype === UITypes.MultiSelect ||
           datatype === UITypes.SingleSelect ||
           datatype === UITypes.SingleLineText ||
@@ -2303,13 +2474,7 @@ export class AtImportProcessor {
       }
     };
 
-    const nc_configureFields = async (
-      _viewId,
-      _c,
-      tblName,
-      viewName,
-      viewType?,
-    ) => {
+    const nc_configureFields = async (viewId, _c, tblName, viewType?) => {
       // force hide PK column
       const hiddenColumns = [ncSysFields.id, ncSysFields.hash];
       const c = _c.columnOrder;
@@ -2317,8 +2482,7 @@ export class AtImportProcessor {
       // column order corrections
       // retrieve table schema
       const ncTbl = await nc_getTableSchema(tblName);
-      // retrieve view ID
-      const viewId = ncTbl.views.find((x) => x.title === viewName).id;
+
       let viewDetails;
 
       const _perfStart = recordPerfStart();
@@ -2356,6 +2520,7 @@ export class AtImportProcessor {
         await this.viewColumnsService.columnUpdate(context, {
           viewId: viewId,
           columnId: ncViewColumnId,
+          internal: true,
           column: {
             show: false,
             order: j + 1 + c.length,
@@ -2414,6 +2579,7 @@ export class AtImportProcessor {
           baseId: syncDB.baseId,
           sourceId: syncDB.sourceId,
           roles: { ...userRole, owner: true },
+          user: { ...req?.user, base_roles: { owner: true } },
         });
         for (const table of tables) {
           await this.tablesService.tableDelete(context, {
@@ -2445,6 +2611,21 @@ export class AtImportProcessor {
         syncDB.sourceId =
           syncDB.sourceId || ncCreatedProjectSchema.sources[0].id;
         logDetailed('Getting existing base meta');
+
+        // Fetch existing table names to prevent duplicates
+        const existingModels = await Model.list(context, {
+          base_id: syncDB.baseId,
+          source_id: syncDB.sourceId,
+        });
+
+        // Populate unique table names array
+        for (const existingModel of existingModels) {
+          uniqueTableNameGen(existingModel.table_name);
+        }
+
+        // Populate existingTableTitles array
+        existingTableTitles.push(...existingModels.map((model) => model.title));
+        logDetailed(`Found ${existingTableTitles.length} existing tables`);
       }
 
       logBasic('Importing Tables...');
@@ -2482,12 +2663,13 @@ export class AtImportProcessor {
       await nocoSetPrimary(aTblSchema);
       logDetailed('Configuring Display Value column completed');
 
+      /* TODO implement user part
       if (syncDB.options.syncUsers) {
         logBasic('Configuring User(s)');
         // add users
         await nocoAddUsers(schema);
         logDetailed('Adding users completed');
-      }
+      } */
 
       // hide-fields
       // await nocoReconfigureFields(aTblSchema);
@@ -2509,6 +2691,7 @@ export class AtImportProcessor {
               baseId: ncCreatedProjectSchema.id,
               sourceId: syncDB.sourceId,
               roles: { ...userRole, owner: true },
+              user: { ...req?.user, base_roles: { owner: true } },
             },
           );
 
@@ -2576,27 +2759,6 @@ export class AtImportProcessor {
                   ]),
                 ],
               );
-            } else if (source.type === 'mssql') {
-              const baseModel = await Model.getBaseModelSQL(context, {
-                id: ncTblList.list[i].id,
-                viewId: null,
-                dbDriver: await NcConnectionMgrv2.get(source),
-              });
-              const res = await baseModel.execAndGetRows(
-                baseModel.dbDriver
-                  .raw(`SELECT MAX(id) as mx FROM ??`, [
-                    baseModel.getTnPath(ncTblList.list[i].table_name),
-                  ])
-                  .toQuery(),
-              );
-
-              await baseModel.dbDriver.raw(
-                `DBCC CHECKIDENT ('??', RESEED, ?)`,
-                [
-                  baseModel.getTnPath(ncTblList.list[i].table_name),
-                  res?.[0]?.mx || 1,
-                ],
-              );
             }
 
             rtc.data.records += importStats.importedCount;
@@ -2615,6 +2777,23 @@ export class AtImportProcessor {
         await generateMigrationStats(aTblSchema);
       }
     } catch (e) {
+      if (Noco.isEE()) {
+        await Audit.insert(
+          await generateAuditV1Payload<AirtableImportFailPayload>(
+            AuditV1OperationTypes.AIRTABLE_IMPORT_ERROR,
+            {
+              context,
+              details: {
+                airtable_sync_id: syncDB.syncId,
+                error: e?.message,
+              },
+              req,
+              id: parentAuditId,
+            },
+          ),
+        );
+      }
+
       // delete tables that were created
       for (const table of ncSchema.tables) {
         await this.tablesService.tableDelete(context, {

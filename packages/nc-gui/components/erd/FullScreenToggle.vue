@@ -5,7 +5,11 @@ import MiFullscreen from '~icons/material-symbols/fullscreen'
 import MiFullscreenExit from '~icons/material-symbols/fullscreen-exit'
 
 const props = defineProps<{
-  config: ERDConfig
+  config:
+    | ERDConfig
+    | {
+        isFullScreen: boolean
+      }
 }>()
 
 const emit = defineEmits(['toggleFullScreen'])
@@ -19,7 +23,11 @@ const toggleFullScreen = () => {
 
 <template>
   <Panel
-    class="text-xs bg-white border-1 rounded-md p-2 border-gray-200 z-50 nc-erd-histogram cursor-pointer hover:bg-gray-100 shadow-md"
+    class="text-xs rounded-md p-2 z-50 nc-erd-histogram cursor-pointer shadow-md transition-colors"
+    :class="{
+      'text-white bg-nc-brand-500 md:(hover:bg-nc-brand-600)': config.isFullScreen,
+      'border-1 border-nc-border-gray-medium bg-nc-bg-default hover:bg-nc-bg-gray-light': !config.isFullScreen,
+    }"
     :position="PanelPosition.BottomRight"
   >
     <div class="flex">

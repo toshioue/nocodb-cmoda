@@ -9,11 +9,12 @@ const props = defineProps<{
   size?: 'xsmall' | 'small' | 'medium' | 'large' | 'xlarge'
   readonly?: boolean
   disableClearing?: boolean
+  containerClass?: string
 }>()
 
 const emit = defineEmits(['emojiSelected'])
 
-const { emoji: initialEmoji, size = 'medium', readonly } = props
+const { emoji: initialEmoji, size = 'medium', readonly, containerClass } = props
 
 const clearable = computed(() => {
   return !props.disableClearing && !readonly
@@ -39,10 +40,6 @@ function selectEmoji(_emoji: any) {
   isOpen.value = false
 }
 
-const isUnicodeEmoji = computed(() => {
-  return emojiRef.value?.match(/\p{Extended_Pictographic}/gu)
-})
-
 const onClick = (e: Event) => {
   if (readonly) return
 
@@ -58,44 +55,45 @@ const clearEmoji = () => {
   isOpen.value = false
 }
 
-// Due to calculation of dropdown position by ant dropdown, we need to delay the isOpen change
-// otherwise dropdown opening will be slow
-const debounceIsOpen = ref(false)
-watch(isOpen, () => {
-  if (!isOpen.value) {
-    debounceIsOpen.value = isOpen.value
-    return
-  }
-
-  setTimeout(() => {
-    debounceIsOpen.value = isOpen.value
-  }, 10)
-})
-
 const showClearButton = computed(() => {
   return !!emojiRef.value && clearable.value
+})
+
+watch(isOpen, (val) => {
+  if (!val) return
+  nextTick(() => {
+    setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('.emoji-mart-search input')
+      if (!input) return
+      input.focus()
+      input.select()
+    }, 250)
+  })
 })
 </script>
 
 <template>
-  <a-dropdown v-model:visible="isOpen" :trigger="['click']" :disabled="readonly">
+  <NcDropdown v-model:visible="isOpen" :disabled="readonly" destroy-popup-on-hide overlay-class-name="overflow-hidden">
     <div
       class="flex-none flex flex-row justify-center items-center select-none rounded-md nc-emoji"
-      :class="{
-        'hover:bg-gray-500 hover:bg-opacity-15 cursor-pointer': !readonly,
-        'bg-gray-500 bg-opacity-15': isOpen,
-        'h-4 w-4 text-[16px] leading-4': size === 'xsmall',
-        'h-6 w-6 text-lg': size === 'small',
-        'h-8 w-8 text-xl': size === 'medium',
-        'h-10 w-10 text-2xl': size === 'large',
-        'h-14 w-16 text-5xl': size === 'xlarge',
-      }"
+      :class="[
+        {
+          'hover:bg-gray-500 hover:bg-opacity-15 cursor-pointer': !readonly,
+          'bg-gray-500 bg-opacity-15': isOpen,
+          'h-4 w-4 text-[16px] leading-4': size === 'xsmall',
+          'h-6 w-6 text-lg': size === 'small',
+          'h-8 w-8 text-xl': size === 'medium',
+          'h-10 w-10 text-2xl': size === 'large',
+          'h-14 w-16 text-5xl': size === 'xlarge',
+        },
+        containerClass,
+      ]"
       @click="onClick"
     >
       <template v-if="!emojiRef">
-        <slot name="default" />
+        <slot name="default" :is-open="isOpen" />
       </template>
-      <template v-else-if="isUnicodeEmoji">
+      <template v-else-if="isUnicodeEmoji(emojiRef)">
         {{ emojiRef }}
       </template>
       <template v-else>
@@ -109,22 +107,21 @@ const showClearButton = computed(() => {
           clearable: showClearButton,
         }"
       >
-        <div v-if="!debounceIsOpen" class="h-105 w-90"></div>
         <Picker
-          v-else
           :data="emojiIndex"
           :native="true"
           :show-preview="false"
           color="#40444D"
           :auto-focus="true"
+          class="nc-emoji-picker"
           @select="selectEmoji"
           @click.stop="() => {}"
         >
         </Picker>
-        <div v-if="debounceIsOpen && showClearButton" class="absolute top-10 right-1.5">
+        <div v-if="showClearButton" class="absolute top-10 right-1.5">
           <div
             role="button"
-            class="flex flex-row items-center bg-white border-1 border-gray-100 py-0.5 px-2.5 rounded hover:bg-gray-100 cursor-pointer"
+            class="flex flex-row items-center h-[32px] -mt-[1px] bg-nc-bg-default border-1 border-nc-border-gray-light py-0.5 px-2.5 rounded hover:bg-nc-bg-gray-light cursor-pointer"
             @click="clearEmoji"
           >
             Remove
@@ -132,7 +129,7 @@ const showClearButton = computed(() => {
         </div>
       </div>
     </template>
-  </a-dropdown>
+  </NcDropdown>
 </template>
 
 <style lang="scss">
@@ -141,15 +138,33 @@ const showClearButton = computed(() => {
     @apply pr-22;
   }
 }
-.emoji-mart {
-  @apply !w-90;
+.nc-emoji-picker.emoji-mart {
+  @apply !w-90 bg-transparent border-none;
+
+  .emoji-mart-bar {
+    @apply border-b-nc-border-gray-medium;
+  }
+
+  .emoji-mart-category .emoji-mart-emoji:hover:before,
+  .emoji-mart-emoji-selected:before {
+    @apply bg-nc-bg-gray-medium;
+  }
 
   span.emoji-type-native {
     @apply cursor-pointer;
   }
 
   .emoji-mart-anchor {
-    @apply h-8 py-1.5;
+    @apply h-8 py-1.5 dark:text-nc-content-gray-muted;
+
+    &.emoji-mart-anchor-selected {
+      @apply dark:!text-nc-content-gray;
+
+      .emoji-mart-anchor-bar {
+        @apply dark:!bg-nc-gray-400;
+      }
+    }
+
     svg {
       @apply h-3.5 !important;
     }
@@ -157,10 +172,10 @@ const showClearButton = computed(() => {
 
   .emoji-mart-search {
     input {
-      @apply text-sm pl-3.5 rounded;
-      // Remove focus outline
+      @apply text-sm pl-[11px] rounded-lg !py-5px transition-all duration-300 !outline-none ring-0;
+
       &:focus {
-        @apply !outline-none border-0 mt-0.2 mb-0.2;
+        @apply !outline-none ring-0 shadow-selected border-primary;
       }
     }
   }
@@ -169,7 +184,7 @@ const showClearButton = computed(() => {
     @apply mt-1 px-1 overflow-x-hidden;
 
     h3.emoji-mart-category-label {
-      @apply text-xs text-gray-500 mb-0;
+      @apply text-xs text-nc-content-gray-muted bg-nc-bg-default mb-0;
     }
 
     .emoji-mart-category {
@@ -178,34 +193,9 @@ const showClearButton = computed(() => {
   }
 
   .emoji-mart-scroll {
-    overflow-y: overlay;
+    @apply nc-scrollbar-thin;
 
-    &::-webkit-scrollbar {
-      width: 3px;
-    }
-    &::-webkit-scrollbar-track {
-      background: #f6f6f600 !important;
-    }
-    &::-webkit-scrollbar-thumb {
-      background: #f6f6f600;
-    }
-    &::-webkit-scrollbar-thumb:hover {
-      background: #f6f6f600;
-    }
-  }
-  .emoji-mart-scroll:hover {
-    &::-webkit-scrollbar {
-      width: 3px;
-    }
-    &::-webkit-scrollbar-track {
-      background: #f6f6f600 !important;
-    }
-    &::-webkit-scrollbar-thumb {
-      background: rgb(215, 215, 215);
-    }
-    &::-webkit-scrollbar-thumb:hover {
-      background: rgb(203, 203, 203);
-    }
+    overflow-y: overlay;
   }
 
   .emoji-mart-emoji {

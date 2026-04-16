@@ -1,11 +1,15 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
+if [ "$1" == '--debug' ]; then
+	set -x
+fi
 
 set -e
-
 # Constants
-NOCO_HOME="./nocodb"
-CURRENT_PATH=$(pwd)
+NOCO_HOME="$(pwd)/nocodb"
 REQUIRED_PORTS=(80 443)
+state_file="$NOCO_HOME/noco.state"
+state_dlim="|"
 
 # Color definitions
 RED='\033[0;31m'
@@ -44,6 +48,111 @@ print_info() { print_color "$BLUE" "INFO: $1"; }
 print_success() { print_color "$GREEN" "SUCCESS: $1"; }
 print_warning() { print_color "$YELLOW" "WARNING: $1"; }
 print_error() { print_color "$RED" "ERROR: $1"; }
+
+die() {
+	: "${1:?}"
+
+	command -v notify-send >/dev/null &&
+		notify-send "upstall" "$1"
+
+	printf "\033[31;1merr: %b\033[0m\n" "$1"
+	exit "${2:-1}"
+}
+
+trim() {
+	: "${1:?}"
+
+	_trimstr="${1#"${1%%[![:space:]]*}"}"
+	_trimstr="${_trimstr%"${_trimstr##*[![:space:]]}"}"
+
+	echo "$_trimstr"
+}
+
+kvstore_get() {
+	# usage kvstore_get [ getval <key> ]
+	line=
+	_key=
+	_value=
+
+	[ -s "$state_file" ] || return 1
+
+	while read -r line; do
+		[ -z "$line" ] && continue
+
+		_key="${line%%"$state_dlim"*}"
+		_key="$(trim "$_key")"
+
+		case "$_key" in
+		\#*) continue ;;
+		esac
+
+		if [ "$1" = "getval" ]; then
+			[ "$2" != "$_key" ] && continue
+
+			_value="${line##*"$state_dlim"}"
+			_value="$(trim "$_value")"
+			echo "$_value"
+			return 0
+		else
+			echo "$_key"
+		fi
+	done <"$state_file"
+
+	unset _key _value
+	[ "$1" = "getval" ] && return 1
+}
+
+kvstore_rm() {
+	# usage kvstore_rm <key>
+	: "${1:?}"
+	cl=
+	line=
+	file=
+	old_ifs="$IFS"
+
+	IFS=
+	while read -r line; do
+		cl="$line\n"
+
+		key="$(trim "${cl%%"$state_dlim"*}")"
+		# catch match
+		if [ "$key" = "$1" ]; then
+			continue
+		fi
+
+		file="${file}${cl}"
+	done <"$state_file"
+
+	IFS="$old_ifs"
+	# shellcheck disable=SC2059
+	printf "$file" >"$state_file"
+	unset cl line file value old_ifs
+}
+
+kvstore_valverify() {
+	# kvstore_valverify <value>
+
+	case "$1" in
+	*"\n"* | *$state_dlim*) return 1 ;;
+	esac
+}
+
+kvstore_set() {
+	# kvstore_set <key> <value>
+	: "${1:?}"
+	: "${2:?}"
+
+	key="$(echo "$1" | tr -d "$state_dlim")"
+	key="$(trim "$key")"
+	val="$(trim "$2")"
+
+	kvstore_get getval "$key" >/dev/null &&
+		die "keys must be unique"
+	kvstore_valverify "$val" ||
+		die "invalid: $val"
+
+	echo "${key:?} $state_dlim $val" >>"$state_file"
+}
 
 print_box_message() {
 	local message=("$@")
@@ -91,7 +200,12 @@ urlencode() {
 }
 
 generate_password() {
-	openssl rand -base64 48 | tr -dc 'a-zA-Z0-9_+*' | head -c 32
+	if ! pass="$(kvstore_get getval generated_password)"; then
+		pass="$(tr -dc A-Za-z0-9 </dev/urandom | head -c 32)"
+		kvstore_set generated_password "$pass"
+	fi
+
+	echo "$pass"
 }
 
 get_public_ip() {
@@ -105,28 +219,28 @@ get_public_ip() {
 		fi
 	fi
 
-	# Method 2: Using curl
-	if command -v curl >/dev/null 2>&1; then
-		ip=$(curl -s -4 https://ifconfig.co 2>/dev/null)
-		if [ -n "$ip" ]; then
-			echo "$ip"
-			return
-		fi
-	fi
-
-	# Method 3: Using wget
-	if command -v wget >/dev/null 2>&1; then
-		ip=$(wget -qO- https://ifconfig.me 2>/dev/null)
-		if [ -n "$ip" ]; then
-			echo "$ip"
-			return
-		fi
-	fi
-
-	# Method 4: Using host
+	# Method 2: Using host
 	if command -v host >/dev/null 2>&1; then
 		ip=$(host myip.opendns.com resolver1.opendns.com 2>/dev/null | grep "myip.opendns.com has" | awk '{print $4}')
 		if [ -n "$ip" ]; then
+			echo "$ip"
+			return
+		fi
+	fi
+
+	# Method 3: Using curl
+	if command -v curl >/dev/null 2>&1; then
+		ip="$(curl -s -4 https://ip.me 2>/dev/null)"
+		if echo "$ip" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+			echo "$ip"
+			return
+		fi
+	fi
+
+	# Method 4: Using wget
+	if command -v wget >/dev/null 2>&1; then
+		ip="$(wget -qO- https://ifconfig.me 2>/dev/null)"
+		if echo "$ip" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
 			echo "$ip"
 			return
 		fi
@@ -197,7 +311,7 @@ prompt_oneof() {
 
 		for one in "$@"; do
 			resp_upper="$(echo "$response" | tr '[:lower:]' '[:upper:]')"
-			one_upper="$(echo "$one" |  tr '[:lower:]' '[:upper:]')"
+			one_upper="$(echo "$one" | tr '[:lower:]' '[:upper:]')"
 			if [ "$resp_upper" = "$one_upper" ]; then
 				echo "$one"
 				return
@@ -255,27 +369,39 @@ confirm() {
 	fi
 }
 
+# Function to check if input is IP address
+is_ip() {
+	local input="$1"
+	[[ "$input" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
 generate_contact_email() {
-	local domain="$1"
+	local primary_domain="$1"
+	local secondary_domain="$2"
 	local email
+	local domain_to_use
 
-	if [ -z "$domain" ] || [ "$domain" = "localhost" ] || [[ "$domain" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-		email="contact@example.com"
+	# Try primary domain first
+	if [ -n "$primary_domain" ] && ! is_ip "$primary_domain" && [ "$primary_domain" != "localhost" ]; then
+		domain_to_use="$primary_domain"
+	# Try secondary domain if primary is not valid
+	elif [ -n "$secondary_domain" ] && ! is_ip "$secondary_domain" && [ "$secondary_domain" != "localhost" ]; then
+		domain_to_use="$secondary_domain"
+	# Fallback if neither domain is valid
 	else
-		domain="${domain#http://}"
-		domain="${domain#https://}"
-		domain="${domain%%/*}"
-		domain="${domain%%\?*}"
-
-		if [[ "$domain" =~ [^.]+\.[^.]+$ ]]; then
-			main_domain="${BASH_REMATCH[0]}"
-		else
-			main_domain="$domain"
-		fi
-
-		email="contact@$main_domain"
+		echo "Warning: No valid domain found for SSL certificate email, using example.com. This may cause self-signed certificate errors in production."
+		email="contact@example.com"
+		echo "$email"
+		return
 	fi
 
+	# Clean up the chosen domain
+	domain_to_use="${domain_to_use#http://}"
+	domain_to_use="${domain_to_use#https://}"
+	domain_to_use="${domain_to_use%%/*}"
+	domain_to_use="${domain_to_use%%\?*}"
+
+	email="contact@$domain_to_use"
 	echo "$email"
 }
 
@@ -372,6 +498,13 @@ read_number_range() {
 	done
 }
 
+print_empty_line() {
+	local count=${1:-1}
+	for ((i = 0; i < count; i++)); do
+		echo
+	done
+}
+
 check_if_docker_is_running() {
 	if ! $CONFIG_DOCKER_COMMAND ps >/dev/null 2>&1; then
 		print_warning "Docker is not running. Most of the commands will not work without Docker."
@@ -387,7 +520,7 @@ persistent_store_isdeleted() {
 		print_warning "Persistent store was deleted without stopping the containers"
 
 		for container in $($CONFIG_DOCKER_COMMAND ps | grep -Eo 'nocodb-[a-z]+-[0-9]+$'); do
-			if ! $CONFIG_DOCKER_COMMAND stop "$container" > /dev/null 2>&1; then
+			if ! $CONFIG_DOCKER_COMMAND stop "$container" >/dev/null 2>&1; then
 				print_error "Failed to stop ${container}"
 				exit 1
 			fi
@@ -397,6 +530,26 @@ persistent_store_isdeleted() {
 	fi
 
 	return 1
+}
+
+migrate_0_1() {
+	generated_password=$(grep POSTGRES_PASSWORD "$NOCO_HOME/docker.env" | cut -d= -f2)
+
+	if [ -n "$generated_password" ]; then
+		kvstore_set generated_password "$generated_password"
+	fi
+
+	kvstore_set state_version 1
+}
+
+migrate() {
+	if ! state_version="$(kvstore_get getval state_version)"; then
+		state_version="0"
+	fi
+
+	case "$state_version" in
+	"0") migrate_0_1
+	esac
 }
 
 # Main functions
@@ -420,29 +573,26 @@ check_existing_installation() {
 	mkdir -p "$NOCO_HOME"
 	cd "$NOCO_HOME" || exit 1
 
+	migrate
+
 	# Check if nocodb is already installed
 	if [ "$NOCO_FOUND" = true ]; then
 		echo "NocoDB is already installed. And running."
-		echo "Do you want to reinstall NocoDB? [Y/N] (default: N): "
-		read -r REINSTALL
+		reinstall="$(prompt_oneof "Do you want to reinstall NocoDB" "N" "Y")"
 
 		if [ -f "$NOCO_HOME/.COMPOSE_PROJECT_NAME" ]; then
 			COMPOSE_PROJECT_NAME=$(cat "$NOCO_HOME/.COMPOSE_PROJECT_NAME")
 			export COMPOSE_PROJECT_NAME
 		fi
 
-		if [ "$REINSTALL" != "Y" ] && [ "$REINSTALL" != "y" ]; then
+		if [ "$reinstall" == "N" ]; then
 			management_menu
 			exit 0
 		else
 			echo "Reinstalling NocoDB..."
 			$CONFIG_DOCKER_COMMAND compose down -v
-
 			unset COMPOSE_PROJECT_NAME
-			cd /tmp || exit 1
-			rm -rf "$NOCO_HOME"
 
-			cd "$CURRENT_PATH" || exit 1
 			mkdir -p "$NOCO_HOME"
 			cd "$NOCO_HOME" || exit 1
 		fi
@@ -475,19 +625,152 @@ check_system_requirements() {
 }
 
 get_user_inputs() {
+	# For fixing test failures due to missing XTerm environment
+	clear || :
+	cat <<EOF
+╔════════════════════════════════════════╗
+║      NocoDB AutoUpstall Assistant      ║
+╚════════════════════════════════════════╝
+EOF
+	print_empty_line
+	echo -e "${BOLD}Starting basic configuration...${NC}"
+	print_empty_line
+
+	# Domain Configuration
 	CONFIG_DOMAIN_NAME=$(prompt "Enter the IP address or domain name for the NocoDB instance" "$(get_public_ip)")
+	print_empty_line
+	echo -e "${BLUE}→ Using domain:${NC} $CONFIG_DOMAIN_NAME"
 
 	if is_valid_domain "$CONFIG_DOMAIN_NAME"; then
-		CONFIG_SSL_ENABLED="$(prompt_oneof "Do you want to configure SSL for $CONFIG_DOMAIN_NAME" "Y" "N")"
+		print_empty_line
+		echo -e "${GREEN}✓ Valid domain detected${NC}"
+		print_empty_line
+		CONFIG_SSL_ENABLED=$(prompt_oneof "Do you want to configure SSL for $CONFIG_DOMAIN_NAME" "Y" "N")
+		print_empty_line
+		if [ "$CONFIG_SSL_ENABLED" = "Y" ]; then
+			echo -e "${BLUE}→ SSL will be enabled${NC}"
+		else
+			echo -e "${BLUE}→ SSL will not be enabled${NC}"
+		fi
+		print_empty_line
 	else
+		print_empty_line
+		echo -e "${YELLOW}! Using IP address - SSL will not be enabled${NC}"
+		print_empty_line
 		CONFIG_SSL_ENABLED="N"
 	fi
 
-	if confirm "Show Advanced Options?"; then
+	# Storage Configuration
+	echo -e "${BOLD}Configuring storage options...${NC}"
+	print_empty_line
+	CONFIG_MINIO_ENABLED=$(prompt_oneof "Do you want to enable Minio for file storage?" "Y" "N")
+
+	if [ "$CONFIG_MINIO_ENABLED" = "Y" ]; then
+		print_empty_line
+		echo -e "${BLUE}→ Setting up MinIO storage configuration${NC}"
+
+		while true; do
+			print_empty_line
+			CONFIG_MINIO_DOMAIN_NAME=$(prompt "Enter the MinIO domain name" "$(get_public_ip)")
+
+			if [ "$CONFIG_MINIO_DOMAIN_NAME" = "$CONFIG_DOMAIN_NAME" ] && is_valid_domain "$CONFIG_DOMAIN_NAME"; then
+				print_empty_line
+				cat <<EOF
+⚠️  WARNING: Using the same domain name for both NocoDB and MinIO is not recommended
+   This may cause routing conflicts and service accessibility issues
+EOF
+				print_empty_line
+				if [ "$(prompt_oneof "Would you like to use a different domain for MinIO?" "Y" "N")" = "Y" ]; then
+					continue
+				else
+					echo -e "${YELLOW}! Proceeding with same domain name - please ensure proper routing configuration${NC}"
+					print_empty_line
+				fi
+			fi
+			break
+		done
+
+		print_empty_line
+		echo -e "${BLUE}→ Using MinIO domain:${NC} $CONFIG_MINIO_DOMAIN_NAME"
+		print_empty_line
+
+		# SSL Configuration for MinIO
+		if [ "$CONFIG_SSL_ENABLED" = "Y" ]; then
+			if ! is_valid_domain "$CONFIG_MINIO_DOMAIN_NAME"; then
+				cat <<EOF
+⚠️  WARNING: Your MinIO domain name is not valid. File attachments will not work with SSL enabled.
+EOF
+				print_empty_line
+				if [ "$(prompt_oneof "Would you like to update the MinIO domain name?" "Y" "N")" = "Y" ]; then
+					CONFIG_MINIO_DOMAIN_NAME=$(prompt "Enter a valid domain name for MinIO" "$(get_public_ip)")
+					echo -e "${BLUE}→ Updated MinIO domain to:${NC} $CONFIG_MINIO_DOMAIN_NAME"
+					print_empty_line
+				fi
+			fi
+		fi
+
+		if is_valid_domain "$CONFIG_MINIO_DOMAIN_NAME"; then
+			echo -e "${GREEN}✓ Valid MinIO domain detected${NC}"
+			print_empty_line
+			if [ "$CONFIG_SSL_ENABLED" = "Y" ]; then
+				CONFIG_MINIO_SSL_ENABLED="Y"
+				echo -e "${BLUE}→ SSL will be automatically enabled for MinIO${NC}"
+				print_empty_line
+			else
+				CONFIG_MINIO_SSL_ENABLED=$(prompt_oneof "Do you want to configure SSL for $CONFIG_MINIO_DOMAIN_NAME" "Y" "N")
+				if [ "$CONFIG_MINIO_SSL_ENABLED" = "Y" ]; then
+					echo -e "${BLUE}→ SSL will be enabled for MinIO${NC}"
+				else
+					print_empty_line
+					echo -e "${BLUE}→ SSL will not be enabled for MinIO${NC}"
+				fi
+				print_empty_line
+			fi
+		else
+			print_empty_line
+			echo -e "${YELLOW}! Using IP address for MinIO - SSL will not be enabled${NC}"
+			print_empty_line
+			CONFIG_MINIO_SSL_ENABLED="N"
+		fi
+	else
+		print_empty_line
+		echo -e "${BLUE}→ MinIO storage will not be configured${NC}"
+		print_empty_line
+	fi
+
+	set_default_options
+
+	# Advanced Configuration
+	if [ "$(prompt_oneof "Show Advanced Options?" "N" "Y")" = "Y" ]; then
+		print_empty_line
+		cat <<EOF
+╔════════════════════════════════════════╗
+║        Advanced Configuration          ║
+╚════════════════════════════════════════╝
+EOF
+		print_empty_line
 		get_advanced_options
 	else
-		set_default_options
+		print_empty_line
 	fi
+
+	# Configuration Summary
+	print_empty_line 2
+	cat <<EOF
+╔════════════════════════════════════════╗
+║         Configuration Summary          ║
+╚════════════════════════════════════════╝
+EOF
+	print_empty_line
+	echo -e "${BOLD}NocoDB Domain:${NC} $CONFIG_DOMAIN_NAME"
+	echo -e "${BOLD}NocoDB SSL:${NC} $CONFIG_SSL_ENABLED"
+	if [ "$CONFIG_MINIO_ENABLED" = "Y" ]; then
+		echo -e "${BOLD}MinIO Domain:${NC} $CONFIG_MINIO_DOMAIN_NAME"
+		echo -e "${BOLD}MinIO SSL:${NC} $CONFIG_MINIO_SSL_ENABLED"
+	fi
+	print_empty_line
+	echo -e "${GREEN}✓ Configuration complete!${NC}"
+	print_empty_line
 }
 
 get_advanced_options() {
@@ -500,19 +783,6 @@ get_advanced_options() {
 	fi
 
 	CONFIG_REDIS_ENABLED=$(prompt_oneof "Do you want to enable Redis for caching?" "Y" "N")
-	CONFIG_MINIO_ENABLED=$(prompt_oneof "Do you want to enable Minio for file storage?" "Y" "N")
-
-	if [ "$CONFIG_MINIO_ENABLED" = "Y" ]; then
-
-		CONFIG_MINIO_DOMAIN_NAME=$(prompt "Enter the MinIO domain name" "$(get_public_ip)")
-
-		if is_valid_domain "$CONFIG_MINIO_DOMAIN_NAME"; then
-			CONFIG_MINIO_SSL_ENABLED="$(prompt_oneof "Do you want to configure SSL for $CONFIG_MINIO_DOMAIN_NAME" "Y" "N")"
-		else
-			CONFIG_MINIO_SSL_ENABLED="N"
-		fi
-	fi
-
 	CONFIG_WATCHTOWER_ENABLED=$(prompt_oneof "Do you want to enable Watchtower for automatic updates?" "Y" "N")
 
 	NUM_CORES=$(get_nproc)
@@ -523,9 +793,6 @@ set_default_options() {
 	CONFIG_EDITION="CE"
 	CONFIG_POSTGRES_SQLITE="P"
 	CONFIG_REDIS_ENABLED="Y"
-	CONFIG_MINIO_ENABLED="Y"
-	CONFIG_MINIO_DOMAIN_NAME=$(get_public_ip)
-	CONFIG_MINIO_SSL_ENABLED="N"
 	CONFIG_WATCHTOWER_ENABLED="Y"
 	CONFIG_NUM_INSTANCES=1
 }
@@ -606,10 +873,40 @@ EOF
       - nocodb-network
 EOF
 
+	# If the edition is EE, add worker service to the compose file
+	if [ "$CONFIG_EDITION" = "EE" ]; then
+		cat >>"$compose_file" <<EOF
+  worker:
+    image: ${image}
+    env_file: docker.env
+    environment:
+      - NC_WORKER_CONTAINER=true
+    networks:
+      - nocodb-network
+EOF
+
+		if [ -n "$gen_postgres" ] || [ -n "$gen_redis" ] || [ "$gen_redis" ]; then
+			cat >>"$compose_file" <<EOF
+    depends_on:
+      ${gen_postgres:+- db}
+      ${gen_redis:+- redis}
+      ${gen_minio:+- minio}
+EOF
+		fi
+
+		cat >>"$compose_file" <<EOF
+    restart: unless-stopped
+    volumes:
+      - ./nocodb:/usr/app/data
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+EOF
+	fi
+
 	if [ "$CONFIG_POSTGRES_SQLITE" = "P" ]; then
 		cat >>"$compose_file" <<EOF
   db:
-    image: postgres:16.1
+    image: postgres:16.6
     env_file: docker.env
     volumes:
       - ./postgres:/var/lib/postgresql/data
@@ -646,7 +943,7 @@ EOF
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
-      - "--certificatesresolvers.letsencrypt.acme.email=$(generate_contact_email $CONFIG_DOMAIN_NAME)"
+      - "--certificatesresolvers.letsencrypt.acme.email=$(generate_contact_email "$CONFIG_DOMAIN_NAME" "$CONFIG_MINIO_DOMAIN_NAME")"
       - "--certificatesresolvers.letsencrypt.acme.storage=/etc/letsencrypt/acme.json"
 EOF
 	fi
@@ -691,7 +988,7 @@ EOF
 	if [ "${CONFIG_MINIO_ENABLED}" = "Y" ]; then
 		cat >>"$compose_file" <<EOF
   minio:
-    image: minio/minio:latest
+    image: minio/minio:RELEASE.2025-05-24T17-08-30Z-cpuv1
     restart: unless-stopped
     env_file: docker.env
     entrypoint: /bin/sh
@@ -779,6 +1076,14 @@ EOF
 REDIS_PASSWORD=${CONFIG_REDIS_PASSWORD}
 NC_REDIS_URL=redis://:${ENCODED_REDIS_PASSWORD}@redis:6379/0
 EOF
+
+		# If the edition is EE, configure the redis job URL and throttler redis
+		if [ "${CONFIG_EDITION}" = "EE" ]; then
+			cat >>"$env_file" <<EOF
+NC_REDIS_JOB_URL=redis://:${ENCODED_REDIS_PASSWORD}@redis:6379/1
+NC_THROTTLER_REDIS=redis://:${ENCODED_REDIS_PASSWORD}@redis:6379/2
+EOF
+		fi
 	fi
 
 	if [ "${CONFIG_MINIO_ENABLED}" = "Y" ]; then
@@ -815,8 +1120,11 @@ EOF
 start_services() {
 	$CONFIG_DOCKER_COMMAND compose pull
 	$CONFIG_DOCKER_COMMAND compose up -d
-
+	print_empty_line
+	print_empty_line
 	echo 'Waiting for Traefik to start...'
+	print_empty_line
+
 	sleep 5
 }
 
@@ -831,7 +1139,9 @@ display_completion_message() {
 		message_arr+=("NocoDB is now available at http://localhost")
 	fi
 
+	print_empty_line
 	print_box_message "${message_arr[@]}"
+	print_empty_line
 }
 
 management_menu() {

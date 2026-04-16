@@ -42,15 +42,26 @@ const isPublic = inject(IsPublicInj, ref(false))
 
 const skipRowRemovalOnCancel = ref(false)
 
-const { eventBus } = useSmartsheetStoreOrThrow()
+const { eventBus, allFilters, isExternalSource, validFiltersFromUrlParams } = useSmartsheetStoreOrThrow()
+
+const { showUpgradeToSeeMoreRecordsModal } = useEeConfig()
+
+const { user } = useGlobal()
+
+const { withLoading } = useLoadingTrigger()
 
 const route = router.currentRoute
 
 const routeQuery = computed(() => route.value.query as Record<string, string>)
 
+const expandedFormRef = ref()
 const expandedFormDlg = ref(false)
 const expandedFormRow = ref<Row>()
 const expandedFormRowState = ref<Record<string, any>>()
+
+const tableRef = ref<typeof Table>()
+
+const selectedCellCount = computed(() => tableRef.value?.selectedCellCount ?? 0)
 
 const groupByKeyId = computed(() => routeQuery.value.group)
 
@@ -120,9 +131,17 @@ function addEmptyRow(group: Group, addAfter?: number, metaValue = meta.value) {
     return acc
   }, {} as Record<string, any>)
   group.count = group.count + 1
+  const rowFilters = getPlaceholderNewRow(
+    [...allFilters.value, ...validFiltersFromUrlParams.value],
+    metaValue?.columns as ColumnType[],
+    {
+      currentUser: user.value ?? undefined,
+    },
+  )
 
   group.rows.splice(addAfter, 0, {
     row: {
+      ...rowFilters,
       ...rowDefaultData(metaValue?.columns),
       ...setGroup,
     },
@@ -165,11 +184,13 @@ const deleteRow = async (rowIndex: number) => {
   await _deleteRow(rowIndex)
 }
 
-const reloadTableData = async (params: void | { shouldShowLoading?: boolean | undefined; offset?: number | undefined }) => {
-  await props.loadGroupData(vGroup.value, true, {
-    ...(params?.offset !== undefined ? { offset: params.offset } : {}),
-  })
-}
+const reloadTableData = withLoading(
+  async (params: void | { shouldShowLoading?: boolean | undefined; offset?: number | undefined }) => {
+    await props.loadGroupData(vGroup.value, true, {
+      ...(params?.offset !== undefined ? { offset: params.offset } : {}),
+    })
+  },
+)
 
 provide(IsGroupByInj, ref(true))
 
@@ -232,11 +253,33 @@ const navigateToSiblingRow = async (dir: NavigateDir) => {
   }
 }
 
+const validateExternalSourceRecordVisibility = (page: number, callback?: () => void) => {
+  if (
+    (vGroup.value.paginationData?.pageSize ?? 10) * page > 100 &&
+    showUpgradeToSeeMoreRecordsModal({ isExternalSource: isExternalSource.value })
+  ) {
+    return true
+  }
+
+  callback?.()
+}
+
 const goToNextRow = async () => {
   const currentIndex = getExpandedRowIndex()
+
+  if (
+    !vGroup.value.paginationData?.isLastPage &&
+    currentIndex === (vGroup.value.paginationData?.pageSize ?? 10) - 1 &&
+    validateExternalSourceRecordVisibility(vGroup.value.paginationData?.page ? vGroup.value.paginationData?.page + 1 : 1)
+  ) {
+    expandedFormRef.value?.stopLoading?.()
+    return
+  }
+
   /* when last index of current page is reached we should move to next page */
   if (!vGroup.value.paginationData?.isLastPage && currentIndex === vGroup.value.paginationData?.pageSize) {
     const nextPage = vGroup.value.paginationData?.page ? vGroup.value.paginationData?.page + 1 : 1
+
     await props.loadGroupPage(vGroup.value, nextPage)
   }
 
@@ -273,21 +316,45 @@ async function deleteSelectedRowsWrapper() {
   // reload table data
   await reloadTableData({ shouldShowLoading: false })
 }
+
+const reloadViewDataHook = inject(ReloadViewDataHookInj, createEventHook())
+
+const smartsheetEvents = (event: string) => {
+  if (event === SmartsheetStoreEvents.GROUP_BY_RELOAD || event === SmartsheetStoreEvents.DATA_RELOAD) {
+    reloadViewDataHook?.trigger()
+  }
+}
+
+eventBus.on(smartsheetEvents)
+
+onBeforeUnmount(async () => {
+  // reset hooks
+  eventBus.off(smartsheetEvents)
+  reloadViewDataHook?.off(reloadTableData)
+})
+
+reloadViewDataHook?.on(reloadTableData)
+
+defineExpose({
+  selectedCellCount,
+})
 </script>
 
 <template>
+  <!-- eslint-disable vue/no-restricted-v-bind -->
   <Table
     v-if="vGroup.rows"
+    ref="tableRef"
     v-model:selected-all-records="selectedAllRecords"
     class="nc-group-table"
     :data="vGroup.rows"
     :v-group="vGroup"
     :pagination-data="vGroup.paginationData"
     :load-data="async () => {}"
-    :change-page="(p: number) => props.loadGroupPage(vGroup, p)"
+    :change-page="(p: number) => validateExternalSourceRecordVisibility(p, ()=> props.loadGroupPage(vGroup, p))"
     :call-add-empty-row="(addAfter?: number) => addEmptyRow(vGroup, addAfter)"
     :expand-form="expandForm"
-    :row-height="rowHeight"
+    :row-height-enum="rowHeight"
     :delete-row="deleteRow"
     :delete-selected-rows="deleteSelectedRowsWrapper"
     :delete-range-of-rows="deleteRangeOfRows"
@@ -312,8 +379,11 @@ async function deleteSelectedRowsWrapper() {
       @update:model-value="addRowExpandOnClose(expandedFormRow)"
     />
   </Suspense>
+
+  <!-- eslint-disable vue/eqeqeq -->
   <SmartsheetExpandedForm
     v-if="expandedFormOnRowIdDlg && meta?.id && groupByKeyId === vGroup.key"
+    ref="expandedFormRef"
     v-model="expandedFormOnRowIdDlg"
     :row="expandedFormRow ?? { row: {}, oldRow: {}, rowMeta: {} }"
     :meta="meta"
@@ -329,5 +399,3 @@ async function deleteSelectedRowsWrapper() {
     @prev="goToPreviousRow"
   />
 </template>
-
-<style scoped lang="scss"></style>

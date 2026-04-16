@@ -9,9 +9,11 @@ const { isUIAllowed } = useRoles()
 
 const { base } = storeToRefs(useBase())
 
-const { activeTable, activeTables } = storeToRefs(useTablesStore())
+const tablesStore = useTablesStore()
 
-const { openTable } = useTablesStore()
+const { activeTable, activeTables } = storeToRefs(tablesStore)
+
+const { openTable, openTableCreateDialog: _openTableCreateDialog } = tablesStore
 
 const isOpen = ref<boolean>(false)
 
@@ -36,19 +38,6 @@ const handleNavigateToTable = (table: TableType) => {
   }
 }
 
-/**
- * Opens a dialog to create a new table.
- *
- * @returns void
- *
- * @remarks
- * This function is triggered when the user initiates the table creation process from the topbar.
- * It emits a tracking event, checks for a valid source, and opens a dialog for table creation.
- * The function also handles the dialog closure and potential scrolling to the newly created table.
- *
- * @see {@link packages/nc-gui/components/dashboard/TreeView/ProjectNode.vue} for a similar implementation
- * of table creation dialog. If this function is updated, consider updating the other implementation as well.
- */
 function openTableCreateDialog() {
   $e('c:table:create:topbar')
 
@@ -56,40 +45,12 @@ function openTableCreateDialog() {
 
   isOpen.value = false
 
-  const isCreateTableOpen = ref(true)
-  const sourceId = base.value!.sources?.[activeTableSourceIndex.value].id
-
-  if (!sourceId || !base.value?.id) return
-
-  const { close } = useDialog(resolveComponent('DlgTableCreate'), {
-    'modelValue': isCreateTableOpen,
-    sourceId, // || sources.value[0].id,
-    'baseId': base.value!.id,
-    'onCreate': closeDialog,
-    'onUpdate:modelValue': () => closeDialog(),
-  })
-
-  function closeDialog(table?: TableType) {
-    isCreateTableOpen.value = false
-
-    if (!table) return
-
-    // TODO: Better way to know when the table node dom is available
-    setTimeout(() => {
-      const newTableDom = document.querySelector(`[data-table-id="${table.id}"]`)
-      if (!newTableDom) return
-
-      // Scroll to the table node
-      newTableDom?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }, 1000)
-
-    close(1000)
-  }
+  _openTableCreateDialog({ baseId: base.value?.id, sourceId: base.value!.sources?.[activeTableSourceIndex.value].id })
 }
 </script>
 
 <template>
-  <NcDropdown v-model:visible="isOpen">
+  <NcDropdown v-model:visible="isOpen" overlay-class-name="max-w-64">
     <slot name="default" :is-open="isOpen"></slot>
     <template #overlay>
       <LazyNcList
@@ -99,13 +60,19 @@ function openTableCreateDialog() {
         option-value-key="id"
         option-label-key="title"
         search-input-placeholder="Search tables"
+        class="min-w-64 !w-auto"
+        variant="medium"
         @change="handleNavigateToTable"
       >
         <template #listItem="{ option }">
           <div>
             <LazyGeneralEmojiPicker :emoji="option?.meta?.icon" readonly size="xsmall">
               <template #default>
-                <GeneralIcon icon="table" class="min-w-4 !text-gray-500" />
+                <GeneralTableIcon
+                  size="xsmall"
+                  :meta="{ meta: {}, synced: option?.synced }"
+                  class="!mx-0 min-w-4 !text-gray-500"
+                />
               </template>
             </LazyGeneralEmojiPicker>
           </div>
@@ -136,7 +103,7 @@ function openTableCreateDialog() {
           <NcDivider class="!mt-0 !mb-2" />
           <div class="px-2 mb-2" @click="openTableCreateDialog()">
             <div
-              class="px-2 py-1.5 flex items-center justify-between gap-2 text-sm font-weight-500 !text-brand-500 hover:bg-gray-100 rounded-md cursor-pointer"
+              class="px-2 py-1.5 flex items-center justify-between gap-2 text-sm font-weight-500 !text-nc-content-brand hover:bg-nc-bg-gray-light rounded-md cursor-pointer"
             >
               <div class="flex items-center gap-2">
                 <GeneralIcon icon="plus" />
@@ -155,5 +122,3 @@ function openTableCreateDialog() {
     </template>
   </NcDropdown>
 </template>
-
-<style lang="scss" scoped></style>

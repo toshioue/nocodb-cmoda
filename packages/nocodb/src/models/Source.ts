@@ -2,7 +2,7 @@ import { UITypes } from 'nocodb-sdk';
 import { v4 as uuidv4 } from 'uuid';
 import type { DriverClient } from '~/utils/nc-config';
 import type { BoolType, SourceType } from 'nocodb-sdk';
-import type { NcContext } from '~/interface/config';
+import { NcContext } from '~/interface/config';
 import { Base, Model, SyncSource } from '~/models';
 import NocoCache from '~/cache/NocoCache';
 import {
@@ -21,8 +21,6 @@ import {
   prepareForResponse,
   stringifyMetaProp,
 } from '~/utils/modelUtils';
-import { JobsRedis } from '~/modules/jobs/redis/jobs-redis';
-import { InstanceCommands } from '~/interface/Jobs';
 import View from '~/models/View';
 import {
   decryptPropIfRequired,
@@ -31,6 +29,7 @@ import {
   isEncryptionRequired,
   partialExtract,
 } from '~/utils';
+import { NcCache } from '~/decorators/nc-cache.decorator';
 
 export default class Source implements SourceType {
   id?: string;
@@ -53,6 +52,11 @@ export default class Source implements SourceType {
   integration_config?: string;
   integration_title?: string;
   is_encrypted?: boolean;
+  deleted?: boolean;
+
+  // Ephemeral properties
+  upgraderMode?: boolean;
+  upgraderQueries?: string[] = [];
 
   constructor(source: Partial<SourceType>) {
     Object.assign(this, source);
@@ -116,6 +120,7 @@ export default class Source implements SourceType {
     const returnBase = await this.get(context, id, false, ncMeta);
 
     await NocoCache.appendToList(
+      context,
       CacheScope.SOURCE,
       [source.baseId],
       `${CacheScope.SOURCE}:${id}`,
@@ -210,6 +215,7 @@ export default class Source implements SourceType {
     );
 
     await NocoCache.update(
+      context,
       `${CacheScope.SOURCE}:${sourceId}`,
       prepareForResponse(updateObj),
     );
@@ -219,20 +225,22 @@ export default class Source implements SourceType {
       console.error(e);
     });
 
-    if (JobsRedis.available) {
-      await JobsRedis.emitWorkerCommand(InstanceCommands.RELEASE, sourceId);
-      await JobsRedis.emitPrimaryCommand(InstanceCommands.RELEASE, sourceId);
-    }
+    // Bump Redis version so other servers invalidate on next read.
+    // Don't destroy the local connection — Source.update() is also called
+    // for metadata-only changes (readonly flags, alias, order) where the
+    // connection config hasn't changed. Callers that change connection config
+    // (integrations service, sourceCleanup) call resetSource() directly.
+    await NcConnectionMgrv2.bumpSourceVersion(sourceId);
 
     return await this.get(context, oldSource.id, false, ncMeta);
   }
 
   static async list(
     context: NcContext,
-    args: { baseId: string },
+    args: { baseId: string; includeDeleted?: boolean },
     ncMeta = Noco.ncMeta,
   ): Promise<Source[]> {
-    const cachedList = await NocoCache.getList(CacheScope.SOURCE, [
+    const cachedList = await NocoCache.getList(context, CacheScope.SOURCE, [
       args.baseId,
     ]);
     let { list: sourceDataList } = cachedList;
@@ -241,13 +249,17 @@ export default class Source implements SourceType {
       const qb = ncMeta
         .knex(MetaTable.SOURCES)
         .select(`${MetaTable.SOURCES}.*`)
-        .where(`${MetaTable.SOURCES}.base_id`, context.base_id)
-        .where((whereQb) => {
+        .where(`${MetaTable.SOURCES}.base_id`, context.base_id);
+
+      if (!args.includeDeleted) {
+        qb.where((whereQb) => {
           whereQb
             .where(`${MetaTable.SOURCES}.deleted`, false)
             .orWhereNull(`${MetaTable.SOURCES}.deleted`);
-        })
-        .orderBy(`${MetaTable.SOURCES}.order`, 'asc');
+        });
+      }
+
+      qb.orderBy(`${MetaTable.SOURCES}.order`, 'asc');
 
       this.extendQb(qb, context);
 
@@ -258,7 +270,12 @@ export default class Source implements SourceType {
         source.meta = parseMetaProp(source, 'meta');
       }
 
-      await NocoCache.setList(CacheScope.SOURCE, [args.baseId], sourceDataList);
+      await NocoCache.setList(
+        context,
+        CacheScope.SOURCE,
+        [args.baseId],
+        sourceDataList,
+      );
     }
 
     sourceDataList.sort(
@@ -270,6 +287,9 @@ export default class Source implements SourceType {
     });
   }
 
+  @NcCache({
+    key: (args) => args[1],
+  })
   static async get(
     context: NcContext,
     id: string,
@@ -279,6 +299,7 @@ export default class Source implements SourceType {
     let sourceData =
       id &&
       (await NocoCache.get(
+        context,
         `${CacheScope.SOURCE}:${id}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -305,7 +326,7 @@ export default class Source implements SourceType {
         sourceData.meta = parseMetaProp(sourceData, 'meta');
       }
 
-      await NocoCache.set(`${CacheScope.SOURCE}:${id}`, sourceData);
+      await NocoCache.set(context, `${CacheScope.SOURCE}:${id}`, sourceData);
     }
     return this.castType(sourceData);
   }
@@ -330,6 +351,7 @@ export default class Source implements SourceType {
 
     return config;
   }
+
   public getConfig(skipIntegrationConfig = false): any {
     if (this.is_meta) {
       const metaConfig = Noco.getConfig()?.meta?.db;
@@ -359,13 +381,24 @@ export default class Source implements SourceType {
     // merge integration config with source config
     // override integration config with source config if exists
     // only override database and searchPath
-    return deepMerge(
+    let mergedConfig = deepMerge(
       integrationConfig,
       partialExtract(config || {}, [
         ['connection', 'database'],
         ['searchPath'],
       ]),
     );
+
+    // if searchPath is not array/string or if an empty array, remove it
+    if (
+      (!Array.isArray(mergedConfig.searchPath) &&
+        typeof mergedConfig.searchPath !== 'string') ||
+      !mergedConfig.searchPath?.length
+    ) {
+      mergedConfig = { ...mergedConfig, searchPath: undefined };
+    }
+
+    return mergedConfig;
   }
 
   public getSourceConfig(): any {
@@ -379,10 +412,8 @@ export default class Source implements SourceType {
   async sourceCleanup(_ncMeta = Noco.ncMeta) {
     await NcConnectionMgrv2.deleteAwait(this);
 
-    if (JobsRedis.available) {
-      await JobsRedis.emitWorkerCommand(InstanceCommands.RELEASE, this.id);
-      await JobsRedis.emitPrimaryCommand(InstanceCommands.RELEASE, this.id);
-    }
+    // Bump Redis version so all servers invalidate on next read
+    await NcConnectionMgrv2.bumpSourceVersion(this.id);
   }
 
   async delete(
@@ -456,6 +487,7 @@ export default class Source implements SourceType {
         },
       );
       await NocoCache.deepDel(
+        context,
         `${relCol.cacheScopeName}:${relCol.col.id}`,
         CacheDelDirection.CHILD_TO_PARENT,
       );
@@ -485,6 +517,7 @@ export default class Source implements SourceType {
     );
 
     await NocoCache.deepDel(
+      context,
       `${CacheScope.SOURCE}:${this.id}`,
       CacheDelDirection.CHILD_TO_PARENT,
     );
@@ -509,7 +542,11 @@ export default class Source implements SourceType {
 
     await Source.update(context, this.id, { deleted: true }, ncMeta);
 
+    // Release the Knex connection pool so it doesn't leak memory
+    await this.sourceCleanup(ncMeta);
+
     await NocoCache.deepDel(
+      context,
       `${CacheScope.SOURCE}:${this.id}`,
       CacheDelDirection.CHILD_TO_PARENT,
     );
@@ -539,7 +576,7 @@ export default class Source implements SourceType {
         this.id,
       );
 
-      await NocoCache.update(`${CacheScope.SOURCE}:${this.id}`, {
+      await NocoCache.update(context, `${CacheScope.SOURCE}:${this.id}`, {
         erd_uuid: this.erd_uuid,
       });
     }
@@ -561,7 +598,7 @@ export default class Source implements SourceType {
         this.id,
       );
 
-      await NocoCache.update(`${CacheScope.SOURCE}:${this.id}`, {
+      await NocoCache.update(context, `${CacheScope.SOURCE}:${this.id}`, {
         erd_uuid: this.erd_uuid,
       });
     }

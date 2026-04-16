@@ -14,6 +14,11 @@ export function useGlobalGetters(state: State): Getters {
       ),
   )
 
+  /** Verify that a user is signed in by checking if token exists and is not expired */
+  const isSsoUser: Getters['isSsoUser'] = computed(
+    () => !!(!!state.token && state.jwtPayload.value && (state.jwtPayload.value as any)?.sso_client_id),
+  )
+
   /** global loading state */
   const loading = ref(false)
   const isLoading = computed({
@@ -21,5 +26,9 @@ export function useGlobalGetters(state: State): Getters {
     set: (_loading) => (loading.value = _loading),
   })
 
-  return { signedIn, isLoading }
+  const getResponsiveValue = <T>(mobile: T, desktop: T): T => {
+    return state.isMobileMode.value ? mobile : desktop
+  }
+
+  return { signedIn, isLoading, isSsoUser, getResponsiveValue }
 }

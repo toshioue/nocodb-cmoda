@@ -1,47 +1,49 @@
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { MAX_WIDTH_FOR_MOBILE_MODE } from '~/lib/constants'
+import { useBreakpoints } from '@vueuse/core'
+import { NC_BREAKPOINTS, type NcBreakpoint } from '~/lib/constants'
 
 export const useConfigStore = defineStore('configStore', () => {
-  const { isMobileMode: globalIsMobile } = useGlobal()
-  const { width } = useWindowSize()
+  const router = useRouter()
 
-  const sidebarStore = useSidebarStore()
-  const viewsStore = useViewsStore()
-  const { activeViewTitleOrId } = storeToRefs(viewsStore)
-  const tablesStore = useTablesStore()
-  const { activeTableId } = storeToRefs(tablesStore)
+  const { isMobileMode: globalIsMobile, activeBreakpoint: globalActiveBreakpoint } = useGlobal()
 
-  const isViewPortMobile = () => width.value < MAX_WIDTH_FOR_MOBILE_MODE
+  const breakpoints = useBreakpoints(NC_BREAKPOINTS)
 
   // When set to true expanded form will auto focus on comment input and state will be set to false after focussing
   const isExpandedFormCommentMode = ref(false)
 
-  const isMobileMode = ref(isViewPortMobile())
+  const isMobileMode = breakpoints.smaller('sm')
 
-  const projectPageTab = ref<'allTable' | 'collaborator' | 'data-source'>('allTable')
+  const _activeBp = breakpoints.active()
 
-  const onViewPortResize = () => {
-    isMobileMode.value = isViewPortMobile()
-  }
+  const activeBreakpoint = computed<NcBreakpoint>(() => {
+    if (isMobileMode.value) return 'xs'
+    return (_activeBp.value || 'xs') as NcBreakpoint
+  })
 
-  window.addEventListener('DOMContentLoaded', onViewPortResize)
-  window.addEventListener('resize', onViewPortResize)
+  const isViewPortMobile = () => isMobileMode.value
+
+  const projectPageTab = ref<ProjectPageType>('overview')
+
+  const hideSharedBaseBtn = ref(router.currentRoute.value.query.hideSharedBaseBtn === 'true')
 
   watch(
-    isMobileMode,
-    () => {
+    activeBreakpoint,
+    (bp) => {
       globalIsMobile.value = isMobileMode.value
+      globalActiveBreakpoint.value = bp
 
       // Change --topbar-height css variable
-      document.documentElement.style.setProperty('--topbar-height', isMobileMode.value ? '3.875rem' : '3rem')
+      document.documentElement.style.setProperty('--topbar-height', bp === 'xs' ? '3.875rem' : '3rem')
 
-      // Set .mobile-mode class on body
-      if (isMobileMode.value) {
+      // Set body class for CSS selectors
+      document.body.classList.remove('mobile', 'tablet', 'desktop')
+      if (bp === 'xs') {
         document.body.classList.add('mobile')
-        document.body.classList.remove('desktop')
+      } else if (bp === 'sm') {
+        document.body.classList.add('tablet')
       } else {
         document.body.classList.add('desktop')
-        document.body.classList.remove('mobile')
       }
     },
     {
@@ -49,28 +51,13 @@ export const useConfigStore = defineStore('configStore', () => {
     },
   )
 
-  const handleSidebarOpenOnMobileForNonViews = () => {
-    if (!isViewPortMobile()) return
-
-    if (!activeViewTitleOrId && !activeTableId) {
-      nextTick(() => {
-        sidebarStore.isLeftSidebarOpen = true
-      })
-    } else {
-      sidebarStore.isLeftSidebarOpen = false
-    }
-  }
-
-  watch([activeViewTitleOrId, activeTableId], () => {
-    handleSidebarOpenOnMobileForNonViews()
-  })
-
   return {
     isMobileMode,
+    activeBreakpoint,
     isViewPortMobile,
-    handleSidebarOpenOnMobileForNonViews,
     projectPageTab,
     isExpandedFormCommentMode,
+    hideSharedBaseBtn,
   }
 })
 

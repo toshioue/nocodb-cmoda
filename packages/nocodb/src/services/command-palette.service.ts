@@ -1,16 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type UserType, ViewTypes } from 'nocodb-sdk';
+import { type UserType, viewTypeAlias } from 'nocodb-sdk';
+import { getCommandPaletteForUserWorkspace } from 'src/helpers/commandPaletteHelpers';
 import { deserializeJSON } from '~/utils/serialize';
-import { getCommandPaletteForUserWorkspace } from '~/helpers/commandPaletteHelpers';
-
-const viewTypeAlias: Record<number, string> = {
-  [ViewTypes.GRID]: 'grid',
-  [ViewTypes.FORM]: 'form',
-  [ViewTypes.GALLERY]: 'gallery',
-  [ViewTypes.KANBAN]: 'kanban',
-  [ViewTypes.MAP]: 'map',
-  [ViewTypes.CALENDAR]: 'calendar',
-};
+// This service is overwritten entirely in the cloud and does not extend there.
+// As a result, it refers to services from OSS to avoid type mismatches.
 
 @Injectable()
 export class CommandPaletteService {
@@ -28,9 +21,9 @@ export class CommandPaletteService {
         table_title: string;
         table_type: string;
         table_meta: string;
+        table_synced?: boolean;
         view_id: string;
         view_title: string;
-        view_is_default: boolean;
         view_type: string;
         view_meta: string;
       }[] = await getCommandPaletteForUserWorkspace(param.user?.id);
@@ -51,6 +44,7 @@ export class CommandPaletteService {
           base_id: string;
           type: string;
           meta: any;
+          synced?: boolean;
         }
       >();
       const views = new Map<
@@ -60,7 +54,6 @@ export class CommandPaletteService {
           title: string;
           base_id: string;
           table_id: string;
-          is_default: boolean;
           type: string;
           meta: any;
         }
@@ -82,6 +75,7 @@ export class CommandPaletteService {
             meta: deserializeJSON(item.table_meta),
             base_id: item.base_id,
             type: item.table_type,
+            synced: item.table_synced,
           });
         }
 
@@ -92,7 +86,6 @@ export class CommandPaletteService {
             meta: deserializeJSON(item.view_meta),
             base_id: item.base_id,
             table_id: item.table_id,
-            is_default: item.view_is_default,
             type: item.view_type,
           });
         }
@@ -116,6 +109,7 @@ export class CommandPaletteService {
           icon: table?.meta?.icon || table.type,
           projectName: bases.get(table.base_id)?.title,
           section: 'Tables',
+          synced: table?.synced,
         });
       }
 
@@ -127,7 +121,6 @@ export class CommandPaletteService {
           icon: view?.meta?.icon || viewTypeAlias[view.type] || 'table',
           projectName: bases.get(view.base_id)?.title,
           section: 'Views',
-          is_default: view.is_default,
           handler: {
             type: 'navigate',
             payload: `/nc/${view.base_id}/${view.table_id}/${encodeURIComponent(

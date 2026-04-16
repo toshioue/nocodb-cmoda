@@ -1,21 +1,25 @@
 <script setup lang="ts">
-const { sharedViewMeta, sharedFormView } = useSharedFormStoreOrThrow()
-
-const isDark = useDark()
+const { sharedViewMeta, backgroundAndTextColor } = useSharedFormStoreOrThrow()
 
 const route = useRoute()
 
 const router = useRouter()
 
-onMounted(() => {
-  isDark.value = false
-})
-
 const shouldRedirect = (to: string) => {
   if (sharedViewMeta.value.surveyMode) {
-    if (!to.includes('survey')) navigateTo(`/nc/form/${route.params.viewId}/survey`)
+    if (!to.includes('survey')) {
+      navigateTo({
+        path: `/nc/form/${route.params.viewId}/survey`,
+        query: route.query,
+      })
+    }
   } else {
-    if (to.includes('survey')) navigateTo(`/nc/form/${route.params.viewId}`)
+    if (to.includes('survey')) {
+      navigateTo({
+        path: `/nc/form/${route.params.viewId}`,
+        query: route.query,
+      })
+    }
   }
 }
 
@@ -26,12 +30,12 @@ router.afterEach((to) => shouldRedirect(to.name as string))
 
 <template>
   <div
-    class="scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-200 hover-scrollbar-thumb-gray-300 h-[100vh] overflow-y-auto overflow-x-hidden flex flex-col color-transition p-4 lg:p-6 nc-form-view min-h-[600px]"
+    class="scrollbar-thin scrollbar-track-transparent scrollbar-thumb-gray-200 hover-scrollbar-thumb-gray-300 nc-h-screen overflow-y-auto overflow-x-hidden flex flex-col color-transition p-4 lg:p-6 nc-form-view min-h-[600px]"
     :class="{
       'children:(!h-auto my-auto)': sharedViewMeta?.surveyMode,
     }"
     :style="{
-      background: parseProp(sharedFormView?.meta)?.background_color || '#F9F9FA',
+      background: backgroundAndTextColor.bgColor,
     }"
   >
     <NuxtPage />
@@ -39,18 +43,6 @@ router.afterEach((to) => shouldRedirect(to.name as string))
 </template>
 
 <style lang="scss">
-html,
-body,
-h1,
-h2,
-h3,
-h4,
-h5,
-h6,
-p {
-  @apply dark:text-white color-transition;
-}
-
 .nc-form-view {
   .nc-data-cell {
     @apply !border-none rounded-none;
@@ -60,9 +52,17 @@ p {
     }
   }
 
+  .nc-input {
+    &:not(.layout-list) {
+      &:not(:has(.form-attachment-cell.nc-has-attachments)) {
+        @apply !bg-nc-bg-default rounded-lg border-solid border-1 border-nc-border-gray-medium !focus-within:border-nc-border-brand;
+      }
+    }
+  }
+
   .nc-cell,
   .nc-virtual-cell {
-    @apply bg-white dark:bg-slate-500 appearance-none;
+    @apply bg-nc-bg-default  appearance-none;
 
     &.nc-cell-checkbox {
       @apply color-transition !border-0;
@@ -81,16 +81,16 @@ p {
     }
 
     &:not(.nc-cell-checkbox) {
-      @apply bg-white dark:bg-slate-500;
+      @apply bg-nc-bg-default;
 
       &.nc-input {
         @apply w-full h-10;
 
         &:not(.layout-list) {
-          @apply rounded-lg border-solid border-1 border-gray-200 focus-within:border-brand-500 overflow-hidden;
+          @apply rounded-lg border-solid border-1 border-nc-border-gray-medium focus-within:border-nc-border-brand overflow-hidden;
 
           &.readonly {
-            @apply bg-gray-50 cursor-not-allowed;
+            @apply bg-nc-bg-gray-extralight cursor-not-allowed;
 
             input,
             textarea {
@@ -103,7 +103,7 @@ p {
           }
         }
         &.layout-list {
-          @apply h-auto !pl-0 !py-1 !bg-transparent !dark:bg-none;
+          @apply h-auto !p-0 !bg-transparent !dark:bg-none;
         }
 
         .duration-cell-wrapper {
@@ -113,7 +113,7 @@ p {
             @apply !outline-none;
 
             &::placeholder {
-              @apply text-gray-400 dark:text-slate-300;
+              @apply text-nc-content-gray-disabled;
             }
           }
         }
@@ -123,35 +123,13 @@ p {
             input,
             textarea,
             &.nc-virtual-cell {
-              @apply bg-white !disabled:bg-transparent;
+              @apply bg-nc-bg-default !disabled:bg-transparent;
             }
           }
           &.nc-cell-longtext {
             textarea {
-              @apply bg-white !disabled:bg-transparent;
+              @apply bg-nc-bg-default !disabled:bg-transparent;
             }
-          }
-        }
-
-        input,
-        textarea,
-        &.nc-virtual-cell {
-          .ant-btn {
-            @apply dark:(bg-slate-300);
-          }
-
-          .chip {
-            @apply dark:(bg-slate-700 text-white);
-          }
-        }
-
-        &.layout-list > div {
-          .ant-btn {
-            @apply dark:(bg-slate-300);
-          }
-
-          .chip {
-            @apply dark:(bg-slate-700 text-white);
           }
         }
 
@@ -170,13 +148,24 @@ p {
         }
         &.nc-cell:not(.nc-cell-longtext) {
           @apply p-2;
+
+          &.nc-cell-phonenumber,
+          &.nc-cell-email,
+          &.nc-cell-url {
+            .nc-cell-field.nc-cell-link-preview {
+              @apply px-3;
+            }
+          }
+
+          &.nc-cell-attachment {
+            @apply pl-1;
+          }
         }
         &.nc-virtual-cell {
           @apply px-2 py-1;
         }
 
         &.nc-cell-json {
-          @apply h-auto;
           & > div {
             @apply w-full;
           }
@@ -190,7 +179,7 @@ p {
           @apply !py-0 !pl-0 flex items-stretch;
 
           .nc-currency-code {
-            @apply !bg-gray-100;
+            @apply !bg-nc-bg-gray-light;
           }
         }
         &.nc-cell-attachment {
@@ -198,16 +187,6 @@ p {
         }
       }
     }
-
-    .nc-attachment-cell > div {
-      @apply dark:(bg-slate-100);
-    }
-  }
-}
-
-.nc-form-column-label {
-  > * {
-    @apply dark:text-slate-300;
   }
 }
 </style>

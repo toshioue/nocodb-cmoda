@@ -1,6 +1,7 @@
 import UITypes from '../UITypes';
 import { IDType } from './index';
 import { ColumnType } from '~/lib';
+import { SqlUi } from './SqlUI.types';
 
 const dbTypes = [
   'int',
@@ -103,7 +104,8 @@ const dbTypes = [
   'xml',
 ];
 
-export class PgUi {
+export class PgUi implements SqlUi {
+  //#region statics
   static getNewTableColumns() {
     return [
       {
@@ -240,6 +242,30 @@ export class PgUi {
         dtxs: '',
         altered: 1,
         uidt: UITypes.LastModifiedBy,
+        uip: '',
+        uicn: '',
+        system: true,
+      },
+      {
+        column_name: 'nc_order',
+        title: 'nc_order',
+        dt: 'numeric',
+        dtx: 'specificType',
+        ct: 'numeric(40,20)',
+        nrqd: true,
+        rqd: false,
+        ck: false,
+        pk: false,
+        un: false,
+        ai: false,
+        cdf: null,
+        clen: null,
+        np: 40,
+        ns: 20,
+        dtxp: '40,20',
+        dtxs: '',
+        altered: 1,
+        uidt: UITypes.Order,
         uip: '',
         uicn: '',
         system: true,
@@ -1581,6 +1607,7 @@ export class PgUi {
       case 'jsonb':
         return 'json';
     }
+    return 'string';
   }
 
   static getUIType(col): any {
@@ -1737,7 +1764,8 @@ export class PgUi {
         colProp.dt = 'timestamp';
         break;
       case 'AutoNumber':
-        colProp.dt = 'int';
+        colProp.dt = 'int8';
+        colProp.ai = true;
         break;
       case 'Barcode':
         colProp.dt = 'character varying';
@@ -1747,6 +1775,17 @@ export class PgUi {
         break;
       case 'JSON':
         colProp.dt = 'json';
+        break;
+      case 'Meta':
+        colProp.dt = 'jsonb';
+        break;
+      case 'Order':
+        colProp.dt = 'numeric';
+        break;
+      case 'UUID':
+        colProp.dt = 'uuid';
+        colProp.cdf = 'gen_random_uuid()';
+        colProp.rqd = false;
         break;
       default:
         colProp.dt = 'character varying';
@@ -2009,6 +2048,9 @@ export class PgUi {
           'smallserial',
         ];
 
+      case 'Order':
+        return ['numeric'];
+
       case 'Barcode':
         return ['character varying'];
 
@@ -2023,6 +2065,9 @@ export class PgUi {
           'path',
           'circle',
         ];
+
+      case 'UUID':
+        return ['uuid'];
 
       default:
         return dbTypes;
@@ -2055,6 +2100,104 @@ export class PgUi {
 
     return false;
   }
+  //#endregion statics
+
+  //#region methods
+  getNewTableColumns(): readonly any[] {
+    return PgUi.getNewTableColumns();
+  }
+  getNewColumn(suffix: string): {
+    column_name: string;
+    dt: string;
+    dtx: string;
+    ct: string;
+    nrqd: boolean;
+    rqd: boolean;
+    ck: boolean;
+    pk: boolean;
+    un: boolean;
+    ai: boolean;
+    cdf: null;
+    clen: number;
+    np: number;
+    ns: number;
+    dtxp: string;
+    dtxs: string;
+    altered: number;
+    uidt: string;
+    uip: string;
+    uicn: string;
+  } {
+    return PgUi.getNewColumn(suffix);
+  }
+  getDefaultLengthForDatatype(type: string): number | string {
+    return PgUi.getDefaultLengthForDatatype(type);
+  }
+  getDefaultLengthIsDisabled(type: string) {
+    return PgUi.getDefaultLengthIsDisabled(type);
+  }
+  getDefaultValueForDatatype(type: string) {
+    return PgUi.getDefaultValueForDatatype(type);
+  }
+  getDefaultScaleForDatatype(type: any): string {
+    return PgUi.getDefaultScaleForDatatype(type);
+  }
+  colPropAIDisabled(col: ColumnType, columns: ColumnType[]): boolean {
+    return PgUi.colPropAIDisabled(col, columns);
+  }
+  colPropUNDisabled(col: ColumnType): boolean {
+    return PgUi.colPropUNDisabled(col);
+  }
+  onCheckboxChangeAI(col: ColumnType): void {
+    return PgUi.onCheckboxChangeAI(col);
+  }
+  showScale(columnObj: ColumnType): boolean {
+    return PgUi.showScale(columnObj);
+  }
+  removeUnsigned(columns: ColumnType[]): void {
+    return PgUi.removeUnsigned(columns);
+  }
+  columnEditable(colObj: ColumnType): boolean {
+    return PgUi.columnEditable(colObj);
+  }
+  onCheckboxChangeAU(col: ColumnType): void {
+    return PgUi.onCheckboxChangeAU(col);
+  }
+  colPropAuDisabled(col: ColumnType): boolean {
+    return PgUi.colPropAuDisabled(col);
+  }
+  getAbstractType(col: ColumnType): string {
+    return PgUi.getAbstractType(col);
+  }
+  getUIType(col: ColumnType): string {
+    return PgUi.getUIType(col);
+  }
+  getDataTypeForUiType(col: { uidt: UITypes }, idType?: IDType) {
+    return PgUi.getDataTypeForUiType(col, idType);
+  }
+  getDataTypeListForUiType(col: { uidt: UITypes }, idType?: IDType): string[] {
+    return PgUi.getDataTypeListForUiType(col, idType);
+  }
+  getUnsupportedFnList(): string[] {
+    return PgUi.getUnsupportedFnList();
+  }
+  getCurrentDateDefault(_col: Partial<ColumnType>) {
+    return PgUi.getCurrentDateDefault(_col);
+  }
+  isEqual(dataType1: string, dataType2: string): boolean {
+    return PgUi.isEqual(dataType1, dataType2);
+  }
+  adjustLengthAndScale(
+    _newColumn: Partial<ColumnType>,
+    _oldColumn?: ColumnType
+  ) {}
+  isParsedJsonReturnType(col: ColumnType): boolean {
+    return ['json', 'jsond'].includes(col.dt?.toLowerCase());
+  }
+  get tableNameLengthLimit(): number {
+    return 63;
+  }
+  //#endregion methods
 }
 
 // module.exports = PgUiHelp;

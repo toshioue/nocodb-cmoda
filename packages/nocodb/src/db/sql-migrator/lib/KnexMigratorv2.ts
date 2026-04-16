@@ -332,13 +332,6 @@ export default class KnexMigratorv2 {
   //             freshProject = require('./templates/pg.template.js');
   //             break;
   //
-  //           case 'mssql':
-  //             freshProject = require('./templates/mssql.template.js');
-  //             break;
-  //
-  //           case 'oracle':
-  //             freshProject = require('./templates/oracle.template.js');
-  //             break;
   //
   //           case 'sqlite':
   //             freshProject = require('./templates/sqlite.template.js');
@@ -386,14 +379,26 @@ export default class KnexMigratorv2 {
   async _initDbWithSql(source: Source) {
     const sqlClient = await this.getSqlClient(source);
     const connectionConfig = await source.getConnectionConfig();
-    if (connectionConfig.client === 'oracledb') {
-      this.emit(
-        `${connectionConfig.client}: Creating DB if not exists ${connectionConfig.connection.user}`,
-      );
-      await sqlClient.createDatabaseIfNotExists({
-        database: connectionConfig.connection.user,
+
+    try {
+      const dbExists = await sqlClient.hasDatabase({
+        databaseName: connectionConfig.connection.database,
+        ...(source.getConfig()?.schema
+          ? { schema: source.getConfig()?.schema }
+          : source.type === 'databricks'
+          ? { schema: connectionConfig.connection.schema }
+          : {}),
       });
-    } else if (source.isMeta(true, 1) && source.type === 'pg') {
+
+      if (dbExists.data.value) {
+        this.emit(
+          `${connectionConfig.client}: DB already exists ${connectionConfig.connection.database}`,
+        );
+        return;
+      }
+    } catch (e) {}
+
+    if (source.isMeta(true, 1) && source.type === 'pg') {
       this.emit(
         `${connectionConfig.client}: Creating DB if not exists ${connectionConfig.connection.database}`,
       );
@@ -452,12 +457,7 @@ export default class KnexMigratorv2 {
 
   async _cleanDbWithSql(connectionConfig) {
     const sqlClient = await SqlClientFactory.create(connectionConfig);
-    if (connectionConfig.client === 'oracledb') {
-      this.emit(`Dropping DB : ${connectionConfig.connection.user}`);
-      await sqlClient.dropDatabase({
-        database: connectionConfig.connection.user,
-      });
-    } else if (connectionConfig.client === 'sqlite3') {
+    if (connectionConfig.client === 'sqlite3') {
       this.emit(
         `Dropping DB : ${connectionConfig.connection.connection.filename}`,
       );
@@ -979,7 +979,7 @@ export default class KnexMigratorv2 {
    * Creates xmigrator folder in pwd, within which migrations for all dbs will be sored
    *
    * @param {object} args
-   * @param {String} args.type - type of database (mysql | pg | oracle | mssql | sqlite)
+   * @param {String} args.type - type of database (mysql | pg | sqlite)
    * @param {String} args.title - Name of Base
    * @param {String} args.folder - Base Dir
    * @memberof KnexMigrator
@@ -1643,7 +1643,7 @@ export default class KnexMigratorv2 {
   //     }
   //   } catch (e) {
   //     result.code = -1;
-  //     result.code = `Exception occured in ${func} : ${e}`;
+  //     result.code = `Exception occurred in ${func} : ${e}`;
   //     result.object = e;
   //     console.log(e);
   //   }
@@ -1688,7 +1688,7 @@ export default class KnexMigratorv2 {
   //     }
   //   } catch (e) {
   //     result.code = -1;
-  //     result.code = `Exception occured in ${func} : ${e}`;
+  //     result.code = `Exception occurred in ${func} : ${e}`;
   //     result.object = e;
   //     console.log(e);
   //   }
@@ -1775,7 +1775,7 @@ export default class KnexMigratorv2 {
   //     }
   //   } catch (e) {
   //     result.code = -1;
-  //     result.code = `Exception occured in ${func} : ${e}`;
+  //     result.code = `Exception occurred in ${func} : ${e}`;
   //     result.object = e;
   //     console.log(e);
   //   }

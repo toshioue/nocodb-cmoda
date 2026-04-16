@@ -70,10 +70,6 @@ export const clientTypes = [
     value: ClientType.MYSQL,
   },
   {
-    text: 'MSSQL',
-    value: ClientType.MSSQL,
-  },
-  {
     text: 'PostgreSQL',
     value: ClientType.PG,
   },
@@ -104,7 +100,6 @@ type ConnectionClientType =
   | 'yugabyte'
   | 'citusdb'
   | 'cockroachdb'
-  | 'oracledb'
   | 'greenplum'
 
 const sampleConnectionData: { [key in ConnectionClientType]: DefaultConnection } & { [ClientType.SQLITE]: SQLiteConnection } & {
@@ -129,13 +124,6 @@ const sampleConnectionData: { [key in ConnectionClientType]: DefaultConnection }
     port: '15306',
     user: 'root',
     password: 'password',
-    database: '_test',
-  },
-  [ClientType.MSSQL]: {
-    host: defaultHost,
-    port: 1433,
-    user: 'sa',
-    password: 'Password123.',
     database: '_test',
   },
   [ClientType.SQLITE]: {
@@ -196,24 +184,13 @@ const sampleConnectionData: { [key in ConnectionClientType]: DefaultConnection }
     password: '',
     database: '_test',
   },
-  oracledb: {
-    host: defaultHost,
-    port: '1521',
-    user: 'system',
-    password: 'Oracle18',
-    database: '_test',
-  },
 }
 
 export const getDefaultConnectionConfig = (client: ClientType): ProjectCreateForm['dataSource'] => {
   return {
     client,
     connection: sampleConnectionData[client],
-    searchPath: [ClientType.PG, ClientType.MSSQL].includes(client)
-      ? client === ClientType.PG
-        ? ['public']
-        : ['dbo']
-      : undefined,
+    searchPath: [ClientType.PG].includes(client) ? (client === ClientType.PG ? ['public'] : ['dbo']) : undefined,
   }
 }
 
@@ -245,7 +222,7 @@ const errorHandlers = [
     },
   },
   {
-    messages: ['the server does not support SSL connections'],
+    messages: ['The server does not support SSL connections'],
     codes: ['08P01'], // PostgreSQL error code for protocol violation
     action: {
       connection: {
@@ -262,7 +239,8 @@ function generateConfigFix(e: any) {
 
     if (!errorMessage && !errorCode) return
 
-    const messageMatches = errorMessage && handler.messages.some((msg) => errorMessage?.includes?.(msg))
+    const messageMatches =
+      errorMessage && handler.messages.some((msg) => errorMessage?.toLowerCase()?.includes?.(msg?.toLowerCase()))
     const codeMatches = errorCode && handler.codes.includes(errorCode)
 
     if (messageMatches || codeMatches) {

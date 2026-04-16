@@ -22,7 +22,7 @@ async function changeLanguage(lang: string) {
 <template>
   <a-menu-item class="group rounded-md !my-0.5">
     <a
-      href="https://docs.nocodb.com/engineering/translation/#how-to-contribute--for-community-members"
+      href="https://nocodb.com/docs/product-docs/engineering/translation#how-to-contribute--for-community-members"
       target="_blank"
       class="caption nc-base-menu-item rounded-md underline hover:!text-primary"
       rel="noopener"
@@ -42,7 +42,7 @@ async function changeLanguage(lang: string) {
       <div class="nc-base-menu-item w-fit capitalize">
         {{ Language[key] || lang }}
       </div>
-      <component :is="iconMap.check" v-if="key === locale" class="text-primary w-4 h-4" />
+      <component :is="iconMap.check" v-if="key === locale" class="text-nc-content-brand w-4 h-4" />
     </div>
   </a-menu-item>
 </template>

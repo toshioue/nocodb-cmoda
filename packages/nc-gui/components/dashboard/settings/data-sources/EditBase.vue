@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import { type SourceType, validateAndExtractSSLProp } from 'nocodb-sdk'
-import { Form, message } from 'ant-design-vue'
+import { IntegrationsType, type SourceType, validateAndExtractSSLProp } from 'nocodb-sdk'
+import { Form } from 'ant-design-vue'
 import {
   ClientType,
   type DatabricksConnection,
@@ -27,6 +27,10 @@ const _projectId = inject(ProjectIdInj, undefined)
 const baseId = computed(() => _projectId?.value ?? base.value?.id)
 
 const { refreshCommandPalette } = useCommandPalette()
+
+const filteredIntegrations = computed(() =>
+  integrations.value.filter((i) => i.sub_type !== SyncDataType.NOCODB && i.type === IntegrationsType.Database),
+)
 
 const useForm = Form.useForm
 
@@ -110,8 +114,7 @@ const validators = computed(() => {
       : {
           'dataSource.connection.database':
             selectedIntegration.value && getDataSourceValue('database') ? [] : [fieldRequiredValidator()],
-          ...([ClientType.PG, ClientType.MSSQL].includes(formState.value.dataSource.client) &&
-          formState.value.dataSource.searchPath
+          ...([ClientType.PG].includes(formState.value.dataSource.client) && formState.value.dataSource.searchPath
             ? {
                 'dataSource.searchPath.0':
                   selectedIntegration.value && getDataSourceValue('schema') ? [] : [fieldRequiredValidator()],
@@ -282,7 +285,7 @@ onMounted(async () => {
   isLoading.value = true
 
   if (!integrations.value.length) {
-    await loadIntegrations(true, base.value?.id)
+    await loadIntegrations(IntegrationsType.Database, base.value?.id)
   }
 
   if (base.value?.id) {
@@ -317,7 +320,7 @@ onMounted(async () => {
 watch(
   () => formState.value.dataSource.searchPath,
   (val) => {
-    if ([ClientType.PG, ClientType.MSSQL].includes(formState.value.dataSource.client) && !val) {
+    if ([ClientType.PG].includes(formState.value.dataSource.client) && !val) {
       formState.value.dataSource.searchPath = []
     }
   },
@@ -376,7 +379,7 @@ function handleAutoScroll(scroll: boolean, className: string) {
 </script>
 
 <template>
-  <div class="edit-source bg-white relative h-full flex flex-col w-full">
+  <div class="edit-source bg-nc-bg-default relative h-full flex flex-col w-full">
     <div class="h-full max-h-[calc(100%_-_65px)] flex">
       <div class="nc-edit-source-left-panel nc-scrollbar-thin relative">
         <div class="h-full max-w-[768px] mx-auto">
@@ -411,7 +414,11 @@ function handleAutoScroll(scroll: boolean, className: string) {
                         show-search
                         dropdown-match-select-width
                       >
-                        <a-select-option v-for="integration in integrations" :key="integration.id" :value="integration.id">
+                        <a-select-option
+                          v-for="integration in filteredIntegrations"
+                          :key="integration.id"
+                          :value="integration.id"
+                        >
                           <div class="w-full flex gap-2 items-center" :data-testid="integration.title">
                             <GeneralIntegrationIcon
                               v-if="integration?.sub_type"
@@ -505,8 +512,8 @@ function handleAutoScroll(scroll: boolean, className: string) {
                       <!-- Schema name -->
                       <a-form-item
                         v-if="
-                          ([ClientType.MSSQL, ClientType.PG].includes(formState.dataSource.client) ||
-                            [ClientType.MSSQL, ClientType.PG].includes(selectedIntegration?.sub_type)) &&
+                          ([ClientType.PG].includes(formState.dataSource.client) ||
+                            [ClientType.PG].includes(selectedIntegration?.sub_type)) &&
                           formState.dataSource.searchPath
                         "
                         :label="$t('labels.schemaName')"
@@ -527,8 +534,8 @@ function handleAutoScroll(scroll: boolean, className: string) {
               <div class="nc-form-section-title">Permissions</div>
               <div class="nc-form-section-body">
                 <DashboardSettingsDataSourcesSourceRestrictions
-                  v-model:allowMetaWrite="allowMetaWrite"
-                  v-model:allowDataWrite="allowDataWrite"
+                  v-model:allow-meta-write="allowMetaWrite"
+                  v-model:allow-data-write="allowDataWrite"
                 />
               </div>
             </div>
@@ -594,7 +601,7 @@ function handleAutoScroll(scroll: boolean, className: string) {
           </a-form>
         </div>
         <general-overlay :model-value="isLoading" inline transition class="!bg-opacity-15">
-          <div class="flex items-center justify-center h-full w-full !bg-white !bg-opacity-85 z-1000">
+          <div class="flex items-center justify-center h-full w-full !bg-nc-bg-default !bg-opacity-85 z-1000">
             <a-spin size="large" />
           </div>
         </general-overlay>
@@ -604,7 +611,7 @@ function handleAutoScroll(scroll: boolean, className: string) {
         <NcDivider />
       </div>
     </div>
-    <div class="p-4 w-full flex items-center justify-between gap-3 border-t-1 border-gray-200">
+    <div class="p-4 w-full flex items-center justify-between gap-3 border-t-1 border-nc-border-gray-medium">
       <div class="flex-1 flex items-center gap-3">
         <div class="flex-1 flex items-center gap-3 text-[#C86827]">
           <GeneralIcon icon="alertTriangle" class="flex-none" />
@@ -659,7 +666,7 @@ function handleAutoScroll(scroll: boolean, className: string) {
   @apply p-6 flex-1 flex justify-center;
 }
 .nc-edit-source-right-panel {
-  @apply p-4 w-[320px] border-l-1 border-gray-200 flex flex-col gap-4 bg-gray-50 rounded-br-2xl;
+  @apply p-4 w-[320px] border-l-1 border-nc-border-gray-medium flex flex-col gap-4 bg-nc-bg-gray-extralight rounded-br-2xl;
 }
 :deep(.ant-collapse-header) {
   @apply !-mt-4 !p-0 flex items-center !cursor-default children:first:flex;
@@ -705,16 +712,6 @@ function handleAutoScroll(scroll: boolean, className: string) {
     }
   }
 
-  .nc-form-section {
-    @apply flex flex-col gap-3;
-  }
-  .nc-form-section-title {
-    @apply text-sm font-bold text-gray-800;
-  }
-  .nc-form-section-body {
-    @apply flex flex-col gap-3;
-  }
-
   .nc-connection-json-editor {
     @apply min-h-[300px] max-h-[600px];
     resize: vertical;
@@ -722,16 +719,16 @@ function handleAutoScroll(scroll: boolean, className: string) {
   }
 
   :deep(.ant-form-item-label > label.ant-form-item-required:after) {
-    @apply content-['*'] inline-block text-inherit text-red-500 ml-1;
+    @apply content-['*'] inline-block text-inherit text-nc-content-red-medium ml-1;
   }
 
   .nc-form-extra-connectin-parameters {
     :deep(.ant-input) {
       &:not(:hover):not(:focus):not(:disabled) {
-        @apply !shadow-default !border-gray-200;
+        @apply !shadow-default !border-nc-border-gray-medium;
       }
       &:hover:not(:focus):not(:disabled) {
-        @apply !border-gray-200 !shadow-hover;
+        @apply !border-nc-border-gray-medium !shadow-hover;
       }
       &:focus {
         @apply !shadow-selected !ring-0;
@@ -769,10 +766,10 @@ function handleAutoScroll(scroll: boolean, className: string) {
     &:not(.ant-form-item-has-error) {
       &:not(:has(.ant-input-password)) .ant-input {
         &:not(:hover):not(:focus):not(:disabled) {
-          @apply shadow-default border-gray-200;
+          @apply shadow-default border-nc-border-gray-medium;
         }
         &:hover:not(:focus):not(:disabled) {
-          @apply border-gray-200 shadow-hover;
+          @apply border-nc-border-gray-medium shadow-hover;
         }
         &:focus {
           @apply shadow-selected ring-0;
@@ -781,10 +778,10 @@ function handleAutoScroll(scroll: boolean, className: string) {
       .ant-input-number,
       .ant-input-affix-wrapper.ant-input-password {
         &:not(:hover):not(:focus-within):not(:disabled) {
-          @apply shadow-default border-gray-200;
+          @apply shadow-default border-nc-border-gray-medium;
         }
         &:hover:not(:focus-within):not(:disabled) {
-          @apply border-gray-200 shadow-hover;
+          @apply border-nc-border-gray-medium shadow-hover;
         }
         &:focus-within {
           @apply shadow-selected ring-0;

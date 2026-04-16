@@ -11,9 +11,10 @@ interface Props {
   customLabel?: string
   fixedSize?: number
   extraStyle?: string
-  showApiTiming?: boolean
   alignLeft?: boolean
   showSizeChanger?: boolean
+  isAddNewRecordGridMode?: boolean
+  selectedCellCount?: number
 }
 
 const props = defineProps<Props>()
@@ -28,9 +29,7 @@ const { isMobileMode } = useGlobal()
 
 const { alignCountOnRight, customLabel, changePage } = props
 
-const fixedSize = toRef(props, 'fixedSize')
-
-const extraStyle = toRef(props, 'extraStyle')
+const { isAddNewRecordGridMode, fixedSize, extraStyle } = toRefs(props)
 
 const isGroupBy = inject(IsGroupByInj, ref(false))
 
@@ -87,7 +86,7 @@ const tempPageVal = ref(page.value)
 
 <template>
   <div
-    class="flex items-center bg-white border-gray-200 nc-grid-pagination-wrapper"
+    class="flex items-center bg-nc-bg-default border-nc-border-gray-medium nc-grid-pagination-wrapper"
     :class="{ 'border-t-1': !isGroupBy, 'h-13': isMobileMode, 'h-10': !isMobileMode }"
     :style="`${fixedSize ? `width: ${fixedSize}px;` : ''}${
       isGroupBy ? 'margin-top:1px; border-radius: 0 0 8px 8px !important;' : ''
@@ -103,7 +102,7 @@ const tempPageVal = ref(page.value)
       <slot name="add-record" />
       <span
         v-if="!alignCountOnRight && count !== null && count !== Infinity"
-        class="caption ml-2.5 text-gray-500 text-xs"
+        class="caption ml-2.5 text-nc-content-gray-muted text-xs"
         data-testid="grid-pagination"
       >
         {{ count }} {{ customLabel ? customLabel : count !== 1 ? $t('objects.records') : $t('objects.record') }}
@@ -115,7 +114,8 @@ const tempPageVal = ref(page.value)
       class="transition-all ml-2 sticky left-0 duration-350"
       :class="{
         'ml-8': alignLeft,
-        'left-[159px]': isGroupBy && $slots['add-record'],
+        'left-[159px]': isGroupBy && $slots['add-record'] && isAddNewRecordGridMode,
+        'left-[199px]': isGroupBy && $slots['add-record'] && !isAddNewRecordGridMode,
         'left-[32px]': isGroupBy && !$slots['add-record'],
       }"
     >
@@ -153,14 +153,22 @@ const tempPageVal = ref(page.value)
       </div>
     </div>
     <div v-if="!isMobileMode" class="flex-1 flex justify-end items-center">
-      <GeneralApiTiming v-if="isEeUI && props.showApiTiming" class="m-1" />
       <div class="text-right">
         <span
           v-if="alignCountOnRight && count !== Infinity"
-          class="caption nc-grid-row-count mr-2.5 text-gray-500 text-xs"
+          class="caption nc-grid-row-count mr-2.5 text-nc-content-gray-muted text-xs"
           data-testid="grid-pagination"
         >
-          {{ count }} {{ customLabel ? customLabel : count !== 1 ? $t('objects.records') : $t('objects.record') }}
+          {{ selectedCellCount && selectedCellCount > 1 ? selectedCellCount : count }}
+          {{
+            selectedCellCount && selectedCellCount > 1
+              ? $t('labels.cellsSelected')
+              : customLabel
+              ? customLabel
+              : count !== 1
+              ? $t('objects.records')
+              : $t('objects.record')
+          }}
         </span>
       </div>
     </div>
@@ -171,7 +179,7 @@ const tempPageVal = ref(page.value)
 .nc-grid-pagination-wrapper {
   .ant-pagination-item-active {
     a {
-      @apply text-sm !text-gray-700 !hover:text-gray-800;
+      @apply text-sm !text-nc-content-gray-subtle !hover:text-nc-content-gray;
     }
   }
 }
@@ -188,11 +196,11 @@ const tempPageVal = ref(page.value)
 
 :deep(.ant-pagination-item:not(.ant-pagination-item-active) a) {
   line-height: 21px !important;
-  @apply text-sm !text-gray-400;
+  @apply text-sm !text-nc-content-gray-disabled;
 }
 
 :deep(.ant-pagination-item-link) {
-  @apply text-gray-800 flex items-center justify-center;
+  @apply text-nc-content-gray flex items-center justify-center;
 }
 
 :deep(.ant-pagination-item.ant-pagination-item-active) {

@@ -12,8 +12,17 @@ import { ApiToken } from '~/models';
 export class ApiTokensService {
   constructor(protected readonly appHooksService: AppHooksService) {}
 
-  async apiTokenList(param: { userId: string }) {
-    return await ApiToken.list(param.userId);
+  async apiTokenList(param: { userId: string; req: NcRequest }) {
+    // Check if user logged in via SSO
+    const ssoClientId = (param.req.user as any)?.extra?.sso_client_id;
+
+    if (ssoClientId) {
+      // User logged in via SSO - show both SSO and normal tokens
+      return await ApiToken.list(param.userId);
+    } else {
+      // User logged in normally - only show non-SSO tokens
+      return await ApiToken.listForNonSsoUser(param.userId);
+    }
   }
   async apiTokenCreate(param: {
     userId: string;
@@ -25,16 +34,24 @@ export class ApiTokensService {
       param.tokenBody,
     );
 
+    // Get SSO client ID if user logged in via SSO
+    const ssoClientId = (param.req.user as any)?.extra?.sso_client_id;
+
+    param.tokenBody.description = param.tokenBody.description?.trim();
+    const token = await ApiToken.insert({
+      ...param.tokenBody,
+      fk_user_id: param.userId,
+      fk_sso_client_id: ssoClientId || null,
+    });
+
     this.appHooksService.emit(AppEvents.API_TOKEN_CREATE, {
       userId: param.userId,
-      tokenBody: param.tokenBody,
+      tokenTitle: param.tokenBody.description,
+      tokenId: token.id,
       req: param.req,
     });
 
-    return await ApiToken.insert({
-      ...param.tokenBody,
-      fk_user_id: param.userId,
-    });
+    return token;
   }
 
   async apiTokenDelete(param: { tokenId: string; user: User; req: NcRequest }) {
@@ -48,7 +65,8 @@ export class ApiTokensService {
 
     this.appHooksService.emit(AppEvents.API_TOKEN_DELETE, {
       userId: param.user?.id,
-      tokenId: param.tokenId,
+      tokenId: apiToken.id,
+      tokenTitle: apiToken.description,
       req: param.req,
     });
 

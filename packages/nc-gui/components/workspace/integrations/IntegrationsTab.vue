@@ -1,21 +1,32 @@
 <script lang="ts" setup>
 import type { VNodeRef } from '@vue/runtime-core'
+import { IntegrationCategoryType, PlanFeatureTypes } from 'nocodb-sdk'
 import NcModal from '~/components/nc/Modal.vue'
-/* eslint-disable @typescript-eslint/consistent-type-imports */
-import { IntegrationCategoryType, type IntegrationItemType, SyncDataType } from '#imports'
+
+import { type IntegrationItemType, SyncDataType } from '#imports'
 
 const props = withDefaults(
   defineProps<{
     isModal?: boolean
     filterCategory?: (c: IntegrationCategoryItemType) => boolean
     filterIntegration?: (i: IntegrationItemType) => boolean
+    showFilter?: boolean
+    showTitle?: boolean
+    showActiveConnections?: boolean
   }>(),
   {
     isModal: false,
     filterCategory: () => true,
     filterIntegration: () => true,
+    showFilter: false,
+    showTitle: false,
+    showActiveConnections: false,
   },
 )
+
+const emits = defineEmits<{
+  (e: 'view-all-connections'): void
+}>()
 
 const { isModal, filterCategory, filterIntegration } = props
 
@@ -25,54 +36,135 @@ const { t } = useI18n()
 
 const { syncDataUpvotes, updateSyncDataUpvotes } = useGlobal()
 
-const { pageMode, IntegrationsPageMode, requestIntegration, addIntegration, saveIntegraitonRequest } = useIntegrationStore()
+const { isFeatureEnabled } = useBetaFeatureToggle()
+
+const { activeWorkspace } = storeToRefs(useWorkspace())
+
+const { isSyncFeatureEnabled } = storeToRefs(useSyncStore())
+
+const { isEEFeatureBlocked, blockAiIntegrations, showUpgradeToUseAiIntegrations } = useEeConfig()
+
+const easterEggToggle = computed(() => isFeatureEnabled(FEATURE_FLAG.INTEGRATIONS))
+
+const router = useRouter()
+const route = router.currentRoute
+
+const {
+  pageMode,
+  IntegrationsPageMode,
+  requestIntegration,
+  addIntegration,
+  saveIntegrationRequest,
+  integrationsRefreshKey,
+  integrations,
+  isLoadedIntegrations,
+  integrationPaginationData,
+  integrationsCategoryFilter,
+  activeViewTab,
+  loadDynamicIntegrations,
+  availableSyncAuthIntegrationSubtypes,
+} = useIntegrationStore()
 
 const focusTextArea: VNodeRef = (el) => el && el?.focus?.()
+
+const showComingSoonIntegrations = ref(false)
 
 const activeCategory = ref<IntegrationCategoryItemType | null>(null)
 
 const searchQuery = ref<string>('')
 
+const searchInputRef = ref<HTMLInputElement>()
+
 const integrationListRef = ref<HTMLDivElement>()
 
 const { width: integrationListContainerWidth } = useElementSize(integrationListRef)
-
-const listWrapperMaxWidth = computed(() => {
-  if (integrationListContainerWidth.value <= 328 || integrationListContainerWidth.value < 624) {
-    return '328px'
-  }
-
-  if (integrationListContainerWidth.value < 920) {
-    return '576px'
-  }
-
-  if (integrationListContainerWidth.value < 1216) {
-    return '872px'
-  }
-
-  return '1168px'
-})
 
 const upvotesData = computed(() => {
   return new Set(syncDataUpvotes.value)
 })
 
+const integrationCategoriesRef = computed(() => {
+  return integrationCategories
+    .filter((c) => {
+      if (isEEFeatureBlocked.value && c.value !== IntegrationCategoryType.DATABASE) return false
+
+      if (!showComingSoonIntegrations.value && !c.isAvailable) return false
+
+      const filterByActiveCategory = activeCategory.value ? c.value === activeCategory.value.value : true
+
+      return filterCategory(c) && filterByActiveCategory && !c.value.endsWith('-coming-soon')
+    })
+    .map((c) => {
+      return {
+        label: t(c.title),
+        value: c.value,
+      }
+    })
+})
+
+const isOpenFilter = ref(false)
+
+const categoriesQuery = computed({
+  get: () => {
+    const availableCategories = integrationCategoriesRef.value.map((c) => c.value)
+
+    if (route.value.query.categories === undefined) {
+      return integrationsCategoryFilter.value
+    }
+
+    const query = ((route.value.query.categories as string) || '')
+      .split(',')
+      .map((c) => c.trim())
+      .filter((c) => availableCategories.includes(c))
+
+    integrationsCategoryFilter.value = query
+
+    router.push({ query: { ...route.value.query, categories: undefined } })
+
+    return integrationsCategoryFilter.value
+  },
+  set: (value: Array<string>) => {
+    if (!ncIsArray(value)) return
+
+    integrationsCategoryFilter.value = value
+  },
+})
+
+const isDataReflectionEnabled = computed(() => {
+  return isFeatureEnabled(FEATURE_FLAG.DATA_REFLECTION)
+})
+
 const getIntegrationsByCategory = (category: IntegrationCategoryType, query: string) => {
   return allIntegrations.filter((i) => {
     const isOssOnly = isEeUI ? !i?.isOssOnly : true
+
+    if (!isDataReflectionEnabled.value && i.sub_type === SyncDataType.NOCODB) return false
+
+    if (i.hidden) return false
+
     return (
-      isOssOnly &&
-      filterIntegration(i) &&
-      i.categories.includes(category) &&
-      t(i.title).toLowerCase().includes(query.trim().toLowerCase())
+      isOssOnly && filterIntegration(i) && i.type === category && t(i.title).toLowerCase().includes(query.trim().toLowerCase())
     )
   })
 }
 
 const integrationsMapByCategory = computed(() => {
+  // eslint-disable-next-line no-unused-expressions
+  integrationsRefreshKey.value
+
   return integrationCategories
-    .filter(filterCategory)
-    .filter((c) => (activeCategory.value ? c.value === activeCategory.value.value : true))
+    .filter((c) => {
+      if (isEEFeatureBlocked.value && c.value !== IntegrationCategoryType.DATABASE) return false
+
+      if (!showComingSoonIntegrations.value && !c.isAvailable) return false
+
+      const filterByActiveCategory = activeCategory.value ? c.value === activeCategory.value.value : true
+
+      const filterByUrlQuery =
+        categoriesQuery.value.includes(c.value) || categoriesQuery.value.some((q) => `${q}-coming-soon` === c.value)
+
+      return filterCategory(c) && filterByActiveCategory && filterByUrlQuery
+    })
     .reduce(
       (acc, curr) => {
         acc[curr.value] = {
@@ -81,6 +173,7 @@ const integrationsMapByCategory = computed(() => {
           list: getIntegrationsByCategory(curr.value, searchQuery.value),
           isAvailable: curr.isAvailable,
           teleEventName: curr.teleEventName,
+          value: curr.value,
         }
 
         return acc
@@ -93,19 +186,31 @@ const integrationsMapByCategory = computed(() => {
           list: IntegrationItemType[]
           isAvailable?: boolean
           teleEventName?: IntegrationCategoryType
+          value: IntegrationCategoryType
         }
       >,
     )
 })
 
-const isEmptyList = computed(() => {
+const hasIntegrationResults = computed(() => {
   const categories = Object.keys(integrationsMapByCategory.value)
+  return categories.some((category) => integrationsMapByCategory.value[category]?.list?.length > 0)
+})
 
-  if (!categories.length) {
-    return true
-  }
+const hasConnectionResults = computed(() => {
+  if (!props.showActiveConnections || isModal || !integrations.value.length) return false
 
-  return !categories.some((category) => integrationsMapByCategory.value[category].list.length > 0)
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) return integrations.value.length > 0
+
+  return integrations.value.some((i) => i.title?.toLowerCase().includes(query))
+})
+
+const isEmptyList = computed(() => {
+  // If active connections have results, don't show empty state
+  if (hasConnectionResults.value) return false
+
+  return !hasIntegrationResults.value
 })
 
 const isAddNewIntegrationModalOpen = computed({
@@ -127,19 +232,72 @@ const handleUpvote = (category: IntegrationCategoryType, syncDataType: SyncDataT
   updateSyncDataUpvotes([...syncDataUpvotes.value, syncDataType])
 }
 
-const handleAddIntegration = (category: IntegrationCategoryType, integration: IntegrationItemType) => {
+const handleAddIntegration = async (category: IntegrationCategoryType, integration: IntegrationItemType) => {
   if (!integration.isAvailable) {
-    handleUpvote(category, integration.value)
+    handleUpvote(category, integration.sub_type)
     return
   }
 
-  // currently we only support database integration category type
-  if (category !== IntegrationCategoryType.DATABASE) {
+  if (category === IntegrationCategoryType.AI && blockAiIntegrations.value) {
+    showUpgradeToUseAiIntegrations({})
     return
   }
 
-  addIntegration(integration.value)
+  await addIntegration(integration)
 }
+
+const isVisibleAllCategory = computed(() => {
+  return integrationCategoriesRef.value.length === categoriesQuery.value.length
+})
+
+const toggleShowOrHideAllCategory = () => {
+  if (isVisibleAllCategory.value) {
+    categoriesQuery.value = []
+  } else {
+    categoriesQuery.value = integrationCategoriesRef.value.map((c) => c.value)
+  }
+}
+
+const isIntegrationVisible = (integration: IntegrationItemType, category: any) => {
+  if (!showComingSoonIntegrations.value && !integration.isAvailable) return false
+
+  // AUTH category: always filter by available sync auth subtypes, even when easterEggToggle is on
+  if (isSyncFeatureEnabled.value && category.value === IntegrationCategoryType.AUTH) {
+    return availableSyncAuthIntegrationSubtypes.value.includes(integration.sub_type)
+  }
+
+  if (easterEggToggle.value) return true
+
+  return !!integration.isAvailable
+}
+
+onMounted(() => {
+  loadDynamicIntegrations()
+
+  if (!integrationsCategoryFilter.value.length) {
+    integrationsCategoryFilter.value = integrationCategoriesRef.value.map((c) => c.value)
+  }
+})
+
+if (!isModal) {
+  watch(searchInputRef, (el) => {
+    if (el) {
+      forcedNextTick(() => {
+        searchInputRef.value?.focus()
+      })
+    }
+  })
+}
+
+const dataReflectionEnabled = computed(() => {
+  return !!activeWorkspace.value?.data_reflection_enabled
+})
+
+watch(activeViewTab, (value) => {
+  if (value !== 'integrations' && isOpenFilter.value) {
+    isOpenFilter.value = false
+  }
+})
 </script>
 
 <template>
@@ -156,7 +314,7 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
   >
     <a-layout>
       <a-layout-content class="nc-integration-layout-content">
-        <div v-if="isModal" class="p-4 w-full flex items-center justify-between gap-3 border-b-1 border-gray-200">
+        <div v-if="isModal" class="p-4 w-full flex items-center justify-between gap-3 border-b-1 border-nc-border-gray-medium">
           <NcButton type="text" size="small" @click="isAddNewIntegrationModalOpen = false">
             <GeneralIcon icon="arrowLeft" />
           </NcButton>
@@ -164,7 +322,7 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
           <div class="flex-1 text-base font-weight-700">New Connection</div>
           <div class="flex items-center gap-3">
             <NcButton size="small" type="text" @click="isAddNewIntegrationModalOpen = false">
-              <GeneralIcon icon="close" class="text-gray-600" />
+              <GeneralIcon icon="close" class="text-nc-content-gray-subtle2" />
             </NcButton>
           </div>
         </div>
@@ -175,43 +333,104 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
             'h-full': !isModal,
           }"
         >
-          <div v-if="integrationListContainerWidth" class="px-6 pt-6">
+          <div v-if="integrationListContainerWidth" class="px-8 pt-6">
             <div
-              class="flex items-end justify-end flex-wrap gap-3 m-auto"
-              :style="{
-                maxWidth: listWrapperMaxWidth,
+              class="flex justify-end flex-wrap gap-3 m-auto nc-content-max-w"
+              :class="{
+                'items-start': showTitle,
+                'items-center': !showTitle,
               }"
             >
               <div class="flex-1">
-                <div class="text-sm font-normal text-gray-600 mb-2">
+                <h2 v-if="showTitle" class="text-lg font-semibold text-nc-content-gray mb-2">
+                  {{ $t('general.integrations') }}
+                </h2>
+
+                <div class="text-sm font-normal text-nc-content-gray-subtle2">
                   <div>
-                    Connect integrations with NocoDB.
-                    <a href="https://docs.nocodb.com/category/integrations" target="_blank" rel="noopener noreferrer"
-                      >Learn more</a
-                    >
+                    {{ showActiveConnections ? $t('msg.manageConnectionsAndIntegrations') : $t('msg.connectIntegrations') }}
+                    <a href="https://nocodb.com/docs/product-docs/integrations" target="_blank" rel="noopener noreferrer">{{
+                      $t('msg.learnMore')
+                    }}</a>
                   </div>
                 </div>
-                <a-input
-                  v-model:value="searchQuery"
-                  type="text"
-                  class="nc-input-border-on-value nc-search-integration-input !min-w-[300px] !max-w-[400px] nc-input-sm flex-none"
-                  placeholder="Search integration"
-                  allow-clear
-                >
-                  <template #prefix>
-                    <GeneralIcon icon="search" class="mr-2 h-4 w-4 text-gray-500" />
-                  </template>
-                </a-input>
               </div>
-              <NcButton type="ghost" size="small" class="!text-primary" @click="requestIntegration.isOpen = true">
+              <NcButton
+                v-if="easterEggToggle"
+                type="ghost"
+                size="small"
+                class="!text-nc-content-brand"
+                @click="requestIntegration.isOpen = true"
+              >
                 Request Integration
               </NcButton>
+            </div>
+            <!-- Search + filter — full width, outside the header row -->
+            <div class="flex items-center gap-2 nc-content-max-w m-auto !mt-4">
+              <a-input
+                ref="searchInputRef"
+                v-model:value="searchQuery"
+                type="text"
+                class="flex-1 nc-input-border-on-value nc-search-integration-input !rounded-lg !py-2 !h-9"
+                :placeholder="
+                  showActiveConnections
+                    ? $t('placeholder.searchConnectionsOrIntegrations')
+                    : `${$t('general.search')} ${$t('general.integrations').toLowerCase()}...`
+                "
+                allow-clear
+              >
+                <template #prefix>
+                  <GeneralIcon icon="search" class="mr-2 h-4 w-4 text-nc-content-gray-muted" />
+                </template>
+              </a-input>
+              <NcDropdown v-if="easterEggToggle && showFilter" v-model:visible="isOpenFilter" placement="bottomRight">
+                <NcButton size="medium" type="secondary" class="!px-1 !min-h-9 !min-w-9 !h-9 !w-9">
+                  <div class="flex items-center gap-2">
+                    <GeneralIcon icon="filter" />
+                    <div
+                      v-if="integrationCategoriesRef.length - categoriesQuery.length"
+                      class="bg-nc-bg-brand text-nc-content-brand p-1 text-xs rounded-md min-w-6"
+                    >
+                      {{ integrationCategoriesRef.length - categoriesQuery.length }}
+                    </div>
+                  </div>
+                </NcButton>
+
+                <template #overlay>
+                  <NcList
+                    v-model:value="categoriesQuery"
+                    v-model:open="isOpenFilter"
+                    :list="integrationCategoriesRef"
+                    search-input-placeholder="Search category"
+                    :close-on-select="false"
+                    is-multi-select
+                    variant="medium"
+                  >
+                    <template #listFooter>
+                      <NcDivider class="!mt-0 !mb-2" />
+                      <div class="px-2 mb-2">
+                        <div
+                          class="px-2 py-1.5 flex items-center justify-between gap-2 text-sm font-weight-500 !text-nc-content-brand hover:bg-nc-bg-gray-light rounded-md cursor-pointer"
+                          @click="toggleShowOrHideAllCategory"
+                        >
+                          <div class="flex items-center gap-2">
+                            <GeneralIcon :icon="isVisibleAllCategory ? 'eyeSlash' : 'eye'" />
+                            <div>
+                              {{ isVisibleAllCategory ? $t('general.hideAll') : $t('general.showAll') }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </template></NcList
+                  >
+                </template>
+              </NcDropdown>
             </div>
           </div>
 
           <div
             ref="integrationListRef"
-            class="flex-1 px-6 pb-6 flex flex-col nc-workspace-settings-integrations-list overflow-y-auto nc-scrollbar-thin"
+            class="flex-1 px-8 pb-8 flex flex-col nc-workspace-settings-integrations-list overflow-y-auto nc-scrollbar-thin"
           >
             <div
               v-if="integrationListContainerWidth"
@@ -220,71 +439,127 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
                 'flex-1': isEmptyList,
               }"
             >
-              <div
-                class="flex flex-col space-y-6 w-full"
-                :style="{
-                  maxWidth: listWrapperMaxWidth,
-                }"
-              >
-                <template v-for="(category, key) in integrationsMapByCategory">
-                  <div v-if="category.list.length" :key="key" class="integration-type-wrapper">
-                    <div class="category-type-title flex gap-2">
-                      {{ $t(category.title) }}
-                      <NcBadge
-                        v-if="!category.isAvailable"
-                        :border="false"
-                        class="text-brand-500 !h-5 bg-brand-50 text-xs font-normal px-2"
-                        >{{ $t('msg.toast.futureRelease') }}</NcBadge
-                      >
-                    </div>
-                    <div v-if="category.list.length" class="integration-type-list">
-                      <NcTooltip
-                        v-for="integration of category.list"
-                        :key="integration.value"
-                        :disabled="integration?.isAvailable"
-                        placement="bottom"
-                      >
-                        <template #title>{{ $t('tooltip.comingSoonIntegration') }}</template>
+              <div class="flex flex-col space-y-6 w-full nc-content-max-w">
+                <!-- Full-page skeleton during initial load (non-modal only) -->
+                <WorkspaceIntegrationsSkeleton v-if="showActiveConnections && !isModal && !isLoadedIntegrations" />
 
-                        <div
-                          :tabindex="0"
-                          class="source-card focus-visible:outline-none outline-none h-full"
-                          :class="{
-                            'is-available': integration?.isAvailable,
-                          }"
-                          @click="handleAddIntegration(key, integration)"
+                <!-- Real content (shown after load or in modal mode) -->
+                <template v-else>
+                  <!-- Active connections section (shown as first section when not modal) -->
+                  <WorkspaceIntegrationsActiveConnectionsSection
+                    v-if="showActiveConnections && !isModal && isLoadedIntegrations && integrations.length"
+                    :connections="integrations"
+                    :total-count="integrationPaginationData.totalRows || 0"
+                    :search-query="searchQuery"
+                    show-divider
+                    @view-all="emits('view-all-connections')"
+                  />
+
+                  <template v-for="(category, key) in integrationsMapByCategory">
+                    <div
+                      v-if="
+                        (easterEggToggle ||
+                          category.value === IntegrationCategoryType.DATABASE ||
+                          (isSyncFeatureEnabled && category.value === IntegrationCategoryType.AUTH)) &&
+                        category.list.length
+                      "
+                      :key="key"
+                      class="integration-type-wrapper"
+                      style="container-type: inline-size"
+                    >
+                      <div class="category-type-title flex gap-2">
+                        {{ $t(category.title) }}
+                        <LazyPaymentUpgradeBadge
+                          v-if="category.value === IntegrationCategoryType.AI && blockAiIntegrations"
+                          :feature="PlanFeatureTypes.FEATURE_AI_INTEGRATIONS"
+                          :feature-enabled-callback="() => !blockAiIntegrations"
+                          remove-click
+                        />
+                        <NcBadge
+                          v-else-if="!category.isAvailable"
+                          :border="false"
+                          class="text-nc-content-brand !h-5 bg-nc-bg-brand text-xs font-normal px-2"
+                          >{{ $t('msg.toast.futureRelease') }}</NcBadge
                         >
-                          <div class="integration-icon-wrapper">
-                            <component :is="integration.icon" class="integration-icon" :style="integration.iconStyle" />
-                          </div>
-                          <div class="flex-1">
-                            <div class="name">{{ $t(integration.title) }}</div>
-                            <div v-if="integration.subtitle" class="subtitle flex-1">{{ $t(integration.subtitle) }}</div>
-                          </div>
-                          <div v-if="integration?.isAvailable" class="action-btn">+</div>
-                          <div v-else class="">
-                            <NcButton
-                              type="secondary"
-                              size="xs"
-                              class="integration-upvote-btn !rounded-lg !px-1 !py-0"
+                      </div>
+                      <div v-if="category.list.length" class="integration-type-list grid grid-cols-1 gap-3">
+                        <template v-for="integration of category.list" :key="integration.sub_type">
+                          <NcTooltip
+                            v-if="isIntegrationVisible(integration, category)"
+                            :disabled="integration?.isAvailable"
+                            placement="bottom"
+                          >
+                            <template #title>{{ $t('tooltip.comingSoonIntegration') }}</template>
+
+                            <div
+                              :tabindex="0"
+                              class="source-card focus-visible:outline-none outline-none h-full"
                               :class="{
-                                selected: upvotesData.has(integration.value),
+                                'is-available': integration?.isAvailable,
                               }"
+                              @click="handleAddIntegration(key, integration)"
                             >
-                              <div class="flex items-center gap-2">
-                                <GeneralIcon icon="ncArrowUp" />
+                              <div class="integration-icon-wrapper">
+                                <component :is="integration.icon" class="integration-icon" :style="integration.iconStyle" />
                               </div>
-                            </NcButton>
-                          </div>
-                        </div>
-                      </NcTooltip>
+                              <div class="flex-1">
+                                <div class="name">{{ $t(integration.title) }}</div>
+                                <div v-if="integration.subtitle" class="subtitle flex-1">{{ $t(integration.subtitle) }}</div>
+                              </div>
+                              <div v-if="!isDataReflectionEnabled && integration?.sub_type === SyncDataType.NOCODB"></div>
+                              <div v-else-if="integration?.sub_type === SyncDataType.NOCODB" class="flex items-center">
+                                <NcButton
+                                  v-if="dataReflectionEnabled"
+                                  type="secondary"
+                                  size="xs"
+                                  class="integration-upvote-btn !rounded-lg !px-1 !py-0 selected"
+                                >
+                                  <div class="flex items-center gap-2">
+                                    <GeneralIcon icon="ncCheck" class="text-primary flex-none" />
+                                  </div>
+                                </NcButton>
+                                <NcButton v-else type="secondary" size="xs" class="action-btn !rounded-lg !px-1 !py-0">
+                                  <div class="flex items-center gap-2">
+                                    <GeneralIcon icon="ncPlus" class="flex-none" />
+                                  </div>
+                                </NcButton>
+                              </div>
+
+                              <NcButton
+                                v-else-if="integration?.isAvailable"
+                                type="secondary"
+                                size="xs"
+                                class="action-btn !rounded-lg !px-1 !py-0"
+                              >
+                                <div class="flex items-center gap-2">
+                                  <GeneralIcon icon="ncPlus" class="flex-none" />
+                                </div>
+                              </NcButton>
+                              <div v-else class="">
+                                <NcButton
+                                  type="secondary"
+                                  size="xs"
+                                  class="integration-upvote-btn !rounded-lg !px-1 !py-0"
+                                  :class="{
+                                    selected: upvotesData.has(integration.sub_type),
+                                  }"
+                                >
+                                  <div class="flex items-center gap-2">
+                                    <GeneralIcon icon="ncArrowUp" />
+                                  </div>
+                                </NcButton>
+                              </div>
+                            </div>
+                          </NcTooltip>
+                        </template>
+                      </div>
                     </div>
+                  </template>
+
+                  <div v-if="isEmptyList" class="h-full text-center flex items-center justify-center gap-3">
+                    <a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" :description="$t('labels.noData')" class="!my-0" />
                   </div>
                 </template>
-
-                <div v-if="isEmptyList" class="h-full text-center flex items-center justify-center gap-3">
-                  <a-empty :image="Empty.PRESENTED_IMAGE_SIMPLE" :description="$t('labels.noData')" class="!my-0" />
-                </div>
               </div>
             </div>
             <div v-else class="h-full flex items-center justify-center"><GeneralLoader size="xlarge" /></div>
@@ -298,9 +573,9 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
         >
           <div v-show="requestIntegration.isOpen" class="flex flex-col gap-4">
             <div class="flex items-center justify-between gap-4">
-              <div class="text-base font-bold text-gray-800">Request Integration</div>
+              <div class="text-base font-bold text-nc-content-gray">Request Integration</div>
               <NcButton size="small" type="text" @click="requestIntegration.isOpen = false">
-                <GeneralIcon icon="close" class="text-gray-600" />
+                <GeneralIcon icon="close" class="text-nc-content-gray-subtle2" />
               </NcButton>
             </div>
             <div class="flex flex-col gap-2">
@@ -321,7 +596,7 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
                 :disabled="!requestIntegration.msg?.trim()"
                 :loading="requestIntegration.isLoading"
                 size="small"
-                @click="saveIntegraitonRequest(requestIntegration.msg)"
+                @click="saveIntegrationRequest(requestIntegration.msg)"
               >
                 {{ $t('general.submit') }}
               </NcButton>
@@ -335,15 +610,15 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
 
 <style lang="scss" scoped>
 .nc-integration-layout-sidebar {
-  @apply !bg-white border-r-1 border-gray-200 !min-w-[260px] !max-w-[260px];
+  @apply !bg-nc-bg-default border-r-1 border-nc-border-gray-medium !min-w-[260px] !max-w-[260px];
 
   flex: 1 1 260px !important;
 
   .nc-integration-category-item {
-    @apply flex gap-2 p-2 rounded-lg hover:bg-gray-100 cursor-pointer transition-all;
+    @apply flex gap-2 p-2 rounded-lg hover:bg-nc-bg-gray-light cursor-pointer transition-all;
 
     &.active {
-      @apply bg-gray-100;
+      @apply bg-nc-bg-gray-light;
     }
 
     .nc-integration-category-item-icon-wrapper {
@@ -358,19 +633,16 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
       @apply flex-1 flex flex-col gap-1;
 
       .nc-integration-category-item-title {
-        @apply text-sm text-gray-800 font-weight-500;
+        @apply text-sm text-nc-content-gray font-weight-500;
       }
 
       .nc-integration-category-item-subtitle {
-        @apply text-xs text-gray-500 font-weight-500;
+        @apply text-xs text-nc-content-gray-muted font-weight-500;
       }
     }
   }
 }
 
-.nc-integration-layout-content {
-  @apply !bg-white;
-}
 .source-card-request-integration {
   @apply flex flex-col gap-4 border-1 rounded-xl p-3 w-[280px] overflow-hidden transition-all duration-300 max-w-[576px];
 
@@ -378,10 +650,10 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
     @apply w-full;
   }
   &:not(.active) {
-    @apply cursor-pointer hover:bg-gray-50;
+    @apply cursor-pointer hover:bg-nc-bg-gray-extralight;
 
     &:hover {
-      box-shadow: 0px 4px 8px -2px rgba(0, 0, 0, 0.08), 0px 2px 4px -2px rgba(0, 0, 0, 0.04);
+      box-shadow: 0px 4px 8px -2px rgba(var(--rgb-base), 0.08), 0px 2px 4px -2px rgba(var(--rgb-base), 0.04);
     }
   }
 
@@ -389,14 +661,14 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
     @apply flex items-center gap-4;
 
     .name {
-      @apply text-base font-semibold text-gray-800;
+      @apply text-base font-semibold text-nc-content-gray;
     }
   }
 }
 .source-card-link {
-  @apply !text-black !no-underline;
+  @apply !text-nc-content-gray-extreme !no-underline;
   .nc-new-integration-type-title {
-    @apply text-sm font-weight-600 text-gray-600;
+    @apply text-sm font-weight-600 text-nc-content-gray-subtle2;
   }
 }
 
@@ -405,10 +677,34 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
     @apply flex flex-col gap-3;
 
     .integration-type-list {
-      @apply flex gap-4 flex-wrap;
+      @supports not (container-type: inline-size) {
+        @media (min-width: 540px) {
+          @apply grid-cols-2;
+        }
+
+        @media (min-width: 1024px) {
+          @apply grid-cols-3;
+        }
+
+        @media (min-width: 1440px) {
+          @apply grid-cols-4;
+        }
+      }
+
+      @container (min-width: 540px) {
+        @apply grid-cols-2;
+      }
+
+      @container (min-width: 820px) {
+        @apply grid-cols-3;
+      }
+
+      @container (min-width: 1140px) {
+        @apply grid-cols-4;
+      }
 
       .source-card {
-        @apply flex items-center gap-4 border-1 border-gray-200 rounded-xl p-3 w-[280px] cursor-pointer transition-all duration-300;
+        @apply flex items-center gap-4 border-1 border-nc-border-gray-medium rounded-xl p-3 cursor-pointer transition-all duration-300;
 
         .integration-icon-wrapper {
           @apply flex-none h-[44px] w-[44px] rounded-lg flex items-center justify-center;
@@ -423,32 +719,31 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
         }
 
         .action-btn {
-          @apply hidden text-2xl text-gray-500 w-7 h-7 text-center;
+          @apply hidden;
         }
 
         &.is-available {
           &:hover {
-            @apply bg-gray-50;
+            @apply bg-nc-bg-gray-extralight;
 
-            box-shadow: 0px 4px 8px -2px rgba(0, 0, 0, 0.08), 0px 2px 4px -2px rgba(0, 0, 0, 0.04);
+            box-shadow: 0px 4px 8px -2px rgba(var(--rgb-base), 0.08), 0px 2px 4px -2px rgba(var(--rgb-base), 0.04);
 
             .action-btn {
-              @apply block;
+              @apply inline-block;
             }
           }
 
           // .integration-icon-wrapper {
-          //   @apply bg-gray-100;
+          //   @apply bg-nc-bg-gray-light;
           // }
           .name {
-            @apply text-gray-800;
+            @apply text-nc-content-gray;
           }
         }
-
         &:not(.is-available) {
           &:not(:hover) {
             .integration-icon-wrapper {
-              // @apply bg-gray-50;
+              // @apply bg-nc-bg-gray-extralight;
 
               // .integration-icon {
               //   @apply !grayscale;
@@ -458,19 +753,19 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
             }
 
             .name {
-              @apply text-gray-800;
+              @apply text-nc-content-gray;
             }
           }
 
           &:hover {
             .name {
-              @apply text-gray-800;
+              @apply text-nc-content-gray;
             }
           }
 
           .integration-upvote-btn {
             &.selected {
-              @apply shadow-selected !text-brand-500 !border-brand-500 !cursor-not-allowed pointer-events-none;
+              @apply shadow-selected !text-nc-content-brand !border-nc-border-brand !cursor-not-allowed pointer-events-none;
             }
           }
         }
@@ -478,7 +773,7 @@ const handleAddIntegration = (category: IntegrationCategoryType, integration: In
     }
 
     .category-type-title {
-      @apply text-sm text-gray-700 font-weight-700;
+      @apply text-sm text-nc-content-gray-subtle font-weight-700;
     }
   }
 }

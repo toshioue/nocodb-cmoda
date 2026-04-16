@@ -6,6 +6,11 @@ import { themeV3Colors } from '../../utils/colorsUtils'
 interface Props {
   modelValue?: string | any
   isOpen?: boolean
+  includeBlackAndWhiteAsDefaultColors?: boolean
+  invertInDarkMode?: boolean
+  showTextIcon?: boolean
+  getBgColorCallback?: (color: string, isDark: boolean) => string
+  getTextColorCallback?: (color: string, isDark: boolean) => string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -22,6 +27,8 @@ const vModel = computed({
     emit('input', val || null)
   },
 })
+
+const { isDark, getColor } = useTheme()
 
 const showActiveColorTab = ref<boolean>(false)
 
@@ -56,8 +63,10 @@ const localIsDefaultColorTab = ref<'true' | 'false'>('true')
 
 const isDefaultColorTab = computed({
   get: () => {
+    const colorGrps = [...defaultColors.value]
+    if (props.includeBlackAndWhiteAsDefaultColors) colorGrps.push(['#000000', '#ffffff'])
     if (showActiveColorTab.value && vModel.value) {
-      for (const colorGrp of defaultColors.value) {
+      for (const colorGrp of colorGrps) {
         if (colorGrp.includes(vModel.value)) {
           return 'true'
         }
@@ -109,23 +118,43 @@ watch(
 
 <template>
   <div class="nc-advance-color-picker w-[336px] pt-2" click.stop>
-    <NcTabs v-model:activeKey="isDefaultColorTab" class="nc-advance-color-picker-tab w-full">
+    <NcTabs v-model:active-key="isDefaultColorTab" class="nc-advance-color-picker-tab w-full">
       <a-tab-pane key="true">
         <template #tab>
-          <div class="tab" data-testid="nc-default-colors-tab">Default colors</div>
+          <div class="tab" data-testid="nc-default-colors-tab">{{ $t('labels.defaultColours') }}</div>
         </template>
         <div class="h-full p-2">
           <div class="flex flex-col gap-1">
             <div v-for="(colorGroup, i) of defaultColors" :key="i" class="flex">
-              <div v-for="(color, j) of colorGroup" :key="`color-${i}-${j}`" class="p-1 rounded-md flex h-8 hover:bg-gray-200">
+              <div
+                v-for="(color, j) of colorGroup"
+                :key="`color-${i}-${j}`"
+                class="p-1 rounded-md flex h-8 hover:bg-nc-bg-gray-medium"
+              >
                 <button
                   class="color-selector"
                   :class="{ selected: compare(picked, color) }"
                   :style="{
-                    backgroundColor: `${color}`,
+                    backgroundColor: getBgColorCallback
+                      ? getBgColorCallback(color || '#ccc', isDark)
+                      : showTextIcon
+                      ? getSelectTypeFieldOptionBgColor({
+                          color: color || '#ccc',
+                          isDark: invertInDarkMode && isDark,
+                        })
+                      : getDarkModeCompatibleBgColor({ color: color || '#ccc', isDark: invertInDarkMode && isDark }),
+                    color: getTextColorCallback
+                      ? getTextColorCallback(color || '#ccc', isDark)
+                      : getSelectTypeFieldOptionTextColor({
+                          color: color || '#ccc',
+                          isDark: invertInDarkMode && isDark,
+                          getColor,
+                        }),
                   }"
                   @click="selectColor(color, true)"
-                ></button>
+                >
+                  <GeneralIcon v-if="showTextIcon" icon="cellText" class="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
           </div>
@@ -134,7 +163,7 @@ watch(
       <a-tab-pane key="false">
         <template #tab>
           <div class="tab" data-testid="nc-custom-colors-tab">
-            <div>Custom colours</div>
+            <div>{{ $t('labels.customColours') }}</div>
           </div>
         </template>
         <div class="h-full p-2">
@@ -147,7 +176,7 @@ watch(
 
 <style lang="scss" scoped>
 .color-picker {
-  @apply flex flex-col items-center justify-center bg-white p-2.5;
+  @apply flex flex-col items-center justify-center bg-nc-bg-default p-2.5;
 }
 .color-picker-row {
   @apply flex flex-row space-x-1;
@@ -155,7 +184,7 @@ watch(
 .color-selector {
   @apply h-6 w-6 rounded;
   -webkit-text-stroke-width: 1px;
-  -webkit-text-stroke-color: white;
+  -webkit-text-stroke-color: var(--nc-bg-default);
 }
 .color-selector:hover {
   filter: brightness(90%);
@@ -165,7 +194,7 @@ watch(
 .color-selector.selected,
 .nc-more-colors-trigger:focus {
   outline: none;
-  box-shadow: 0px 0px 0px 2px #fff, 0px 0px 0px 4px #3069fe;
+  box-shadow: 0px 0px 0px 2px var(--nc-bg-default), 0px 0px 0px 4px var(--nc-fill-primary);
 }
 
 :deep(.vc-chrome-toggle-icon) {

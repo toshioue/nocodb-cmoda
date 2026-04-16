@@ -1,9 +1,13 @@
+// PR review fix #5: UITypes import no longer needed after removing redundant check
 import { type ColumnType } from 'nocodb-sdk'
 import type { PropType } from '@vue/runtime-core'
 
-const renderIcon = (column: ColumnType, abstractType: any) => {
+export const renderIcon = (column: ColumnType, abstractType: any) => {
   if (isPrimaryKey(column)) {
     return iconMap.cellSystemKey
+    // PR review fix #5: isUUID() already checks column.uidt === UITypes.UUID
+  } else if (isUUID(column)) {
+    return iconMap.cellUuid
   } else if (isSpecificDBType(column)) {
     return iconMap.cellDb
   } else if (isJSON(column)) {
@@ -13,13 +17,15 @@ const renderIcon = (column: ColumnType, abstractType: any) => {
   } else if (isDateTime(column, abstractType)) {
     return iconMap.cellDatetime
   } else if (isGeoData(column)) {
-    return iconMap.geoData
+    return iconMap.ncMapPin
   } else if (isSet(column)) {
     return iconMap.cellMultiSelect
   } else if (isSingleSelect(column)) {
     return iconMap.cellSingleSelect
   } else if (isBoolean(column, abstractType)) {
     return iconMap.cellCheckbox
+  } else if (isAI(column)) {
+    return iconMap.cellAi
   } else if (isTextArea(column)) {
     return iconMap.cellLongText
   } else if (isEmail(column)) {
@@ -30,6 +36,8 @@ const renderIcon = (column: ColumnType, abstractType: any) => {
     return iconMap.cellTime
   } else if (isRating(column)) {
     return iconMap.cellRating
+  } else if (isColour(column)) {
+    return iconMap.cellColour
   } else if (isAttachment(column)) {
     return iconMap.cellAttachment
   } else if (isDecimal(column)) {
@@ -68,9 +76,16 @@ export default defineComponent({
       type: Object as PropType<ColumnType>,
       required: false,
     },
+    /**
+     * Windicss color class
+     */
+    color: {
+      type: String,
+      required: false,
+    },
   },
   setup(props) {
-    const columnMeta = toRef(props, 'columnMeta')
+    const { columnMeta, color: defaultColor } = toRefs(props)
 
     const injectedColumn = inject(ColumnInj, columnMeta)
 
@@ -88,7 +103,7 @@ export default defineComponent({
       if (!column.value && !columnMeta.value) return null
 
       return h(renderIcon((columnMeta.value ?? column.value)!, abstractType.value), {
-        class: 'text-inherit mx-1 nc-cell-icon',
+        class: `${defaultColor.value || 'text-inherit'} mx-1 flex-none nc-cell-icon`,
       })
     }
   },

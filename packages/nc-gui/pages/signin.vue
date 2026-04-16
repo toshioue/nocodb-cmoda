@@ -87,9 +87,9 @@ function navigateForgotPassword() {
         class="md:bg-primary bg-opacity-5 signin h-full min-h-[600px] flex flex-col justify-center items-center nc-form-signin"
       >
         <div
-          class="bg-white mt-[60px] relative flex flex-col justify-center gap-2 w-full max-w-[500px] mx-auto p-8 md:(rounded-lg border-1 border-gray-200 shadow-xl)"
+          class="bg-nc-bg-default md:mt-[60px] relative flex flex-col justify-center gap-2 w-full max-w-[500px] mx-auto p-8 md:(rounded-lg border-1 border-nc-border-gray-medium shadow-xl)"
         >
-          <LazyGeneralNocoIcon class="color-transition hover:(ring ring-accent ring-opacity-100)" :animate="isLoading" />
+          <GeneralNocoIcon class="color-transition hover:(ring ring-accent ring-opacity-100)" :animate="isLoading" />
 
           <h1 class="prose-2xl font-bold self-center my-4">{{ $t('general.signIn') }}</h1>
 
@@ -107,6 +107,8 @@ function navigateForgotPassword() {
               <a-form-item :label="$t('labels.email')" name="email" :rules="formRules.email">
                 <a-input
                   v-model:value="form.email"
+                  type="email"
+                  autocomplete="email"
                   data-testid="nc-form-signin__email"
                   size="large"
                   :placeholder="$t('msg.info.signUp.workEmail')"
@@ -117,6 +119,7 @@ function navigateForgotPassword() {
               <a-form-item :label="$t('labels.password')" name="password" :rules="formRules.password">
                 <a-input-password
                   v-model:value="form.password"
+                  autocomplete="current-password"
                   data-testid="nc-form-signin__password"
                   size="large"
                   class="password"
@@ -144,7 +147,7 @@ function navigateForgotPassword() {
               <a
                 v-if="appInfo.googleAuthEnabled"
                 :href="`${appInfo.ncSiteUrl}/auth/google`"
-                class="scaling-btn bg-opacity-100 after:(!bg-white) !text-primary !no-underline"
+                class="scaling-btn bg-opacity-100 after:(!bg-nc-bg-default) !text-primary !no-underline"
               >
                 <span class="flex items-center gap-2">
                   <LogosGoogleGmail />

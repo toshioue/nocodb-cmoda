@@ -1,4 +1,5 @@
 import dayjs from 'dayjs'
+import utc from 'dayjs/plugin/utc'
 import type {
   BoolType,
   ColumnType,
@@ -10,11 +11,13 @@ import type {
   StringOrNullType,
   TableType,
 } from 'nocodb-sdk'
-import { RelationTypes, UITypes, isLinksOrLTAR, isSystemColumn, isVirtualCol } from 'nocodb-sdk'
+import { PermissionEntity, PermissionKey, RelationTypes, UITypes, isLinksOrLTAR, isSystemColumn, isVirtualCol } from 'nocodb-sdk'
 import { isString } from '@vue/shared'
 import { useTitle } from '@vueuse/core'
 import type { RuleObject } from 'ant-design-vue/es/form'
 import { filterNullOrUndefinedObjectProperties } from '~/helpers/parsers/parserHelpers'
+
+dayjs.extend(utc)
 
 const useForm = Form.useForm
 
@@ -22,12 +25,15 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
   const progress = ref(false)
   const notFound = ref(false)
   const submitted = ref(false)
+
   const passwordDlg = ref(false)
   const password = ref<string | null>(null)
   const passwordError = ref<string | null>(null)
   const secondsRemain = ref(0)
 
   const { sharedView } = storeToRefs(useViewsStore())
+
+  const { blockAddNewRecord, showRecordPlanLimitExceededModal, showEEFeatures } = useEeConfig()
 
   provide(SharedViewPasswordInj, password)
 
@@ -43,11 +49,42 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     })[]
   >()
   const sharedViewMeta = ref<SharedViewMeta>({})
+
+  const isFormExpired = computed(() => {
+    if (!showEEFeatures.value) return false
+
+    const expiresAt = (sharedFormView.value as any)?.expires_at
+
+    if (!expiresAt) return false
+
+    return dayjs.utc(expiresAt).isBefore(dayjs.utc())
+  })
+
+  const isFormNotStarted = computed(() => {
+    if (!showEEFeatures.value) return false
+
+    const startsAt = (sharedFormView.value as any)?.starts_at
+
+    if (!startsAt) return false
+
+    return dayjs.utc(startsAt).isAfter(dayjs.utc())
+  })
+
+  const formStartsAt = computed(() => (sharedFormView.value as any)?.starts_at || null)
+
   const formResetHook = createEventHook<void>()
+
+  const { isMobileMode, appInfo } = useGlobal()
 
   const { api, isLoading } = useApi()
 
-  const { metas, setMeta, getMeta } = useMetas()
+  const { setMeta, getMeta, getMetaByKey } = useMetas()
+
+  const { isDark, getColor } = useTheme()
+
+  const worksapce = useWorkspace()
+
+  const { workspaces } = storeToRefs(worksapce)
 
   const baseStore = useBase()
   const { base, sqlUis } = storeToRefs(baseStore)
@@ -55,6 +92,8 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
   const basesStore = useBases()
 
   const { basesUser } = storeToRefs(basesStore)
+
+  const { isAllowed } = usePermissions()
 
   const { t } = useI18n()
 
@@ -70,9 +109,34 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
 
   const allViewFilters = ref<Record<string, FilterType[]>>({})
 
+  const isAddingEmptyRowPermitted = computed(() =>
+    meta.value?.id
+      ? isAllowed(PermissionEntity.TABLE, meta.value.id, PermissionKey.TABLE_RECORD_ADD, { isFormView: true })
+      : true,
+  )
+
   const isValidRedirectUrl = computed(
     () => typeof sharedFormView.value?.redirect_url === 'string' && !!sharedFormView.value?.redirect_url?.trim(),
   )
+
+  const backgroundAndTextColor = computed(() => {
+    const result = {
+      bgColor: getColor('var(--nc-bg-gray-extralight)'),
+      textColor: '#ffffff',
+    }
+
+    if (parseProp(sharedFormView.value?.meta).background_color) {
+      result.bgColor = getDarkModeCompatibleBgColor({
+        color: parseProp(sharedFormView.value?.meta).background_color,
+        isDark: isDark.value,
+        shade: 0,
+      }) as string
+    }
+
+    result.textColor = getOppositeColorOfBackground(result.bgColor)
+
+    return result
+  })
 
   useProvideSmartsheetLtarHelpers(meta)
   const { state: additionalState } = useProvideSmartsheetRowStore(
@@ -106,20 +170,25 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
         return ['mysql', ClientType.MYSQL].includes(sharedView.value?.client || ClientType.MYSQL)
       },
       getMeta,
+      baseId: meta.value?.base_id,
     })
   })
 
   const formColumns = computed(
     () =>
       columns.value?.filter((col) => {
-        const isVisible = col.show
+        const isVisible = col.show && col.visible
 
-        return isVisible && supportedFields(col)
+        const isAllowedToEdit = col?.permissions?.isAllowedToEdit ?? true
+
+        return isVisible && supportedFields(col) && isAllowedToEdit
       }) || [],
   )
 
   function supportedFields(col: ColumnType) {
-    return !isSystemColumn(col) && col.uidt !== UITypes.SpecificDBType && (!isVirtualCol(col) || isLinksOrLTAR(col.uidt))
+    return (
+      !isSystemColumn(col) && col.uidt !== UITypes.SpecificDBType && !isAI(col) && (!isVirtualCol(col) || isLinksOrLTAR(col.uidt))
+    )
   }
 
   const loadSharedView = async () => {
@@ -132,6 +201,11 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
         },
       })
 
+      // Set workspace info if present
+      if (viewMeta?.workspace) {
+        workspaces.value.set(viewMeta.workspace.id, viewMeta.workspace)
+      }
+
       passwordDlg.value = false
 
       sharedView.value = viewMeta
@@ -139,6 +213,31 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
       meta.value = viewMeta.model
 
       loadAllviewFilters(Array.isArray(viewMeta?.filter?.children) ? viewMeta?.filter?.children : [])
+
+      const _sharedViewMeta = (viewMeta as any).meta
+      sharedViewMeta.value = isString(_sharedViewMeta) ? JSON.parse(_sharedViewMeta) : _sharedViewMeta
+
+      await setMeta(viewMeta.model)
+
+      // if base is not defined then set it with an object containing source
+      if (!base.value?.sources)
+        baseStore.setProject({
+          id: viewMeta.base_id,
+          sources: [
+            {
+              id: viewMeta.source_id,
+              type: viewMeta.client,
+            },
+          ],
+        })
+
+      const relatedMetas = { ...viewMeta.relatedMetas }
+
+      Object.keys(relatedMetas).forEach((key) => setMeta(relatedMetas[key]))
+
+      if (viewMeta.users) {
+        basesUser.value.set(viewMeta.base_id, viewMeta.users)
+      }
 
       const fieldById = (viewMeta.columns || []).reduce(
         (o: Record<string, any>, f: Record<string, any>) => ({
@@ -160,7 +259,7 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
             isValidValue(c?.cdf) &&
             !/^\w+\(\)|CURRENT_TIMESTAMP$/.test(c.cdf)
           ) {
-            const defaultValue = typeof c.cdf === 'string' ? c.cdf.replace(/^'|'$/g, '') : c.cdf
+            const defaultValue = typeof c.cdf === 'string' ? c.cdf.replace(/^['"]|['"]$/g, '') : c.cdf
             if ([UITypes.Number, UITypes.Duration, UITypes.Percent, UITypes.Currency, UITypes.Decimal].includes(c.uidt)) {
               formState.value[c.title] = Number(defaultValue) || null
               preFilledDefaultValueformState.value[c.title] = Number(defaultValue) || null
@@ -180,53 +279,40 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
 
           return {
             ...c,
+            readonly: !isAddingEmptyRowPermitted.value ? true : c?.readonly ?? false,
+            read_only: !isAddingEmptyRowPermitted.value ? true : c?.read_only ?? false,
             order: fieldById[c.id].order || c.order,
             visible: true,
             meta: { ...parseProp(fieldById[c.id].meta), ...parseProp(c.meta) },
             description: fieldById[c.id].description,
+            permissions: {
+              isAllowedToEdit: isAllowed(PermissionEntity.FIELD, c.id!, PermissionKey.RECORD_FIELD_EDIT, {
+                isFormView: true,
+              }),
+            },
           }
         })
         .sort((a: ColumnType, b: ColumnType) => (a.order ?? Infinity) - (b.order ?? Infinity))
 
-      const _sharedViewMeta = (viewMeta as any).meta
-      sharedViewMeta.value = isString(_sharedViewMeta) ? JSON.parse(_sharedViewMeta) : _sharedViewMeta
-
-      await setMeta(viewMeta.model)
-
-      // if base is not defined then set it with an object containing source
-      if (!base.value?.sources)
-        baseStore.setProject({
-          sources: [
-            {
-              id: viewMeta.source_id,
-              type: viewMeta.client,
-            },
-          ],
-        })
-
-      const relatedMetas = { ...viewMeta.relatedMetas }
-
-      Object.keys(relatedMetas).forEach((key) => setMeta(relatedMetas[key]))
-
-      if (viewMeta.users) {
-        basesUser.value.set(viewMeta.base_id, viewMeta.users)
-      }
-
       await handlePreFillForm()
 
       checkFieldVisibility()
+
+      nextTick(() => {
+        showRecordPlanLimitExceededModal({ isSharedFormView: true, focusBtn: null })
+      })
     } catch (e: any) {
       const error = await extractSdkResponseErrorMsgv2(e)
 
       if (e.response && e.response.status === 404) {
         notFound.value = true
-      } else if (error.error === NcErrorType.INVALID_SHARED_VIEW_PASSWORD) {
+      } else if (error.error === NcErrorType.ERR_INVALID_SHARED_VIEW_PASSWORD) {
         passwordDlg.value = true
 
         if (password.value && password.value !== '') {
           passwordError.value = error.message
         }
-      } else if (error.error === NcErrorType.UNKNOWN_ERROR) {
+      } else if (error.error === NcErrorType.ERR_UNKNOWN) {
         console.error('Error occurred while loading shared form view', e)
         message.error('Error occurred while loading shared form view')
       }
@@ -283,7 +369,11 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
         },
       ]
 
-      const additionalRules = extractFieldValidator(parseProp(column.meta).validators ?? [], column)
+      const additionalRules = extractFieldValidator(
+        parseProp(column.meta).validators ?? [],
+        column,
+        appInfo.value.ncMaxTextLength,
+      )
       rules = [...rules, ...additionalRules]
 
       if (rules.length) {
@@ -318,6 +408,7 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
         col.title &&
         col.show &&
         col.visible &&
+        col.permissions?.isAllowedToEdit &&
         isRequired(col) &&
         formState.value[col.title] === undefined &&
         additionalState.value[col.title] === undefined
@@ -333,7 +424,7 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
       }
 
       // handle filter out conditionally hidden field data
-      if (!col.visible && col.title) {
+      if ((!col.visible || !col.permissions?.isAllowedToEdit) && col.title) {
         delete formState.value[col.title]
         delete additionalState.value[col.title]
       }
@@ -363,6 +454,9 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
   }
 
   const submitForm = async () => {
+    // If blockAddNewRecord is true that means we have to upgrade plan to add more records
+    if (blockAddNewRecord.value) return
+
     try {
       if (!(await validateAllFields())) {
         return
@@ -373,9 +467,10 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
       const attachment: Record<string, any> = {}
 
       /** find attachments in form data */
-      for (const col of metas.value?.[sharedView.value?.fk_model_id as string]?.columns) {
+      const formMeta = getMetaByKey(sharedView.value?.base_id, sharedView.value?.fk_model_id as string)
+      for (const col of formMeta?.columns ?? []) {
         if (col.uidt === UITypes.Attachment) {
-          if (data[col.title]) {
+          if (col.title && data[col.title]) {
             attachment[`_${col.title}`] = data[col.title].map((item: { file: File }) => item.file)
           }
         }
@@ -661,27 +756,65 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
   }
 
   async function loadLinkedRecords(column: ColumnType, ids: string[]) {
-    const relatedMeta = await getMeta((column.colOptions as LinkToAnotherRecordType)?.fk_related_model_id)
-    const pkCol = relatedMeta?.columns?.find((col) => col.pk)
-    const pvCol = relatedMeta?.columns?.find((col) => col.pv)
+    const relatedBaseId = (column.colOptions as LinkToAnotherRecordType as any)?.fk_related_base_id || meta.value?.base_id
+    const relatedMeta = await getMeta(relatedBaseId!, (column.colOptions as LinkToAnotherRecordType)?.fk_related_model_id)
+
+    if (!relatedMeta) return []
+
+    // Extract necessary columns in a single loop
+    let attachmentCol: ColumnType | undefined
+    let pkCol: ColumnType | undefined
+    let pvCol: ColumnType | undefined
+
+    const requiredFieldsToLoad = new Set<string>()
+
+    for (const col of relatedMeta.columns || []) {
+      if (!pkCol && col.pk) {
+        pkCol = col
+      }
+
+      if (!pvCol && col.pv) {
+        pvCol = col
+      }
+
+      if (!attachmentCol && isAttachment(col)) {
+        attachmentCol = col
+      }
+
+      if (isSystemColumn(col) || isPrimary(col) || isLinksOrLTAR(col) || isAttachment(col)) continue
+
+      if (requiredFieldsToLoad.size < (isMobileMode.value ? 1 : 3)) {
+        requiredFieldsToLoad.add(col.title!)
+      }
+    }
+
+    // Add important fields
+    if (attachmentCol) requiredFieldsToLoad.add(attachmentCol.title!)
+    if (pkCol) requiredFieldsToLoad.add(pkCol.title!)
+    if (pvCol) requiredFieldsToLoad.add(pvCol.title!)
+
+    // If no primary key column or ids are empty, return early
+    if (!pkCol || ids.length === 0) return []
 
     return (
-      await api.public.dataRelationList(
-        route.params.viewId as string,
-        column.id,
-        {},
-        {
-          headers: {
-            'xc-password': password.value,
+      (
+        await api.public.dataRelationList(
+          route.params.viewId as string,
+          column.id,
+          {},
+          {
+            headers: {
+              'xc-password': password.value,
+            },
+            query: {
+              limit: Math.max(25, ids.length),
+              where: `(${pkCol.title},in,${ids.join(',')})`,
+              fields: Array.from(requiredFieldsToLoad),
+            },
           },
-          query: {
-            limit: Math.max(25, ids.length),
-            where: `(${pkCol.title},in,${ids.join(',')})`,
-            fields: [pkCol.title, pvCol.title],
-          },
-        },
-      )
-    )?.list
+        )
+      )?.list || []
+    )
   }
 
   let intvl: NodeJS.Timeout
@@ -811,6 +944,11 @@ const [useProvideSharedFormStore, useSharedFormStore] = useInjectionState((share
     isValidRedirectUrl,
     loadAllviewFilters,
     checkFieldVisibility,
+    isAddingEmptyRowPermitted,
+    isFormExpired,
+    isFormNotStarted,
+    formStartsAt,
+    backgroundAndTextColor,
   }
 }, 'shared-form-view-store')
 

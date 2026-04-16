@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ColumnType } from 'nocodb-sdk'
+import { type ColumnType, type LinkToAnotherRecordType, RelationTypes, isBtLikeV2Junction, isMMOrMMLike } from 'nocodb-sdk'
 import { isCreatedOrLastModifiedByCol, isCreatedOrLastModifiedTimeCol } from 'nocodb-sdk'
 
 const props = defineProps<{
@@ -7,7 +7,9 @@ const props = defineProps<{
   modelValue: any
   row?: Row
   active?: boolean
+  path?: Array<number>
   readOnly?: boolean
+  isAllowed?: boolean
 }>()
 
 const emit = defineEmits(['update:modelValue', 'navigate', 'save'])
@@ -15,14 +17,18 @@ const emit = defineEmits(['update:modelValue', 'navigate', 'save'])
 const column = toRef(props, 'column')
 const active = toRef(props, 'active', false)
 const row = toRef(props, 'row')
+const path = toRef(props, 'path')
 const readOnly = toRef(props, 'readOnly', false)
+const isAllowed = toRef(props, 'isAllowed', true)
 
 provide(ColumnInj, column)
 provide(ActiveCellInj, active)
 provide(RowInj, row)
+provide(GroupPathInj, path)
 provide(CellValueInj, toRef(props, 'modelValue'))
 provide(SaveRowInj, () => emit('save'))
 provide(ReadonlyInj, readOnly)
+provide(IsAllowedInj, isAllowed)
 
 const isGrid = inject(IsGridInj, ref(false))
 
@@ -35,42 +41,73 @@ function onNavigate(dir: NavigateDir, e: KeyboardEvent) {
 
   if (!isForm.value) e.stopImmediatePropagation()
 }
+
+const isPrimaryCol = computed(() => isPrimary(column.value))
+
+const virtualCellType = computed(() => {
+  if (isBtLikeV2Junction(column.value)) {
+    const opts = column.value.colOptions as LinkToAnotherRecordType
+    if (opts?.type === RelationTypes.ONE_TO_ONE) return 'oo'
+    return 'bt'
+  }
+  if (isLink(column.value)) return 'link'
+  if (isHm(column.value)) return 'hm'
+  if (isMMOrMMLike(column.value)) return 'mm'
+  if (isBt(column.value)) return 'bt'
+  if (isOo(column.value)) return 'oo'
+  if (isRollup(column.value)) return 'rollup'
+  if (isFormula(column.value)) return 'formula'
+  if (isQrCode(column.value)) return 'qrCode'
+  if (isBarcode(column.value)) return 'barcode'
+  if (isCount(column.value)) return 'count'
+  if (isLookup(column.value)) return 'lookup'
+  if (isButton(column.value)) return 'button'
+  if (isCreatedOrLastModifiedTimeCol(column.value)) return 'createdOrLastModifiedTimeCol'
+  if (isCreatedOrLastModifiedByCol(column.value)) return 'createdOrLastModifiedByCol'
+})
+
+const virtualCellClassName = computed(() => {
+  let className = `nc-virtual-cell-${(column.value.uidt || 'default').toLowerCase()}`
+
+  if (isGrid.value && !isForm.value && virtualCellType.value === 'rollup' && !isExpandedForm.value) {
+    className += ' text-right justify-end'
+  }
+  if (isPrimaryCol.value && !isForm.value) {
+    className += ' nc-display-value-cell'
+  }
+
+  return className
+})
 </script>
 
 <template>
   <div
     class="nc-virtual-cell w-full flex items-center"
-    :class="[
-      `nc-virtual-cell-${(column.uidt || 'default').toLowerCase()}`,
-      {
-        'text-right justify-end': isGrid && !isForm && isRollup(column) && !isExpandedForm,
-        'nc-display-value-cell': isPrimary(column) && !isForm,
-      },
-    ]"
+    :class="virtualCellClassName"
     @keydown.enter.exact="onNavigate(NavigateDir.NEXT, $event)"
     @keydown.shift.enter.exact="onNavigate(NavigateDir.PREV, $event)"
   >
-    <LazyVirtualCellLinks v-if="isLink(column)" />
-    <LazyVirtualCellHasMany v-else-if="isHm(column)" />
-    <LazyVirtualCellManyToMany v-else-if="isMm(column)" />
-    <LazyVirtualCellBelongsTo v-else-if="isBt(column)" />
-    <LazyVirtualCellOneToOne v-else-if="isOo(column)" />
-    <LazyVirtualCellRollup v-else-if="isRollup(column)" />
-    <LazyVirtualCellFormula v-else-if="isFormula(column)" />
-    <LazyVirtualCellQrCode v-else-if="isQrCode(column)" />
-    <LazyVirtualCellBarcode v-else-if="isBarcode(column)" />
-    <LazyVirtualCellCount v-else-if="isCount(column)" />
-    <LazyVirtualCellLookup v-else-if="isLookup(column)" />
-    <LazyVirtualCellButton v-else-if="isButton(column)" />
-    <LazyCellReadOnlyDateTimePicker v-else-if="isCreatedOrLastModifiedTimeCol(column)" :model-value="modelValue" />
-    <LazyCellReadOnlyUser v-else-if="isCreatedOrLastModifiedByCol(column)" :model-value="modelValue" />
+    <VirtualCellLinks v-if="virtualCellType === 'link'" />
+    <VirtualCellHasMany v-else-if="virtualCellType === 'hm'" />
+    <VirtualCellManyToMany v-else-if="virtualCellType === 'mm'" />
+    <VirtualCellBelongsTo v-else-if="virtualCellType === 'bt'" />
+    <VirtualCellOneToOne v-else-if="virtualCellType === 'oo'" />
+    <VirtualCellRollup v-else-if="virtualCellType === 'rollup'" />
+    <VirtualCellFormula v-else-if="virtualCellType === 'formula'" />
+    <VirtualCellQrCode v-else-if="virtualCellType === 'qrCode'" />
+    <VirtualCellBarcode v-else-if="virtualCellType === 'barcode'" />
+    <VirtualCellCount v-else-if="virtualCellType === 'count'" />
+    <VirtualCellLookup v-else-if="virtualCellType === 'lookup'" />
+    <VirtualCellButton v-else-if="virtualCellType === 'button'" />
+    <CellDateTimeReadonly v-else-if="virtualCellType === 'createdOrLastModifiedTimeCol'" :model-value="modelValue" />
+    <CellUserReadonly v-else-if="virtualCellType === 'createdOrLastModifiedByCol'" :model-value="modelValue" />
   </div>
 </template>
 
 <style lang="scss" scoped>
 .nc-virtual-cell {
   &.nc-display-value-cell {
-    @apply !text-brand-500;
+    @apply !text-nc-content-brand;
   }
 }
 </style>

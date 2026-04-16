@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { ButtonType, ColumnType } from 'nocodb-sdk'
+import { ButtonActionsType, type ButtonType, type ColumnType, type FilterType } from 'nocodb-sdk'
 import type { Ref } from 'vue'
+import { validateRowFilters } from '~/utils/dataUtils'
 
 const column = inject(ColumnInj) as Ref<
   ColumnType & {
@@ -10,7 +11,13 @@ const column = inject(ColumnInj) as Ref<
 
 const cellValue = inject(CellValueInj, ref())
 
-const { currentRow } = useSmartsheetRowStoreOrThrow()
+const { currentRow, displayValue, changedColumns } = useSmartsheetRowStoreOrThrow()
+
+const { generateRows, generatingRows, generatingColumnRows, generatingColumns, aiIntegrations } = useNocoAi()
+
+const { appInfo } = useGlobal()
+
+const { getColor } = useTheme()
 
 const meta = inject(MetaInj, ref())
 
@@ -24,49 +31,269 @@ const isPublic = inject(IsPublicInj, ref(false))
 
 const { $api } = useNuxtApp()
 
+const { t } = useI18n()
+
 const rowId = computed(() => {
   return extractPkFromRow(currentRow.value?.row, meta.value!.columns!)
 })
 
+const { runScript, activeExecutions, fieldIDRowMapping } = useScriptExecutor()
+
+const { addScriptExecution } = useActionPane()
+
+const scriptStore = useScriptStore()
+
+const { loadScript } = scriptStore
+
 const isLoading = ref(false)
 
-const triggerAction = async () => {
-  const colOptions = column.value.colOptions
+const pk = computed(() => {
+  if (!meta.value?.columns) return
+  return extractPkFromRow(currentRow.value?.row, meta.value.columns)
+})
 
-  if (colOptions.type === 'webhook') {
-    try {
-      isLoading.value = true
+const isAiButtonType = computed(() => column.value?.colOptions?.type === ButtonActionsType.Ai)
 
-      await $api.dbTableWebhook.trigger(cellValue.value?.fk_webhook_id, rowId!.value)
-    } catch (e) {
-      console.log(e)
-      message.error(await extractSdkResponseErrorMsg(e))
-    } finally {
-      isLoading.value = false
+const isFieldAiIntegrationAvailable = computed(() => {
+  if (!isAiButtonType.value) return true
+
+  const fkIntegrationId = column.value?.colOptions?.fk_integration_id
+
+  return !!fkIntegrationId
+})
+
+const generate = async () => {
+  if (!meta?.value?.id || !meta.value.columns || !column?.value?.id) return
+
+  if (!pk.value) return
+
+  const outputColumnIds =
+    ncIsString(column.value.colOptions?.output_column_ids) && column.value.colOptions.output_column_ids.split(',').length > 0
+      ? column.value.colOptions.output_column_ids.split(',')
+      : []
+  const outputColumns = outputColumnIds.map((id) => meta.value?.columnsById[id])
+
+  generatingRows.value.push(pk.value)
+  generatingColumnRows.value.push(column.value.id)
+
+  generatingColumns.value.push(...(outputColumnIds ?? []))
+
+  // In expanded form get preview data and update local state so that expanded form save btn works properly
+  const res = await generateRows(meta.value.id, column.value.id, [pk.value], false, isExpandedForm.value)
+
+  if (res?.length) {
+    const resRow = res[0]
+
+    if (outputColumnIds) {
+      for (const col of outputColumns) {
+        if (col && currentRow.value.row) {
+          changedColumns.value.add(col.title!)
+
+          currentRow.value.row[col.title!] = resRow[col.title!]
+        }
+      }
     }
   }
+
+  generatingRows.value = generatingRows.value.filter((v) => v !== pk.value)
+  generatingColumnRows.value = generatingColumnRows.value.filter((v) => v !== column.value.id)
+  generatingColumns.value = generatingColumns.value.filter((v) => !outputColumnIds?.includes(v))
 }
 
+const isExecutingId = ref('')
+
+const isExecuting = computed(
+  () =>
+    activeExecutions.value.get(isExecutingId.value)?.status === 'running' ||
+    fieldIDRowMapping.value.get(`${pk.value}:${column.value.id}`) === 'running',
+)
+
+const invalidUrlTooltip = ref('')
+
+const baseStore = useBase()
+const { getBaseType } = baseStore
+const { metas } = useMetas()
+const { user } = useGlobal()
+
+const isFilterConditionMet = computed(() => {
+  const filters = column.value.colOptions?.filters as FilterType[] | undefined
+  if (!filters || !filters.length) return true
+
+  const rowData = currentRow.value?.row
+  if (!rowData) return true
+
+  const columns = meta.value?.columns as ColumnType[]
+  if (!columns) return true
+
+  return validateRowFilters(filters, rowData, columns, getBaseType(meta.value?.source_id), metas.value, meta.value?.base_id, {
+    currentUser: user.value?.id ? { id: user.value.id, email: user.value.email } : undefined,
+  })
+})
+
+const filterDisabledTooltip = computed(() => {
+  if (isFilterConditionMet.value) return ''
+  return t('msg.buttonConditionNotMet')
+})
+
 const componentProps = computed(() => {
-  if (column.value.colOptions.type === 'url') {
-    let url = `${cellValue.value?.url}`
-    url = encodeURI(/^(https?|ftp|mailto|file):\/\//.test(url) ? url : url.trim() ? `http://${url}` : '')
+  const filterDisabled = !isFilterConditionMet.value
+
+  if (column.value.colOptions.type === ButtonActionsType.Url) {
+    let url = addMissingUrlSchma(cellValue.value?.url)
+
+    // if url params not encoded, encode them using encodeURI
+    try {
+      url = decodeURI(url) === url ? encodeURI(url) : url
+    } catch {
+      url = encodeURI(url)
+    }
+
+    const isValidUrl = isValidURL(url, { require_tld: !appInfo.value?.allowLocalUrl })
+
+    invalidUrlTooltip.value = !isValidUrl ? t('msg.error.invalidURL') : ''
+
     return {
       href: url,
       target: '_blank',
-      ...(column.value?.colOptions.error ? { disabled: true } : {}),
+      ...(column.value?.colOptions.error || !isValidUrl || filterDisabled ? { disabled: true } : {}),
     }
-  } else {
+  } else if (column.value.colOptions.type === ButtonActionsType.Webhook) {
     return {
       disabled:
+        filterDisabled ||
         isPublic.value ||
         !isUIAllowed('hookTrigger') ||
         isLoading.value ||
         !column.value.colOptions.fk_webhook_id ||
         !cellValue.value?.fk_webhook_id,
     }
+  } else if (column.value.colOptions.type === ButtonActionsType.Script) {
+    return {
+      disabled: filterDisabled || isPublic.value || isExecuting.value || !isUIAllowed('dataEdit') || isLoading.value,
+    }
+  } else if (column.value.colOptions.type === ButtonActionsType.Ai) {
+    return {
+      disabled:
+        filterDisabled ||
+        isPublic.value ||
+        !isUIAllowed('dataEdit') ||
+        !isFieldAiIntegrationAvailable.value ||
+        isLoading.value ||
+        (pk.value &&
+          generatingRows.value.includes(pk.value) &&
+          column.value?.id &&
+          generatingColumnRows.value.includes(column.value.id)),
+    }
   }
+
+  // If button type is missing then keep it as disabled
+  if (!column.value.colOptions.type) {
+    return {
+      disabled: true,
+    }
+  }
+
+  return filterDisabled ? { disabled: true } : {}
 })
+
+const buttonColors = computed(() => {
+  return getButtonColorsCssVariables(column.value.colOptions.theme ?? 'solid', column.value.colOptions.color ?? 'brand', getColor)
+})
+
+const afterActionStatus = ref<{
+  status: 'success' | 'error'
+  tooltip?: string
+} | null>(null)
+
+const triggerAction = async () => {
+  const colOptions = column.value.colOptions
+  afterActionStatus.value = null
+
+  if (!colOptions.type) return
+
+  if (colOptions.type === ButtonActionsType.Url) {
+    confirmPageLeavingRedirect(componentProps.value?.href, componentProps.value?.target, appInfo.value?.allowLocalUrl)
+  } else if (colOptions.type === ButtonActionsType.Webhook) {
+    try {
+      isLoading.value = true
+
+      await $api.internal.postOperation(
+        meta.value!.fk_workspace_id!,
+        meta.value!.base_id!,
+        {
+          operation: 'hookTrigger',
+          hookId: cellValue.value?.fk_webhook_id,
+          rowId: rowId!.value,
+        },
+        {},
+      )
+
+      afterActionStatus.value = { status: 'success' }
+      ncDelay(2000).then(() => {
+        afterActionStatus.value = null
+      })
+    } catch (e: any) {
+      console.log(e)
+
+      const errorMsg = await extractSdkResponseErrorMsg(e)
+      message.error(errorMsg)
+
+      afterActionStatus.value = { status: 'error', tooltip: errorMsg }
+      ncDelay(3000).then(() => {
+        afterActionStatus.value = null
+      })
+    } finally {
+      isLoading.value = false
+    }
+  } else if (colOptions.type === ButtonActionsType.Ai) {
+    await generate()
+  } else if (colOptions.type === ButtonActionsType.Script) {
+    try {
+      isLoading.value = true
+
+      const script = await loadScript(colOptions.fk_script_id)
+
+      if (!script) {
+        throw new Error('Script not found')
+      }
+
+      const rowId = pk.value
+
+      const scriptExecutionId = await runScript(script, currentRow.value.row, {
+        pk: rowId!,
+        fieldId: column.value.id!,
+        executionId: `${rowId}-${column.value.id!}-${Date.now()}`,
+      })
+
+      addScriptExecution(scriptExecutionId, {
+        recordId: rowId as string,
+        displayValue: displayValue.value,
+        scriptId: script?.id as string,
+        scriptName: script?.title || 'Untitled Script',
+        buttonFieldName: column.value.title || 'Button',
+      })
+
+      isExecutingId.value = scriptExecutionId
+
+      afterActionStatus.value = { status: 'success' }
+      ncDelay(2000).then(() => {
+        afterActionStatus.value = null
+      })
+    } catch (e: any) {
+      console.log(e)
+
+      const errorMsg = await extractSdkResponseErrorMsg(e)
+      message.error(errorMsg)
+
+      afterActionStatus.value = { status: 'error', tooltip: errorMsg }
+      ncDelay(3000).then(() => {
+        afterActionStatus.value = null
+      })
+    } finally {
+      isLoading.value = false
+    }
+  }
+}
 </script>
 
 <template>
@@ -76,37 +303,62 @@ const componentProps = computed(() => {
     }"
     class="w-full flex items-center"
   >
-    <component
-      :is="column.colOptions.type === 'url' ? 'a' : 'button'"
-      v-bind="componentProps"
-      data-testid="nc-button-cell"
-      :class="[
-        `${column.colOptions.color ?? 'brand'} ${column.colOptions.theme ?? 'solid'}`,
-        { '!w-6': !column.colOptions.label },
-      ]"
-      class="nc-cell-button nc-button-cell-link btn-cell-colors truncate flex items-center h-6"
-      @click="triggerAction"
+    <NcTooltip
+      :disabled="
+        isAiButtonType
+          ? (isFieldAiIntegrationAvailable || isPublic || !isUIAllowed('dataEdit')) && !filterDisabledTooltip
+          : !invalidUrlTooltip && !afterActionStatus?.tooltip && !filterDisabledTooltip
+      "
+      class="flex"
     >
-      <GeneralLoader
-        v-if="isLoading"
-        :class="{
-          solid: column.colOptions.theme === 'solid',
-          text: column.colOptions.theme === 'text',
-          light: column.colOptions.theme === 'light',
-        }"
-        class="flex btn-cell-colors !bg-transparent w-4 h-4"
-        size="medium"
-      />
-      <GeneralIcon v-else-if="column.colOptions.icon" :icon="column.colOptions.icon" class="!w-4 min-w-4 min-h-4 !h-4" />
-      <NcTooltip v-if="column.colOptions.label" class="!truncate" show-on-truncate-only>
-        <span class="text-[13px] truncate font-medium">
-          {{ column.colOptions.label }}
-        </span>
-        <template #title>
-          {{ column.colOptions.label }}
-        </template>
-      </NcTooltip>
-    </component>
+      <template #title>
+        {{
+          filterDisabledTooltip
+            ? filterDisabledTooltip
+            : isAiButtonType
+            ? aiIntegrations.length
+              ? $t('tooltip.aiIntegrationReConfigure')
+              : $t('tooltip.aiIntegrationAddAndReConfigure')
+            : afterActionStatus?.tooltip || invalidUrlTooltip
+        }}
+      </template>
+      <component
+        :is="column.colOptions.type === ButtonActionsType.Url ? 'a' : 'button'"
+        v-bind="componentProps"
+        data-testid="nc-button-cell"
+        :class="[
+          `${column.colOptions.color ?? 'brand'} ${column.colOptions.theme ?? 'solid'}`,
+          { '!w-6': !column.colOptions.label, 'disabled': componentProps.disabled, 'is-expanded-form': isExpandedForm },
+        ]"
+        class="nc-cell-button nc-button-cell-link btn-cell-colors truncate flex items-center"
+        :style="buttonColors"
+        @click.prevent="triggerAction"
+      >
+        <GeneralIcon
+          v-if="afterActionStatus"
+          :icon="afterActionStatus.status === 'success' ? 'ncCheck' : 'ncInfo'"
+          class="w-4 h-4 flex-none text-current"
+        />
+        <GeneralLoader
+          v-else-if="
+            isLoading ||
+            isExecuting ||
+            (pk && generatingRows.includes(pk) && column?.id && generatingColumnRows.includes(column.id))
+          "
+          class="flex w-4 h-4 !text-current"
+          size="medium"
+        />
+        <GeneralIcon v-else-if="column.colOptions.icon" :icon="column.colOptions.icon" class="!w-4 min-w-4 min-h-4 !h-4" />
+        <NcTooltip v-if="column.colOptions.label" class="!truncate" show-on-truncate-only>
+          <span class="truncate font-medium" :class="{ 'text-sm': isExpandedForm, 'text-[13px]': !isExpandedForm }">
+            {{ column.colOptions.label }}
+          </span>
+          <template #title>
+            {{ column.colOptions.label }}
+          </template>
+        </NcTooltip>
+      </component>
+    </NcTooltip>
   </div>
 </template>
 
@@ -115,6 +367,14 @@ const componentProps = computed(() => {
   &:has(.nc-virtual-cell-button) {
     @apply !border-none;
     box-shadow: none !important;
+
+    &:focus-within:not(.nc-readonly-div-data-cell):not(.nc-system-field) {
+      box-shadow: none !important;
+    }
+  }
+
+  &:has(.nc-cell-button.is-expanded-form) {
+    @apply -mt-1 -ml-1;
   }
 
   .nc-cell-attachment {
@@ -129,245 +389,45 @@ const componentProps = computed(() => {
 
 <style scoped lang="scss">
 .nc-cell-button {
-  @apply rounded-lg px-2 flex items-center gap-2 transition-all justify-center;
+  @apply px-2 flex items-center gap-2 transition-all justify-center;
   &:not([class*='text']) {
     box-shadow: 0px 3px 1px -2px rgba(0, 0, 0, 0.06), 0px 5px 3px -2px rgba(0, 0, 0, 0.02);
   }
   &:focus-within {
-    box-shadow: 0px 0px 0px 2px #fff, 0px 0px 0px 4px #3069fe;
+    @apply outline-none ring-0 shadow-focus;
   }
   &[disabled] {
-    @apply !bg-gray-100 text-gray-400;
+    @apply opacity-50 cursor-not-allowed;
+  }
+
+  &.is-expanded-form {
+    @apply h-8 rounded-lg my-1;
+  }
+
+  &:not(.is-expanded-form) {
+    @apply h-6 rounded-md;
   }
 }
 
 .btn-cell-colors {
-  &.solid {
-    @apply text-white;
+  color: var(--btn-cell-text);
+  background: var(--btn-cell-bg);
 
-    &.brand {
-      @apply bg-brand-500 hover:bg-brand-600;
-      .nc-loader {
-        @apply !text-brand-500;
-      }
-    }
+  &:hover {
+    background: var(--btn-cell-bg-hover);
+    color: var(--btn-cell-text-hover);
+  }
 
-    &.red {
-      @apply bg-red-600 hover:bg-red-700;
-      .nc-loader {
-        @apply !text-red-600;
-      }
-    }
+  &.disabled,
+  &[disabled] {
+    @apply cursor-not-allowed opacity-60;
 
-    &.green {
-      @apply bg-green-600 hover:bg-green-700;
-      .nc-loader {
-        @apply !text-green-600;
-      }
-    }
-
-    &.maroon {
-      @apply bg-maroon-600 hover:bg-maroon-700;
-      .nc-loader {
-        @apply !text-maroon-600;
-      }
-    }
-
-    &.blue {
-      @apply bg-blue-600 hover:bg-blue-700;
-      .nc-loader {
-        @apply !text-blue-600;
-      }
-    }
-
-    &.orange {
-      @apply bg-orange-600 hover:bg-orange-700;
-      .nc-loader {
-        @apply !text-orange-600;
-      }
-    }
-
-    &.pink {
-      @apply bg-pink-600 hover:bg-pink-700;
-      .nc-loader {
-        @apply !text-pink-600;
-      }
-    }
-
-    &.purple {
-      @apply bg-purple-500 hover:bg-purple-700;
-      .nc-loader {
-        @apply !text-purple-600;
-      }
-    }
-
-    &.yellow {
-      @apply bg-yellow-600 hover:bg-yellow-700;
-      .nc-loader {
-        @apply !text-yellow-600;
-      }
-    }
-
-    &.gray {
-      @apply bg-gray-600 hover:bg-gray-700;
-      .nc-loader {
-        @apply !text-gray-600;
-      }
-    }
+    background: var(--btn-cell-disabled-bg);
+    color: var(--btn-cell-disabled-text);
   }
 
   &.light {
-    @apply text-gray-700;
     box-shadow: 0px 3px 1px -2px rgba(0, 0, 0, 0.06), 0px 5px 3px -2px rgba(0, 0, 0, 0.02);
-
-    &.brand {
-      @apply bg-brand-100 hover:bg-brand-200;
-      .nc-loader {
-        @apply !text-brand-500;
-      }
-    }
-
-    &.red {
-      @apply bg-red-100 hover:bg-red-200;
-      .nc-loader {
-        @apply !text-red-600;
-      }
-    }
-
-    &.green {
-      @apply bg-green-100 hover:bg-green-200;
-      .nc-loader {
-        @apply !text-green-600;
-      }
-    }
-
-    &.maroon {
-      @apply bg-maroon-100 hover:bg-maroon-200;
-      .nc-loader {
-        @apply !text-maroon-600;
-      }
-    }
-
-    &.blue {
-      @apply bg-blue-100 hover:bg-blue-200;
-      .nc-loader {
-        @apply !text-blue-600;
-      }
-    }
-
-    &.orange {
-      @apply bg-orange-100 hover:bg-orange-200;
-      .nc-loader {
-        @apply !text-orange-600;
-      }
-    }
-
-    &.pink {
-      @apply bg-pink-100 hover:bg-pink-200;
-      .nc-loader {
-        @apply !text-pink-600;
-      }
-    }
-
-    &.purple {
-      @apply bg-purple-100 hover:bg-purple-200;
-      .nc-loader {
-        @apply !text-purple-600;
-      }
-    }
-
-    &.yellow {
-      @apply bg-yellow-100 hover:bg-yellow-200;
-      .nc-loader {
-        @apply !text-yellow-600;
-      }
-    }
-
-    &.gray {
-      @apply bg-gray-100 hover:bg-gray-200;
-      .nc-loader {
-        @apply !text-gray-600;
-      }
-    }
-  }
-
-  &.text {
-    &:hover {
-      @apply bg-gray-200;
-    }
-    &:focus {
-      box-shadow: 0px 0px 0px 2px #fff, 0px 0px 0px 4px #3069fe;
-    }
-
-    &.brand {
-      @apply text-brand-500;
-      .nc-loader {
-        @apply !text-brand-500;
-      }
-    }
-
-    &.red {
-      @apply text-red-600;
-      .nc-loader {
-        @apply !text-red-600;
-      }
-    }
-
-    &.green {
-      @apply text-green-600;
-      .nc-loader {
-        @apply !text-green-600;
-      }
-    }
-
-    &.maroon {
-      @apply text-maroon-600;
-      .nc-loader {
-        @apply !text-maroon-600;
-      }
-    }
-
-    &.blue {
-      @apply text-blue-600;
-      .nc-loader {
-        @apply !text-blue-600;
-      }
-    }
-
-    &.orange {
-      @apply text-orange-600;
-      .nc-loader {
-        @apply !text-orange-600;
-      }
-    }
-
-    &.pink {
-      @apply text-pink-600;
-      .nc-loader {
-        @apply !text-pink-600;
-      }
-    }
-
-    &.purple {
-      @apply text-purple-500;
-      .nc-loader {
-        @apply !text-purple-600;
-      }
-    }
-
-    &.yellow {
-      @apply text-yellow-600;
-      .nc-loader {
-        @apply !text-yellow-600;
-      }
-    }
-
-    &.gray {
-      @apply text-gray-600;
-      .nc-loader {
-        @apply !text-gray-600;
-      }
-    }
   }
 }
 </style>

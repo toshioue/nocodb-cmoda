@@ -38,7 +38,7 @@ export class PluginsController {
 
   @Get(['/api/v1/db/meta/plugins/webhook', '/api/v2/meta/plugins/webhook'])
   @Acl('webhookPluginList', {
-    scope: 'org',
+    scope: 'workspace',
   })
   async webhookPluginList() {
     return new PagedResponseImpl(await this.pluginsService.webhookPluginList());
@@ -82,15 +82,15 @@ export class PluginsController {
   }
 
   @Get([
-    '/api/v1/db/meta/plugins/:pluginTitle/status',
-    '/api/v2/meta/plugins/:pluginTitle/status',
+    '/api/v1/db/meta/plugins/:pluginId/status',
+    '/api/v2/meta/plugins/:pluginId/status',
   ])
   @Acl('isPluginActive', {
     scope: 'org',
   })
-  async isPluginActive(@Param('pluginTitle') pluginTitle: string) {
+  async isPluginActive(@Param('pluginId') pluginId: string) {
     return await this.pluginsService.isPluginActive({
-      pluginTitle: pluginTitle,
+      pluginId,
     });
   }
 }

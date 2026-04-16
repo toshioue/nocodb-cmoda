@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { customAlphabet } from 'nanoid';
+import type { OnModuleDestroy } from '@nestjs/common';
 import type { Response } from 'express';
 import { JobStatus } from '~/interface/Jobs';
 import { JobEvents } from '~/interface/Jobs';
@@ -26,10 +27,21 @@ const POLLING_INTERVAL = 30000;
 
 @Controller()
 @UseGuards(MetaApiLimiterGuard, GlobalGuard)
-export class JobsController {
+export class JobsController implements OnModuleDestroy {
   constructor(
     @Inject('JobsService') private readonly jobsService: IJobsService,
   ) {}
+
+  onModuleDestroy() {
+    Object.keys(this.jobRooms).forEach((jobId) => {
+      const room = this.jobRooms[jobId];
+      room.listeners.forEach((res: Response & { resId?: string }) => {
+        if (!res.headersSent) {
+          res.send({ status: 'refresh' });
+        }
+      });
+    });
+  }
 
   private jobRooms = {};
   private localJobs = {};
@@ -56,6 +68,7 @@ export class JobsController {
     } else {
       messages = (
         await NocoCache.get(
+          'root',
           `${CacheScope.JOBS_POLLING}:${jobId}:messages`,
           CacheGetType.TYPE_OBJECT,
         )
@@ -117,13 +130,13 @@ export class JobsController {
                   // close the job after 1 second (to allow the update of messages)
                   setTimeout(() => {
                     this.closedJobs.push(jobId);
-                  }, 1000);
+                  }, 1000).unref();
                   // remove the job after polling interval * 2
                   setTimeout(() => {
                     this.closedJobs = this.closedJobs.filter(
                       (j) => j !== jobId,
                     );
-                  }, POLLING_INTERVAL * 2);
+                  }, POLLING_INTERVAL * 2).unref();
                 }
                 break;
             }
@@ -146,7 +159,7 @@ export class JobsController {
           status: 'refresh',
         });
       }
-    }, POLLING_INTERVAL);
+    }, POLLING_INTERVAL).unref();
   }
 
   @OnEvent(JobEvents.STATUS)
@@ -173,7 +186,10 @@ export class JobsController {
 
       delete this.jobRooms[jobId];
       delete this.localJobs[jobId];
-      await NocoCache.del(`${CacheScope.JOBS_POLLING}:${jobId}:messages`);
+      await NocoCache.del(
+        'root',
+        `${CacheScope.JOBS_POLLING}:${jobId}:messages`,
+      );
       return;
     }
 
@@ -190,9 +206,13 @@ export class JobsController {
         this.localJobs[jobId].messages.shift();
       }
 
-      await NocoCache.set(`${CacheScope.JOBS_POLLING}:${jobId}:messages`, {
-        messages: this.localJobs[jobId].messages,
-      });
+      await NocoCache.set(
+        'root',
+        `${CacheScope.JOBS_POLLING}:${jobId}:messages`,
+        {
+          messages: this.localJobs[jobId].messages,
+        },
+      );
     } else {
       response = {
         status: 'update',
@@ -205,9 +225,13 @@ export class JobsController {
         _mid: 1,
       };
 
-      await NocoCache.set(`${CacheScope.JOBS_POLLING}:${jobId}:messages`, {
-        messages: this.localJobs[jobId].messages,
-      });
+      await NocoCache.set(
+        'root',
+        `${CacheScope.JOBS_POLLING}:${jobId}:messages`,
+        {
+          messages: this.localJobs[jobId].messages,
+        },
+      );
     }
 
     if (this.jobRooms[jobId]) {
@@ -229,13 +253,16 @@ export class JobsController {
       this.closedJobs.push(jobId);
       setTimeout(() => {
         this.closedJobs = this.closedJobs.filter((j) => j !== jobId);
-      }, POLLING_INTERVAL * 2);
+      }, POLLING_INTERVAL * 2).unref();
 
       setTimeout(async () => {
         delete this.jobRooms[jobId];
         delete this.localJobs[jobId];
-        await NocoCache.del(`${CacheScope.JOBS_POLLING}:${jobId}:messages`);
-      }, POLLING_INTERVAL * 2);
+        await NocoCache.del(
+          'root',
+          `${CacheScope.JOBS_POLLING}:${jobId}:messages`,
+        );
+      }, POLLING_INTERVAL * 2).unref();
     }
   }
 
@@ -262,9 +289,13 @@ export class JobsController {
         this.localJobs[jobId].messages.shift();
       }
 
-      await NocoCache.set(`${CacheScope.JOBS_POLLING}:${jobId}:messages`, {
-        messages: this.localJobs[jobId].messages,
-      });
+      await NocoCache.set(
+        'root',
+        `${CacheScope.JOBS_POLLING}:${jobId}:messages`,
+        {
+          messages: this.localJobs[jobId].messages,
+        },
+      );
     } else {
       response = {
         status: 'update',
@@ -277,9 +308,13 @@ export class JobsController {
         _mid: 1,
       };
 
-      await NocoCache.set(`${CacheScope.JOBS_POLLING}:${jobId}:messages`, {
-        messages: this.localJobs[jobId].messages,
-      });
+      await NocoCache.set(
+        'root',
+        `${CacheScope.JOBS_POLLING}:${jobId}:messages`,
+        {
+          messages: this.localJobs[jobId].messages,
+        },
+      );
     }
 
     if (this.jobRooms[jobId]) {

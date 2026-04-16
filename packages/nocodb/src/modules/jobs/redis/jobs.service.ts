@@ -1,6 +1,7 @@
 import { InjectQueue } from '@nestjs/bull';
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bull';
+import { getTrueCircularReplacer } from 'nocodb-sdk';
 import type { JobOptions } from 'bull';
 import type { OnModuleInit } from '@nestjs/common';
 import {
@@ -9,10 +10,12 @@ import {
   JobStatus,
   JobTypes,
   JobVersions,
+  SKIP_STORING_JOB_META,
 } from '~/interface/Jobs';
 import { JobsRedis } from '~/modules/jobs/redis/jobs-redis';
 import { Job } from '~/models';
-import { RootScopes } from '~/utils/globals';
+import { MetaTable, RootScopes } from '~/utils/globals';
+import Noco from '~/Noco';
 
 @Injectable()
 export class JobsService implements OnModuleInit {
@@ -25,6 +28,18 @@ export class JobsService implements OnModuleInit {
     if (process.env.NC_WORKER_CONTAINER === 'false') {
       await this.jobsQueue.pause(true);
     }
+
+    // await this.jobsQueue.add(
+    //   {
+    //     jobName: JobTypes.DataExportCleanUp,
+    //     context: {},
+    //   },
+    //   {
+    //     jobId: JobTypes.DataExportCleanUp,
+    //     // run every 5 hours
+    //     repeat: { cron: '0 */5 * * *' },
+    //   },
+    // );
 
     await this.toggleQueue();
 
@@ -68,27 +83,52 @@ export class JobsService implements OnModuleInit {
       ...(data?.context || {}),
     };
 
+    data = JSON.parse(JSON.stringify(data, getTrueCircularReplacer()));
+
     let jobData;
 
     if (options?.jobId) {
-      const existingJob = await Job.get(context, options.jobId);
-      if (existingJob) {
-        jobData = existingJob;
+      if (SKIP_STORING_JOB_META.includes(name as JobTypes)) {
+        jobData = {
+          id: options.jobId,
+        };
+      } else {
+        const existingJob = await Job.get(context, options.jobId);
+        if (existingJob) {
+          jobData = existingJob;
 
-        if (existingJob.status !== JobStatus.WAITING) {
-          await Job.update(context, existingJob.id, {
+          if (existingJob.status !== JobStatus.WAITING) {
+            await Job.update(context, existingJob.id, {
+              status: JobStatus.WAITING,
+            });
+          }
+        } else {
+          jobData = await Job.insert(context, {
+            id: `${options.jobId}`,
+            job: name,
             status: JobStatus.WAITING,
+            fk_user_id: data?.user?.id,
           });
         }
       }
     }
 
     if (!jobData) {
-      jobData = await Job.insert(context, {
-        job: name,
-        status: JobStatus.WAITING,
-        fk_user_id: data?.user?.id,
-      });
+      if (SKIP_STORING_JOB_META.includes(name as JobTypes)) {
+        jobData = {
+          id: await Noco.ncMeta.genNanoid(MetaTable.JOBS),
+        };
+      } else {
+        jobData = await Job.insert(context, {
+          job: name,
+          status: JobStatus.WAITING,
+          fk_user_id: data?.user?.id,
+        });
+      }
+    }
+
+    if (!data) {
+      data = {};
     }
 
     data.jobName = name;
@@ -97,12 +137,13 @@ export class JobsService implements OnModuleInit {
       data._jobVersion = JobVersions[name];
     }
 
-    await this.jobsQueue.add(data, {
+    const job = await this.jobsQueue.add(data, {
       jobId: jobData.id,
+      removeOnFail: 1000,
       ...options,
     });
 
-    return jobData;
+    return job;
   }
 
   async jobStatus(jobId: string) {
@@ -119,6 +160,39 @@ export class JobsService implements OnModuleInit {
       JobStatus.DELAYED,
       JobStatus.PAUSED,
     ]);
+  }
+
+  async setJobResult(jobId: string, result: any) {
+    const job = await Job.get(
+      {
+        workspace_id: RootScopes.ROOT,
+        base_id: RootScopes.ROOT,
+      },
+      jobId,
+    );
+
+    if (!job) {
+      return;
+    }
+
+    try {
+      if (typeof result === 'object') {
+        result = JSON.stringify(result);
+      }
+
+      await Job.update(
+        {
+          workspace_id: RootScopes.ROOT,
+          base_id: RootScopes.ROOT,
+        },
+        jobId,
+        {
+          result,
+        },
+      );
+    } catch (e) {
+      // ignore
+    }
   }
 
   async resumeQueue() {

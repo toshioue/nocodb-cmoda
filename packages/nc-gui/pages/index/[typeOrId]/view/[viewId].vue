@@ -4,13 +4,14 @@ import { ViewTypes } from 'nocodb-sdk'
 definePageMeta({
   public: true,
   requiresAuth: false,
+  pageType: 'shared-view',
   layout: 'shared-view',
   hasSidebar: false,
 })
 
 const route = useRoute()
 
-const { loadSharedView, meta } = useSharedView()
+const { loadSharedView, meta, triggerNotFound } = useSharedView()
 const { isViewDataLoading } = storeToRefs(useViewsStore())
 
 provide(MetaInj, meta)
@@ -24,6 +25,8 @@ onMounted(async () => {
   } catch (e: any) {
     if (e?.response?.status === 403) {
       showPassword.value = true
+    } else if (e?.response?.status === 404) {
+      triggerNotFound()
     } else {
       console.error(e)
       message.error(await extractSdkResponseErrorMsg(e))

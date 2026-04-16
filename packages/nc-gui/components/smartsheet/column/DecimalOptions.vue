@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { UITypes } from 'nocodb-sdk'
+import { ColumnHelper, UITypes, readonlyMetaAllowedTypes } from 'nocodb-sdk'
 
 const props = defineProps<{
   value: any
@@ -7,26 +7,15 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:value'])
 
-const precisionFormats = [1, 2, 3, 4, 5, 6, 7, 8]
-
 const { t } = useI18n()
-
-const precisionFormatsDisplay = {
-  1: t('placeholder.decimal1'),
-  2: t('placeholder.decimal2'),
-  3: t('placeholder.decimal3'),
-  4: t('placeholder.decimal4'),
-  5: t('placeholder.decimal5'),
-  6: t('placeholder.decimal6'),
-  7: t('placeholder.decimal7'),
-  8: t('placeholder.decimal8'),
-}
 
 const vModel = useVModel(props, 'value', emit)
 
+const precisionFormatsDisplay = makePrecisionFormatsDiplay(t)
+
 // set default value
 vModel.value.meta = {
-  ...columnDefaultMeta[UITypes.Decimal],
+  ...ColumnHelper.getColumnDefaultMeta(UITypes.Decimal),
   ...(vModel.value.meta || {}),
 }
 
@@ -38,19 +27,25 @@ const onPrecisionChange = (value: number) => {
 }
 
 const { isMetaReadOnly } = useRoles()
+
+const { formState } = useColumnCreateStoreOrThrow()
+
+const disableConfiguration = computed(
+  () => Boolean(isMetaReadOnly.value) && !readonlyMetaAllowedTypes.includes(formState.value.uidt),
+)
 </script>
 
 <template>
   <a-form-item :label="$t('placeholder.precision')">
     <a-select
-      v-if="vModel.meta?.precision"
+      v-if="vModel.meta?.precision || vModel.meta?.precision === 0"
       v-model:value="vModel.meta.precision"
-      :disabled="isMetaReadOnly"
-      dropdown-class-name="nc-dropdown-decimal-format"
+      :disabled="disableConfiguration"
+      dropdown-class-name="nc-dropdown-decimal-precision-format"
       @change="onPrecisionChange"
     >
       <template #suffixIcon>
-        <GeneralIcon icon="arrowDown" class="text-gray-700" />
+        <GeneralIcon icon="arrowDown" class="text-nc-content-gray-subtle" />
       </template>
       <a-select-option v-for="(format, i) of precisionFormats" :key="i" :value="format">
         <div class="flex gap-2 w-full justify-between items-center">
@@ -69,7 +64,7 @@ const { isMetaReadOnly } = useRoles()
   <a-form-item>
     <div class="flex items-center gap-1">
       <NcSwitch v-if="vModel.meta" v-model:checked="vModel.meta.isLocaleString">
-        <div class="text-sm text-gray-800 select-none">{{ $t('labels.showThousandsSeparator') }}</div>
+        <div class="text-sm text-nc-content-gray select-none">{{ $t('labels.showThousandsSeparator') }}</div>
       </NcSwitch>
     </div>
   </a-form-item>

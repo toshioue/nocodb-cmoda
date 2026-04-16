@@ -1,17 +1,14 @@
 <script lang="ts" setup>
 const props = withDefaults(
   defineProps<{
-    integrationType: string
+    integrationItem: IntegrationItemType
     size?: 'xs' | 'sm' | 'md' | 'lg'
   }>(),
   {
     size: 'md',
   },
 )
-
-const { integrationType: integrationTypeOrigin } = useIntegrationStore()
-
-const { size, integrationType } = toRefs(props)
+const { size, integrationItem } = toRefs(props)
 
 const pxSize = computed(() => {
   switch (size.value) {
@@ -44,20 +41,16 @@ const pxWrapperPadding = computed(() => {
       padding: pxWrapperPadding,
     }"
   >
-    <GeneralBaseLogo
-      v-if="integrationType === integrationTypeOrigin.MySQL"
-      source-type="mysql2"
-      :style="{ width: pxSize, height: pxSize }"
-    />
-    <GeneralBaseLogo
-      v-else-if="integrationType === integrationTypeOrigin.PostgreSQL"
-      source-type="pg"
-      :style="{ width: pxSize, height: pxSize }"
-    />
     <GeneralIcon
-      v-else-if="integrationType === 'request'"
-      icon="plusSquare"
-      class="text-gray-700"
+      v-if="typeof integrationItem === 'string'"
+      :icon="integrationItem"
+      class="text-nc-content-inverted-secondary"
+      :style="{ width: pxSize, height: pxSize }"
+    />
+    <component
+      :is="integrationItem.icon"
+      v-else-if="integrationItem.icon"
+      class="text-nc-content-inverted-secondary"
       :style="{ width: pxSize, height: pxSize }"
     />
   </div>
@@ -65,6 +58,6 @@ const pxWrapperPadding = computed(() => {
 
 <style lang="scss" scoped>
 .logo-wrapper {
-  @apply bg-gray-200 rounded-lg flex items-center justify-center;
+  @apply bg-nc-bg-gray-medium rounded-lg flex items-center justify-center;
 }
 </style>

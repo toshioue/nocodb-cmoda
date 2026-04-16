@@ -1,5 +1,6 @@
 import { useStorage } from '@vueuse/core'
 import type { JwtPayload } from 'jwt-decode'
+import { MapProvider, NC_DEFAULT_ORG_ID } from 'nocodb-sdk'
 import type { AppInfo, State, StoredState } from './types'
 import { INITIAL_LEFT_SIDEBAR_WIDTH } from '~/lib/constants'
 
@@ -16,6 +17,10 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
   const {
     vueApp: { i18n },
   } = useNuxtApp()
+
+  const router = useRouter()
+
+  const isSharedBaseOrErdOrView = computed(() => isSharedBaseOrErdOrViewRoute(router.currentRoute.value))
 
   /**
    * Set initial language based on browser settings.
@@ -43,19 +48,24 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
     return locale
   }, 'en' /** fallback locale */)
 
+  const { width } = useWindowSize()
+  const isViewPortMobile = () => {
+    return width.value < NC_BREAKPOINTS.sm
+  }
+
   /** State */
   const initialState: StoredState = {
     token: null,
     lang: preferredLanguage,
     darkMode: prefersDarkMode,
     filterAutoSave: true,
-    previewAs: null,
     includeM2M: false,
     showNull: false,
     currentVersion: null,
     latestRelease: null,
     hiddenRelease: null,
     isMobileMode: null,
+    activeBreakpoint: null,
     lastOpenedWorkspaceId: null,
     gridViewPageSize: 25,
     leftSidebarSize: {
@@ -65,6 +75,8 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
     isAddNewRecordGridMode: true,
     syncDataUpvotes: [],
     giftBannerDismissedCount: 0,
+    isLeftSidebarOpen: !isViewPortMobile(),
+    lastUsedAuthMethod: null,
   }
 
   /** saves a reactive state, any change to these values will write/delete to localStorage */
@@ -74,9 +86,32 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
   storage.value.darkMode = false
 
   /** current token ref, used by `useJwt` to reactively parse our token payload */
+  /**
+   * Token management behavior (read/write rules):
+   *
+   * Issue:
+   * - When opening a Shared Base, ERD, or Shared View in a new tab,
+   *   the main application’s auth token from `localStorage` gets reused.
+   * - This incorrectly treats the user as authenticated, even though
+   *   shared resources must always behave as "guest/readonly" access.
+   *
+   * Fix:
+   * - When we detect that current route is a Shared Base / ERD / Shared View,
+   *   we completely avoid reading from or writing to localStorage.
+   * - This ensures:
+   *    ✅ Shared views always open as guest users
+   *    ✅ Real login session in main app remains unaffected
+   *    ✅ No accidental privilege escalation when opening links in new tab
+   *
+   * Result:
+   * - Main app uses persistent auth from localStorage
+   * - Shared resources use a temporary, isolated token only in memory
+   */
   const token = computed({
-    get: () => storage.value.token || '',
+    get: () => (isSharedBaseOrErdOrView.value ? '' : storage.value.token || ''),
     set: (val) => {
+      if (isSharedBaseOrErdOrView.value) return
+
       storage.value.token = val
     },
   })
@@ -93,6 +128,7 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
     googleAuthEnabled: false,
     oidcAuthEnabled: false,
     oidcProviderName: null,
+    openReplayKey: null,
     samlAuthEnabled: false,
     samlProviderName: null,
     ncMin: false,
@@ -105,12 +141,24 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
     version: '0.0.0',
     ncAttachmentFieldSize: 20,
     ncMaxAttachmentsAllowed: 10,
+    ncMaxTextLength: 100000,
     isCloud: false,
     automationLogLevel: 'OFF',
     disableEmailAuth: false,
-    dashboardPath: '/dashboard',
+    dashboardPath: '/',
     inviteOnlySignup: false,
     giftUrl: '',
+    isOnPrem: false,
+    isPostgres: false,
+    isAirgapped: false,
+    seatLimit: null,
+    isTrial: false,
+    isTrialExpired: false,
+    licenseExpiryTime: 0,
+    defaultWorkspaceId: null,
+    disableGroupByAggregation: false,
+    mapProvider: MapProvider.OPENSTREETMAP,
+    defaultOrgId: NC_DEFAULT_ORG_ID,
   })
 
   /** reactive token payload */
@@ -125,6 +173,9 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
   /** our local user object */
   const user = ref<User | null>(null)
 
+  /** tracks appInfo API call status: 'idle' → 'loading' → 'loaded' | 'error' */
+  const appInfoStatus = ref<'idle' | 'loading' | 'loaded' | 'error'>('idle')
+
   return {
     ...toRefs(storage.value),
     storage,
@@ -135,5 +186,6 @@ export function useGlobalState(storageKey = 'nocodb-gui-v2'): State {
     error,
     user,
     appInfo,
+    appInfoStatus,
   }
 }

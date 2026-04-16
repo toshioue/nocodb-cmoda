@@ -1,7 +1,7 @@
 # Security Policy
 
 ### Reporting a Vulnerability
-Please report (suspected) security vulnerabilities to security@nocodb.com
 
-- You will receive a response from us within 7 working days. 
-- If the issue is confirmed, we will release a patch as soon as possible depending on complexity but historically within a few days.
+If you believe you have discovered a security vulnerability in NocoDB, please report it to us at [security@nocodb.com](mailto:security@nocodb.com).
+
+We will evaluate your report. If the issue is confirmed, we will work on a patch as soon as possible.

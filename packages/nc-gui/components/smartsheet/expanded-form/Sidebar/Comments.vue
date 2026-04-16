@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { type CommentType, ProjectRoles } from 'nocodb-sdk'
+import tippy from 'tippy.js'
+import { ProjectRoles, WorkspaceRolesToProjectRoles } from 'nocodb-sdk'
+import type { CommentType, WorkspaceUserRoles } from 'nocodb-sdk'
 
 const { user, appInfo } = useGlobal()
 
@@ -7,7 +9,7 @@ const { dashboardUrl } = useDashboard()
 
 const { isUIAllowed } = useRoles()
 
-const { copy } = useClipboard()
+const { copy } = useCopy()
 
 const route = useRoute()
 
@@ -21,6 +23,8 @@ const { basesUser } = storeToRefs(basesStore)
 
 const meta = inject(MetaInj, ref())
 
+const activeView = inject(ActiveViewInj, ref())
+
 const {
   deleteComment,
   resolveComment,
@@ -30,6 +34,7 @@ const {
   updateComment,
   saveComment: _saveComment,
   primaryKey,
+  parsedHtmlComments,
 } = useRowCommentsOrThrow()
 
 const editCommentValue = ref<CommentType>()
@@ -49,6 +54,8 @@ const comment = ref('')
 const router = useRouter()
 
 const baseUsers = computed(() => (meta.value?.base_id ? basesUser.value.get(meta.value?.base_id) || [] : []))
+
+const debouncedLoadCommentEditedTooltip = useDebounceFn(loadCommentEditedTooltip, 1000)
 
 function scrollComments() {
   if (commentsWrapperEl.value) {
@@ -82,6 +89,8 @@ const saveComment = async () => {
       created_by: user.value?.id,
       created_by_email: user.value?.email,
       created_display_name: user.value?.display_name ?? '',
+      created_display_name_short: user.value?.display_name ?? extractNameFromEmail(user.value?.email),
+      created_by_meta: user.value?.meta ?? '',
     },
   ]
 
@@ -105,9 +114,13 @@ const saveComment = async () => {
 }
 
 const copyComment = async (comment: CommentType) => {
+  const viewId = activeView.value?.fk_model_id === meta.value?.id ? activeView.value?.id : undefined
+
   await copy(
     encodeURI(
-      `${dashboardUrl?.value}#/${route.params.typeOrId}/${route.params.baseId}/${meta.value?.id}?rowId=${primaryKey.value}&commentId=${comment.id}`,
+      `${dashboardUrl?.value}/${route.params.typeOrId}/${route.params.baseId}/${meta.value?.id}${
+        viewId ? `/${viewId}` : ''
+      }?rowId=${primaryKey.value}&commentId=${comment.id}`,
     ),
   )
 }
@@ -174,31 +187,24 @@ async function onEditComment() {
   await updateComment(tempCom.id!, {
     comment: tempCom.comment,
   })
+
   loadComments()
 }
 
 const createdBy = (
   comment: CommentType & {
-    created_display_name?: string
+    created_display_name_short?: string
   },
 ) => {
   if (comment.created_by === user.value?.id) {
     return 'You'
-  } else if (comment.created_display_name?.trim()) {
-    return comment.created_display_name || 'Shared source'
+  } else if (comment.created_display_name_short?.trim()) {
+    return comment.created_display_name_short || 'Shared source'
   } else if (comment.created_by_email) {
     return comment.created_by_email
   } else {
     return 'Shared source'
   }
-}
-
-const editedAt = (comment: CommentType) => {
-  if (comment.updated_at !== comment.created_at && comment.updated_at) {
-    const str = timeAgo(comment.updated_at).replace(' ', '_')
-    return `[(edited)](a~~~###~~~Edited_${str}) `
-  }
-  return ''
 }
 
 function handleResetHoverEffect() {
@@ -234,8 +240,67 @@ const getUserRole = (email: string) => {
   const user = baseUsers.value.find((user) => user.email === email)
   if (!user) return ProjectRoles.NO_ACCESS
 
-  return user.roles || ProjectRoles.NO_ACCESS
+  return (
+    user.roles ??
+    (user.workspace_roles
+      ? WorkspaceRolesToProjectRoles[user.workspace_roles as WorkspaceUserRoles] ?? ProjectRoles.NO_ACCESS
+      : ProjectRoles.NO_ACCESS)
+  )
 }
+
+const tooltipInstances: any[] = []
+
+function loadCommentEditedTooltip() {
+  resetTooltipInstances()
+
+  document.querySelectorAll('.nc-rich-link-tooltip').forEach((el) => {
+    const tooltip = Object.values(el.attributes).find((attr) => attr.name === 'data-tooltip')
+    if (!tooltip) return
+
+    const instance = tippy(el, {
+      content: `<span class="tooltip nc-rich-link-tooltip-popup">${tooltip.value}</span>`,
+      placement: 'top',
+      allowHTML: true,
+      arrow: true,
+      animation: 'fade',
+      duration: 0,
+    })
+
+    tooltipInstances.push(instance)
+  })
+}
+
+function resetTooltipInstances() {
+  tooltipInstances.forEach((instance) => instance?.destroy())
+  tooltipInstances.length = 0
+}
+
+const handleKeyPress = (event: KeyboardEvent) => {
+  if (event.key !== 'Escape') {
+    event.stopPropagation()
+  }
+}
+
+watch(
+  comments,
+  () => {
+    debouncedLoadCommentEditedTooltip()
+  },
+  { immediate: true },
+)
+
+watch(
+  () => comments.value?.length,
+  () => {
+    nextTick(() => {
+      scrollComments()
+    })
+  },
+)
+
+onBeforeUnmount(() => {
+  resetTooltipInstances()
+})
 </script>
 
 <template>
@@ -250,26 +315,31 @@ const getUserRole = (email: string) => {
     </div>
     <div v-else class="flex flex-col h-full">
       <div v-if="comments.length === 0" class="flex flex-col my-1 text-center justify-center h-full nc-scrollbar-thin">
-        <div class="text-center text-3xl text-gray-700">
+        <div class="text-center text-3xl text-nc-content-gray-subtle">
           <GeneralIcon icon="commentHere" />
         </div>
-        <div class="font-medium text-center my-6 text-gray-500">
+        <div class="font-medium text-center my-6 text-nc-content-gray-muted">
           {{ hasEditPermission ? $t('activity.startCommenting') : $t('activity.noCommentsYet') }}
         </div>
       </div>
       <div v-else ref="commentsWrapperEl" class="flex flex-col h-full py-1 nc-scrollbar-thin">
         <div
-          v-for="commentItem of comments"
+          v-for="(commentItem, index) of comments"
           :key="commentItem.id"
-          :class="`${commentItem.id}`"
+          :class="[
+            {
+              'mt-auto': index === 0,
+            },
+            commentItem.id,
+          ]"
           class="nc-comment-item"
           @mouseover="handleResetHoverEffect"
         >
           <div
             :class="{
-                  'hover:bg-gray-100': editCommentValue?.id !== commentItem!.id,
-                  'nc-hovered-comment bg-gray-100': hoveredCommentId === commentItem!.id
-                }"
+              'hover:bg-nc-bg-gray-light': editCommentValue?.id !== commentItem!.id,
+              'nc-hovered-comment bg-nc-bg-gray-light': hoveredCommentId === commentItem!.id
+        }"
             class="group gap-3 overflow-hidden px-3 py-2 transition-colors"
           >
             <div class="flex items-start justify-between">
@@ -285,37 +355,44 @@ const getUserRole = (email: string) => {
                 }"
               >
                 <GeneralUserIcon
-                  :email="commentItem.created_by_email"
-                  :name="commentItem.created_display_name"
+                  :user="{
+                    display_name: commentItem?.created_display_name,
+                    email: commentItem?.created_by_email,
+                    meta: commentItem?.created_by_meta,
+                  }"
                   class="mt-0.5"
                   size="medium"
                 />
                 <div class="flex h-[28px] items-center gap-3 w-[calc(100%_-_40px)]">
                   <NcDropdown placement="topLeft" :trigger="['hover']" class="flex-none max-w-[calc(100%_-_72px)]">
-                    <div class="truncate text-gray-800 font-medium !text-small !leading-[18px] overflow-hidden">
+                    <div class="truncate text-nc-content-gray font-medium !text-small !leading-[18px] overflow-hidden">
                       {{ createdBy(commentItem) }}
                     </div>
 
                     <template #overlay>
-                      <div class="bg-white rounded-lg">
+                      <div class="bg-nc-bg-default rounded-lg">
                         <div class="flex items-center gap-4 py-3 px-2">
                           <GeneralUserIcon
-                            class="!w-8 !h-8 border-1 border-gray-200 rounded-full"
-                            :name="commentItem.created_display_name"
-                            :email="commentItem.created_by_email"
+                            class="border-1 border-nc-border-gray-medium rounded-full"
+                            :user="{
+                              display_name: commentItem?.created_display_name,
+                              email: commentItem?.created_by_email,
+                              meta: commentItem?.created_by_meta,
+                            }"
+                            size="base"
                           />
                           <div class="flex flex-col">
-                            <div class="font-semibold text-gray-800">
+                            <div class="font-semibold text-nc-content-gray">
                               {{ createdBy(commentItem) }}
                             </div>
-                            <div class="text-xs text-gray-600">
+                            <div class="text-xs text-nc-content-gray-subtle2">
                               {{ commentItem.created_by_email }}
                             </div>
                           </div>
                         </div>
                         <div
                           v-if="isUIAllowed('dataEdit')"
-                          class="px-3 rounded-b-lg !text-[13px] items-center text-gray-600 flex gap-1 bg-gray-100 py-1.5"
+                          class="px-3 rounded-b-lg !text-[13px] items-center text-nc-content-gray-subtle2 flex gap-1 bg-nc-bg-gray-light py-1.5"
                         >
                           Has <RolesBadge size="sm" :border="false" :role="getUserRole(commentItem.created_by_email!)" />
                           role in base
@@ -323,7 +400,7 @@ const getUserRole = (email: string) => {
                       </div>
                     </template>
                   </NcDropdown>
-                  <div class="text-xs text-gray-500">
+                  <div class="text-xs text-nc-content-gray-muted">
                     {{ timeAgo(commentItem.created_at!) }}
                   </div>
                 </div>
@@ -336,18 +413,17 @@ const getUserRole = (email: string) => {
                   placement="bottomRight"
                 >
                   <NcButton
-                    class="nc-expand-form-more-actions !hover:bg-gray-200 !w-7 !h-7 !bg-transparent"
+                    class="nc-expand-form-more-actions !hover:bg-nc-bg-gray-medium !w-7 !h-7 !bg-transparent"
                     size="xsmall"
                     type="text"
                   >
                     <GeneralIcon class="text-md" icon="threeDotVertical" />
                   </NcButton>
                   <template #overlay>
-                    <NcMenu>
+                    <NcMenu variant="small">
                       <NcMenuItem
                         v-if="user && commentItem.created_by_email === user.email && hasEditPermission"
                         v-e="['c:comment-expand:comment:edit']"
-                        class="text-gray-700"
                         @click="editComment(commentItem)"
                       >
                         <div class="flex gap-2 items-center">
@@ -355,7 +431,7 @@ const getUserRole = (email: string) => {
                           {{ $t('general.edit') }}
                         </div>
                       </NcMenuItem>
-                      <NcMenuItem v-e="['c:comment-expand:comment:copy']" class="text-gray-700" @click="copyComment(commentItem)">
+                      <NcMenuItem v-e="['c:comment-expand:comment:copy']" @click="copyComment(commentItem)">
                         <div class="flex gap-2 items-center">
                           <component :is="iconMap.copy" class="cursor-pointer" />
                           {{ $t('general.copy') }} URL
@@ -363,13 +439,9 @@ const getUserRole = (email: string) => {
                       </NcMenuItem>
                       <template v-if="user && commentItem.created_by_email === user.email && hasEditPermission">
                         <NcDivider />
-                        <NcMenuItem
-                          v-e="['c:row-expand:comment:delete']"
-                          class="!text-red-500 !hover:bg-red-50"
-                          @click="deleteComment(commentItem.id!)"
-                        >
+                        <NcMenuItem v-e="['c:row-expand:comment:delete']" danger @click="deleteComment(commentItem.id!)">
                           <div class="flex gap-2 items-center">
-                            <component :is="iconMap.delete" class="cursor-pointer" />
+                            <GeneralIcon icon="delete" class="cursor-pointer" />
                             {{ $t('general.delete') }}
                           </div>
                         </NcMenuItem>
@@ -380,7 +452,7 @@ const getUserRole = (email: string) => {
                 <div v-if="appInfo.ee">
                   <NcTooltip v-if="!commentItem.resolved_by && hasEditPermission">
                     <NcButton
-                      class="nc-resolve-comment-btn !w-7 !h-7 !bg-transparent !hover:bg-gray-200 !hidden !group-hover:block"
+                      class="nc-resolve-comment-btn !w-7 !h-7 !bg-transparent !hover:bg-nc-bg-gray-medium !hidden !group-hover:block"
                       size="xsmall"
                       type="text"
                       @click="resolveComment(commentItem.id!)"
@@ -388,18 +460,18 @@ const getUserRole = (email: string) => {
                       <GeneralIcon class="text-md" icon="checkCircle" />
                     </NcButton>
 
-                    <template #title>Click to resolve </template>
+                    <template #title>{{ $t('activity.clickToResolve') }}</template>
                   </NcTooltip>
 
                   <NcTooltip v-else-if="commentItem.resolved_by">
-                    <template #title>{{ `Resolved by ${commentItem.resolved_display_name}` }}</template>
+                    <template #title>{{ `${$t('activity.resolvedBy')} ${commentItem.resolved_display_name_short}` }}</template>
                     <NcButton
-                      class="!h-7 !w-7 !bg-transparent !hover:bg-gray-200 text-semibold"
+                      class="!h-7 !w-7 !bg-transparent !hover:bg-nc-bg-gray-medium text-semibold"
                       size="xsmall"
                       type="text"
                       @click="resolveComment(commentItem.id!)"
                     >
-                      <GeneralIcon class="text-md rounded-full bg-[#17803D] text-white" icon="checkFill" />
+                      <GeneralIcon class="text-md rounded-full bg-nc-fill-green-dark text-white" icon="checkFill" />
                     </NcButton>
                   </NcTooltip>
                 </div>
@@ -415,12 +487,13 @@ const getUserRole = (email: string) => {
                 v-if="commentItem.id === editCommentValue?.id && hasEditPermission"
                 v-model:value="value"
                 autofocus
+                autofocus-to-end
                 :hide-options="false"
-                class="expanded-form-comment-edit-input cursor-text expanded-form-comment-input !py-2 !px-2 !m-0 w-full !border-1 !border-gray-200 !rounded-lg !bg-white !text-gray-800 !text-small !leading-18px !max-h-[240px]"
+                class="expanded-form-comment-edit-input cursor-text expanded-form-comment-input !py-2 !px-2 !m-0 w-full !border-1 !border-nc-border-gray-medium !rounded-lg !bg-nc-bg-default !text-nc-content-gray !text-small !leading-18px !max-h-[240px]"
                 data-testid="expanded-form-comment-input"
-                sync-value-change
                 @save="onEditComment"
                 @keydown.esc="onCancel"
+                @keydown="handleKeyPress"
                 @blur="
                   () => {
                     editCommentValue = undefined
@@ -431,12 +504,11 @@ const getUserRole = (email: string) => {
               />
 
               <div v-else class="space-y-1 pl-9">
-                <SmartsheetExpandedFormRichComment
-                  :value="`${commentItem.comment}  ${editedAt(commentItem)}`"
-                  class="!text-small !leading-18px !text-gray-800 -ml-1"
-                  read-only
-                  sync-value-change
-                />
+                <div
+                  v-dompurify-html="parsedHtmlComments[commentItem.id]"
+                  class="nc-rich-text-content !text-small !leading-18px !text-nc-content-gray"
+                  @click="handleDompurifyLinkClick"
+                ></div>
               </div>
             </div>
           </div>
@@ -447,12 +519,12 @@ const getUserRole = (email: string) => {
           ref="commentInputRef"
           v-model:value="comment"
           :hide-options="false"
-          placeholder="Comment..."
-          class="expanded-form-comment-input !py-2 !px-2 cursor-text border-1 rounded-lg w-full bg-transparent !text-gray-800 !text-small !leading-18px !max-h-[240px]"
+          :placeholder="`${$t('general.comment')}...`"
+          class="expanded-form-comment-input !py-2 !px-2 cursor-text border-1 rounded-lg w-full bg-transparent !text-nc-content-gray !text-small !leading-18px !max-h-[240px]"
           :autofocus="isExpandedFormCommentMode"
           data-testid="expanded-form-comment-input"
           @focus="isExpandedFormCommentMode = false"
-          @keydown.stop
+          @keydown="handleKeyPress"
           @save="saveComment"
           @keydown.enter.exact.prevent="saveComment"
         />
@@ -467,7 +539,7 @@ const getUserRole = (email: string) => {
   box-shadow: none;
   &:focus,
   &:focus-within {
-    @apply min-h-16 !bg-white border-brand-500;
+    @apply min-h-16 !bg-nc-bg-default border-nc-border-brand;
     box-shadow: 0px 0px 0px 2px rgba(51, 102, 255, 0.24);
   }
   &::placeholder {
@@ -476,7 +548,7 @@ const getUserRole = (email: string) => {
 }
 
 :deep(.expanded-form-comment-edit-input .nc-comment-rich-editor) {
-  @apply bg-white;
+  @apply bg-nc-bg-default;
 }
 
 .nc-hovered-comment {
@@ -484,5 +556,21 @@ const getUserRole = (email: string) => {
   .nc-resolve-comment-btn {
     @apply !block;
   }
+}
+
+:deep(.nc-rich-link-tooltip) {
+  @apply text-nc-content-gray-muted;
+}
+
+.nc-rich-text-content {
+  p {
+    @apply !m-0 !leading-5;
+  }
+}
+</style>
+
+<style lang="scss">
+.nc-rich-link-tooltip-popup {
+  @apply text-xs bg-nc-content-gray text-nc-content-inverted-primary px-2 py-1 rounded-lg;
 }
 </style>

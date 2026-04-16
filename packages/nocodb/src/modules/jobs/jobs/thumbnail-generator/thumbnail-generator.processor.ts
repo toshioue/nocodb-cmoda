@@ -1,25 +1,32 @@
 import path from 'path';
-import { Readable } from 'stream';
 import { Logger } from '@nestjs/common';
-import slash from 'slash';
 import type { IStorageAdapterV2 } from '~/types/nc-plugin';
 import type { Job } from 'bull';
-import type { AttachmentResType } from 'nocodb-sdk';
+import type { AttachmentResType, PublicAttachmentScope } from 'nocodb-sdk';
 import type { ThumbnailGeneratorJobData } from '~/interface/Jobs';
 import NcPluginMgrv2 from '~/helpers/NcPluginMgrv2';
 import { getPathFromUrl } from '~/helpers/attachmentHelpers';
+import { ImageThumbnailGenerator } from '~/modules/jobs/jobs/thumbnail-generator/generators/image-thumbnail-generator';
 import Noco from '~/Noco';
 
 export class ThumbnailGeneratorProcessor {
   private logger = new Logger(ThumbnailGeneratorProcessor.name);
+  private imageGenerator = new ImageThumbnailGenerator();
 
   async job(job: Job<ThumbnailGeneratorJobData>) {
-    const { attachments } = job.data;
+    const { attachments, scope } = job.data;
 
     const results = [];
 
+    const sharp = Noco.sharp;
+
+    if (!sharp) {
+      this.logger.warn('Sharp not available, skipping thumbnail generation');
+      return results;
+    }
+
     for (const attachment of attachments) {
-      const thumbnail = await this.generateThumbnail(attachment);
+      const thumbnail = await this.generateThumbnail(attachment, scope);
 
       if (!thumbnail) {
         continue;
@@ -38,6 +45,7 @@ export class ThumbnailGeneratorProcessor {
 
   private async generateThumbnail(
     attachment: AttachmentResType,
+    scope?: PublicAttachmentScope,
   ): Promise<{ [key: string]: string }> {
     const sharp = Noco.sharp;
 
@@ -45,65 +53,31 @@ export class ThumbnailGeneratorProcessor {
       return null;
     }
 
-    sharp.concurrency(1);
-
     try {
       const storageAdapter = await NcPluginMgrv2.storageAdapter();
-
       const { file, relativePath } = await this.getFileData(
         attachment,
         storageAdapter,
+        scope,
       );
 
-      const thumbnailPaths = {
-        card_cover: path.join(
-          'nc',
-          'thumbnails',
-          relativePath,
-          'card_cover.jpg',
-        ),
-        small: path.join('nc', 'thumbnails', relativePath, 'small.jpg'),
-        tiny: path.join('nc', 'thumbnails', relativePath, 'tiny.jpg'),
-      };
+      const mimeType = attachment.mimetype || '';
 
-      const sharpImage = sharp(file, {
-        limitInputPixels: false,
-      });
-
-      for (const [size, thumbnailPath] of Object.entries(thumbnailPaths)) {
-        let height;
-        switch (size) {
-          case 'card_cover':
-            height = 512;
-            break;
-          case 'small':
-            height = 128;
-            break;
-          case 'tiny':
-            height = 64;
-            break;
-          default:
-            height = 32;
-            break;
-        }
-
-        const resizedImage = await sharpImage
-          .resize(undefined, height, {
-            fit: sharp.fit.cover,
-            kernel: 'lanczos3',
-          })
-          .toBuffer();
-
-        await (storageAdapter as any).fileCreateByStream(
-          slash(thumbnailPath),
-          Readable.from(resizedImage),
-          {
-            mimetype: 'image/jpeg',
-          },
-        );
+      switch (true) {
+        case mimeType.startsWith('image/'):
+          return await this.imageGenerator.generateThumbnails(
+            file,
+            relativePath,
+            storageAdapter,
+          );
+        default:
+          this.logger.warn({
+            message: `Unknown file type, skipping thumbnail generation`,
+            mimetype: mimeType,
+            filename: attachment.title,
+          });
+          return null;
       }
-
-      return thumbnailPaths;
     } catch (error) {
       this.logger.error({
         message: `Failed to generate thumbnails for ${
@@ -119,13 +93,14 @@ export class ThumbnailGeneratorProcessor {
   private async getFileData(
     attachment: AttachmentResType,
     storageAdapter: IStorageAdapterV2,
+    scope?: PublicAttachmentScope,
   ): Promise<{ file: Buffer; relativePath: string }> {
     let relativePath;
 
     if (attachment.path) {
       relativePath = path.join(
         'nc',
-        'uploads',
+        scope ? '' : 'uploads',
         attachment.path.replace(/^download[/\\]/i, ''),
       );
     } else if (attachment.url) {
@@ -134,8 +109,17 @@ export class ThumbnailGeneratorProcessor {
 
     const file = await storageAdapter.fileRead(relativePath);
 
-    // remove everything before 'nc/uploads/' (including nc/uploads/) in relativePath
-    relativePath = relativePath.replace(/^.*?nc[/\\]uploads[/\\]/, '');
+    const scopePath = scope ? scope : 'uploads';
+
+    // remove everything before 'nc/${scopePath}/' (including nc/${scopePath}/) in relativePath
+    relativePath = relativePath.replace(
+      new RegExp(`^.*?nc[/\\\\]${scopePath}[/\\\\]`),
+      '',
+    );
+
+    if (scope) {
+      relativePath = `${scopePath}/${relativePath}`;
+    }
 
     return { file, relativePath };
   }

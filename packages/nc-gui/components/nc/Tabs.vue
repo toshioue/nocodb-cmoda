@@ -1,7 +1,7 @@
 <script lang="ts" setup>
 const props = defineProps<{
-  modelValue?: string
   centered?: boolean
+  theme?: 'default' | 'ai'
 }>()
 </script>
 
@@ -9,7 +9,8 @@ const props = defineProps<{
   <a-tabs
     class="nc-tabs"
     :class="{
-      centered: props.centered,
+      'centered': props.centered,
+      'theme-ai': props.theme === 'ai',
     }"
   >
     <slot />
@@ -40,13 +41,13 @@ const props = defineProps<{
 
 .nc-tabs {
   .ant-tabs-tab {
-    @apply px-2 text-gray-600 !hover:text-gray-800;
+    @apply px-2 text-nc-content-gray-subtle2 !hover:text-nc-content-gray;
   }
   .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
-    @apply text-brand-500;
+    @apply text-nc-content-brand;
   }
   .ant-tabs-tab.ant-tabs-tab-active:hover .ant-tabs-tab-btn {
-    @apply text-brand-600;
+    @apply text-nc-content-brand-disabled;
   }
 
   .ant-tabs-nav {
@@ -54,7 +55,19 @@ const props = defineProps<{
   }
 
   .ant-tabs-ink-bar {
-    @apply bg-brand-500 !rounded-t-xl;
+    @apply bg-nc-content-brand !rounded-t-xl;
+  }
+
+  &.theme-ai {
+    .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+      @apply text-nc-purple-600 dark:text-nc-content-purple-medium;
+    }
+    .ant-tabs-tab.ant-tabs-tab-active:hover .ant-tabs-tab-btn {
+      @apply text-nc-content-purple-dark dark:text-nc-content-purple-medium;
+    }
+    .ant-tabs-ink-bar {
+      @apply bg-nc-fill-purple-medium;
+    }
   }
 }
 </style>

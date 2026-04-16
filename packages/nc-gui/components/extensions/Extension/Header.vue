@@ -14,9 +14,18 @@ withDefaults(defineProps<Props>(), {
   isFullscreen: true,
 })
 
-const { eventBus, getExtensionAssetsUrl, duplicateExtension, showExtensionDetails } = useExtensions()
+const { eventBus, getExtensionAssetsUrl, duplicateExtension, showExtensionDetails, extensionAccess } = useExtensions()
 
-const { fullscreen, collapsed, extension, extensionManifest, activeError, showExpandBtn } = useExtensionHelperOrThrow()
+const {
+  fullscreen,
+  collapsed,
+  extension,
+  extensionManifest,
+  activeError,
+  showExpandBtn,
+  disableToggleFullscreenBtn,
+  toggleFullScreen,
+} = useExtensionHelperOrThrow()
 
 const titleInput = ref<HTMLInputElement | null>(null)
 
@@ -29,6 +38,8 @@ const showExpandButton = computed(() => {
 })
 
 const enableEditMode = () => {
+  if (!extensionAccess.value.create) return
+
   titleEditMode.value = true
   tempTitle.value = extension.value.title
   nextTick(() => {
@@ -54,12 +65,15 @@ const expandExtension = () => {
  * @param open - Optional. If true, the duplicated extension will be opened.
  */
 
-const handleDuplicateExtension = async (id: string, open: boolean = false) => {
+const handleDuplicateExtension = async (id: string, open = false) => {
   const duplicatedExt = await duplicateExtension(id)
 
   if (duplicatedExt?.id && open) {
     fullscreen.value = false
-    eventBus.emit(ExtensionsEvents.DUPLICATE, duplicatedExt.id)
+
+    nextTick(() => {
+      eventBus.emit(ExtensionsEvents.DUPLICATE, duplicatedExt.id)
+    })
   }
 }
 </script>
@@ -70,15 +84,21 @@ const handleDuplicateExtension = async (id: string, open: boolean = false) => {
     class="extension-header flex items-center"
     :class="{
       'border-b-1 border-nc-border-gray-medium h-[49px]': !collapsed && !isFullscreen,
-      'collapsed border-transparent h-[48px]': collapsed && !isFullscreen,
+      'collapsed border-transparent h-[48px] cursor-pointer': collapsed && !isFullscreen,
       'px-3 py-2 gap-1': !isFullscreen,
-      'gap-3 px-4 pt-4 pb-[15px] border-b-1 border-nc-border-gray-medium': isFullscreen,
+      'gap-3 px-4 pt-3 pb-[11px] border-b-1 border-nc-border-gray-medium': isFullscreen,
     }"
     @click="expandExtension"
   >
     <slot v-if="isFullscreen" name="prefix"></slot>
-    <NcButton v-if="!isFullscreen" size="xs" type="text" class="nc-extension-drag-handler !px-1" @click.stop>
-      <GeneralIcon icon="ncDrag" class="flex-none text-gray-500" />
+    <NcButton
+      v-if="!isFullscreen && extensionAccess.create"
+      size="xs"
+      type="text"
+      class="nc-extension-drag-handler !px-1"
+      @click.stop
+    >
+      <GeneralIcon icon="ncDrag" class="flex-none text-nc-content-gray-muted" />
     </NcButton>
 
     <img
@@ -87,7 +107,8 @@ const handleDuplicateExtension = async (id: string, open: boolean = false) => {
       alt="icon"
       class="h-8 w-8 object-contain flex-none"
       :class="{
-        'mx-1': !isFullscreen,
+        'mx-1': !isFullscreen && extensionAccess.create,
+        'mr-1': !isFullscreen && !extensionAccess.create,
       }"
     />
     <div
@@ -114,22 +135,28 @@ const handleDuplicateExtension = async (id: string, open: boolean = false) => {
       </a-input>
     </div>
 
-    <NcTooltip v-else show-on-truncate-only class="truncate flex-1">
-      <template #title>
-        {{ extension.title }}
-      </template>
-      <span
-        class="extension-title cursor-pointer"
-        :class="{
-          'text-lg font-semibold ': isFullscreen,
-          'mr-1': !isFullscreen,
-        }"
-        @dblclick.stop="enableEditMode"
-        @click.stop
-      >
-        {{ extension.title }}
-      </span>
-    </NcTooltip>
+    <template v-else>
+      <NcTooltip show-on-truncate-only class="truncate">
+        <template #title>
+          {{ extension.title }}
+        </template>
+        <span
+          class="extension-title"
+          :class="{
+            'text-[20px] font-semibold ': isFullscreen,
+            'mr-1': !isFullscreen,
+            'cursor-pointer': extensionAccess.create,
+          }"
+          @dblclick.stop="enableEditMode"
+          @click.stop
+        >
+          {{ extension.title }}
+        </span>
+      </NcTooltip>
+      <div class="flex-1 flex">
+        <NcBadgeBeta v-if="extensionManifest?.showAsBeta" />
+      </div>
+    </template>
     <slot v-if="isFullscreen" name="extra"></slot>
     <ExtensionsExtensionHeaderMenu
       :is-fullscreen="isFullscreen"
@@ -146,13 +173,18 @@ const handleDuplicateExtension = async (id: string, open: boolean = false) => {
         v-if="showExpandButton"
         size="xs"
         type="text"
+        :disabled="disableToggleFullscreenBtn"
         class="nc-extension-expand-btn !px-1"
-        @click.stop="fullscreen = true"
+        @click.stop="toggleFullScreen"
       >
         <GeneralIcon icon="ncMaximize2" class="h-3.5 w-3.5" />
       </NcButton>
       <NcButton size="xs" type="text" class="!px-1" @click.stop="collapsed = !collapsed">
-        <GeneralIcon :icon="collapsed ? 'arrowDown' : 'arrowUp'" class="flex-none" />
+        <GeneralIcon
+          icon="arrowDown"
+          class="flex-none transform !transition-transform duration-200 rotate-270"
+          :class="{ '!rotate-360': !collapsed }"
+        />
       </NcButton>
     </template>
     <NcButton v-else :size="isFullscreen ? 'small' : 'xs'" type="text" class="flex-none !px-1" @click="fullscreen = false">

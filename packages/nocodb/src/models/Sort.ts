@@ -18,6 +18,7 @@ export default class Sort {
 
   fk_view_id: string;
   fk_column_id?: string;
+  fk_level_id?: string;
   direction?: 'asc' | 'desc' | 'count-desc' | 'count-asc';
   fk_workspace_id?: string;
   base_id?: string;
@@ -27,12 +28,14 @@ export default class Sort {
     Object.assign(this, data);
   }
 
+  // skip viewWebhookManager for this, Sort.deleteAll is not a standalone operation, it's invoked by view service
   public static async deleteAll(
     context: NcContext,
     viewId: string,
     ncMeta = Noco.ncMeta,
   ) {
     await NocoCache.deepDel(
+      context,
       `${CacheScope.SORT}:${viewId}`,
       CacheDelDirection.PARENT_TO_CHILD,
     );
@@ -66,6 +69,7 @@ export default class Sort {
       'id',
       'fk_view_id',
       'fk_column_id',
+      'fk_level_id',
       'direction',
       'base_id',
       'source_id',
@@ -122,7 +126,12 @@ export default class Sort {
           },
         },
       );
-      await NocoCache.setList(CacheScope.SORT, [sortObj.fk_view_id], sortList);
+      await NocoCache.setList(
+        context,
+        CacheScope.SORT,
+        [sortObj.fk_view_id],
+        sortList,
+      );
     }
     // on insert, delete any optimised single query cache
     {
@@ -138,11 +147,13 @@ export default class Sort {
     return this.get(context, row.id, ncMeta).then(async (sort) => {
       if (!sortObj.push_to_top) {
         await NocoCache.appendToList(
+          context,
           CacheScope.SORT,
           [sortObj.fk_view_id],
           `${CacheScope.SORT}:${row.id}`,
         );
         await NocoCache.appendToList(
+          context,
           CacheScope.SORT,
           [sortObj.fk_column_id],
           `${CacheScope.SORT}:${row.id}`,
@@ -169,7 +180,9 @@ export default class Sort {
     ncMeta = Noco.ncMeta,
   ): Promise<Sort[]> {
     if (!viewId) return null;
-    const cachedList = await NocoCache.getList(CacheScope.SORT, [viewId]);
+    const cachedList = await NocoCache.getList(context, CacheScope.SORT, [
+      viewId,
+    ]);
     let { list: sortList } = cachedList;
     const { isNoneList } = cachedList;
     if (!isNoneList && !sortList.length) {
@@ -184,7 +197,7 @@ export default class Sort {
           },
         },
       );
-      await NocoCache.setList(CacheScope.SORT, [viewId], sortList);
+      await NocoCache.setList(context, CacheScope.SORT, [viewId], sortList);
     }
     sortList.sort(
       (a, b) =>
@@ -212,7 +225,7 @@ export default class Sort {
       sortId,
     );
 
-    await NocoCache.update(`${CacheScope.SORT}:${sortId}`, {
+    await NocoCache.update(context, `${CacheScope.SORT}:${sortId}`, {
       fk_column_id: body.fk_column_id,
       direction: body.direction,
     });
@@ -247,6 +260,7 @@ export default class Sort {
     );
 
     await NocoCache.deepDel(
+      context,
       `${CacheScope.SORT}:${sortId}`,
       CacheDelDirection.CHILD_TO_PARENT,
     );
@@ -267,6 +281,7 @@ export default class Sort {
     let sortData =
       id &&
       (await NocoCache.get(
+        context,
         `${CacheScope.SORT}:${id}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -277,7 +292,7 @@ export default class Sort {
         MetaTable.SORT,
         id,
       );
-      await NocoCache.set(`${CacheScope.SORT}:${id}`, sortData);
+      await NocoCache.set(context, `${CacheScope.SORT}:${id}`, sortData);
     }
     return sortData && new Sort(sortData);
   }

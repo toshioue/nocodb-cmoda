@@ -21,7 +21,13 @@ export class DataAliasNestedController {
   constructor(private dataAliasNestedService: DataAliasNestedService) {}
 
   // todo: handle case where the given column is not ltar
-  @Get(['/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/mm/:columnName'])
+  @Get([
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/mm/:columnName',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/ln/:columnName',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/mo/:columnName',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/om/:columnName',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/oo/:columnName',
+  ])
   @Acl('mmList')
   async mmList(
     @TenantContext() context: NcContext,
@@ -42,6 +48,9 @@ export class DataAliasNestedController {
 
   @Get([
     '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/mm/:columnName/exclude',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/ln/:columnName/exclude',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/mo/:columnName/exclude',
+    '/api/v1/db/data/:orgs/:baseName/:tableName/:rowId/om/:columnName/exclude',
   ])
   @Acl('mmExcludedList')
   async mmExcludedList(

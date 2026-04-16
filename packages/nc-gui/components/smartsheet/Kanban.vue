@@ -2,7 +2,7 @@
 import type { VNodeRef } from '@vue/runtime-core'
 import Draggable from 'vuedraggable'
 import tinycolor from 'tinycolor2'
-import { ViewTypes, isVirtualCol } from 'nocodb-sdk'
+import { type ColumnType, PermissionEntity, PermissionKey, isVirtualCol } from 'nocodb-sdk'
 import type { Row as RowType } from '#imports'
 
 interface Attachment {
@@ -45,39 +45,49 @@ const router = useRouter()
 
 const route = router.currentRoute
 
-const { getPossibleAttachmentSrc } = useAttachment()
+const { isDark, getColor } = useTheme()
 
 const { metaColumnById } = useViewColumnsOrThrow(view, meta)
+
+const { isSyncedTable, eventBus } = useSmartsheetStoreOrThrow()
+
+const { isMounted } = useIsMounted()
 
 const {
   loadKanbanData,
   loadMoreKanbanData,
-  loadKanbanMeta,
   kanbanMetaData,
   formattedData,
   updateOrSaveRow,
-  updateKanbanMeta,
   addEmptyRow,
   groupingFieldColOptions,
-  updateKanbanStackMeta,
   groupingField,
+  stackMetaObj,
   groupingFieldColumn,
   countByStack,
   deleteStack,
+  updateKanbanMeta,
   shouldScrollToRight,
   deleteRow,
   moveHistory,
   addNewStackId,
   removeRowFromUncategorizedStack,
+  uncategorizedStackId,
+  updateStackProperty,
+  updateAllStacksProperty,
 } = useKanbanViewStoreOrThrow()
 
-const { isViewDataLoading } = storeToRefs(useViewsStore())
+const { isViewDataLoading, isActiveViewFieldHeaderVisible } = storeToRefs(useViewsStore())
 
 const { isUIAllowed } = useRoles()
 
 const { appInfo, isMobileMode } = useGlobal()
 
 const { addUndo, defineViewScope } = useUndoRedo()
+
+const { showRecordPlanLimitExceededModal } = useEeConfig()
+
+const { withLoading } = useLoadingTrigger()
 
 provide(IsFormInj, ref(false))
 
@@ -87,7 +97,9 @@ provide(IsGridInj, ref(false))
 
 provide(IsKanbanInj, ref(true))
 
-const hasEditPermission = computed(() => isUIAllowed('dataEdit'))
+const hasEditPermission = computed(
+  () => isUIAllowed('dataEdit') && (!isSyncedTable.value || !groupingFieldColumn.value?.readonly),
+)
 
 const fields = inject(FieldsInj, ref([]))
 
@@ -101,21 +113,72 @@ const coverImageColumn: any = computed(() =>
     : {},
 )
 
-const coverImageObjectFitClass = computed(() => {
+const coverImageObjectFitStyle = computed(() => {
   const fk_cover_image_object_fit = parseProp(kanbanMetaData.value?.meta)?.fk_cover_image_object_fit || CoverImageObjectFit.FIT
 
-  if (fk_cover_image_object_fit === CoverImageObjectFit.FIT) return '!object-contain'
-  if (fk_cover_image_object_fit === CoverImageObjectFit.COVER) return '!object-cover'
+  if (fk_cover_image_object_fit === CoverImageObjectFit.FIT) return 'contain'
+  if (fk_cover_image_object_fit === CoverImageObjectFit.COVER) return 'cover'
 })
+
+const isRequiredGroupingFieldColumn = computed(() => {
+  return !!groupingFieldColumn.value?.rqd
+})
+
+const isColorCodeEnabled = computed(() => parseProp(groupingFieldColumn.value?.meta)?.isColorCodeEnabled !== false)
+
+const {
+  isRowColouringEnabled,
+  getCellColorStyle: _getCellColorStyle,
+  getCellLeftBorderStyle: _getCellLeftBorderStyle,
+} = useViewRowColorRender()
+
+const getCellColorStyle = (record: Row, columnId: string) => {
+  // Access pre-computed cell colors from rowMeta (optimized - no function calls)
+  const cellColorInfo = record.rowMeta?.cellColors?.[columnId]
+  if (!cellColorInfo) return {}
+
+  const style: Record<string, string> = {}
+  if (cellColorInfo.cellBgColor) {
+    style.backgroundColor = cellColorInfo.cellBgColor
+  }
+  return style
+}
+
+const getCellLeftBorderStyle = (record: Row, columnId: string) => {
+  // Access pre-computed cell colors from rowMeta (optimized - no function calls)
+  const cellColorInfo = record.rowMeta?.cellColors?.[columnId]
+  if (!cellColorInfo || cellColorInfo.is_set_as_background || !cellColorInfo.cellLeftBorderColor) return null
+
+  return { backgroundColor: cellColorInfo.cellLeftBorderColor }
+}
+
+const getCellColorClass = (record: Row, columnId: string) => {
+  const bgStyle = getCellColorStyle(record, columnId)
+  return bgStyle?.backgroundColor ? 'has-cell-bg-color' : ''
+}
+
+const getCellColorBgVar = (record: Row, columnId: string) => {
+  const bgStyle = getCellColorStyle(record, columnId)
+  return bgStyle?.backgroundColor ? { '--cell-bg-color': bgStyle.backgroundColor } : {}
+}
 
 const kanbanContainerRef = ref()
 
 const selectedStackTitle = ref('')
 
-reloadViewDataHook?.on(async () => {
-  await loadKanbanMeta()
+const reloadViewDataListener = withLoading(async () => {
   await loadKanbanData()
 })
+
+reloadViewDataHook?.on(reloadViewDataListener)
+
+const smartsheetEventHandler = (event: SmartsheetStoreEvents) => {
+  if (event === SmartsheetStoreEvents.DATA_RELOAD) {
+    reloadViewDataHook?.trigger()
+  }
+}
+
+eventBus.on(smartsheetEventHandler)
 
 const attachments = (record: any): Attachment[] => {
   if (!coverImageColumn.value?.title || !record.row[coverImageColumn.value.title]) return []
@@ -141,15 +204,15 @@ const attachments = (record: any): Attachment[] => {
 
 const reloadAttachments = ref(false)
 
-reloadViewMetaHook?.on(async () => {
-  await loadKanbanMeta()
-
+const reloadViewMetaListener = async () => {
   reloadAttachments.value = true
 
   nextTick(() => {
     reloadAttachments.value = false
   })
-})
+}
+
+reloadViewMetaHook?.on(reloadViewMetaListener)
 
 const expandForm = (row: RowType, state?: Record<string, any>) => {
   const rowId = extractPkFromRow(row.row, meta.value!.columns!)
@@ -181,6 +244,13 @@ const contextMenu = computed({
 })
 
 const contextMenuTarget = ref<RowType | null>(null)
+
+const showSendRecordModal = ref(false)
+
+const contextMenuRowId = computed(() => {
+  if (!contextMenuTarget.value) return null
+  return extractPkFromRow(contextMenuTarget.value.row, meta.value?.columns)
+})
 
 const showContextMenu = (e: MouseEvent, target?: RowType) => {
   e.preventDefault()
@@ -222,31 +292,55 @@ function onMoveCallback(event: { draggedContext: { futureIndex: number } }) {
 async function onMoveStack(event: any, undo = false) {
   if (event.moved) {
     const { oldIndex, newIndex } = event.moved
-    const { fk_grp_col_id, meta: stack_meta } = kanbanMetaData.value
-    groupingFieldColOptions.value[oldIndex].order = newIndex
-    groupingFieldColOptions.value[newIndex].order = oldIndex
-    const stackMetaObj = parseProp(stack_meta) || {}
-    stackMetaObj[fk_grp_col_id as string] = groupingFieldColOptions.value
+
+    // Create a copy of the current stack metadata
+    const stackMeta = [...groupingFieldColOptions.value]
+
+    // Update both stacks in the local copy
+    stackMeta[oldIndex] = { ...stackMeta[oldIndex], order: newIndex }
+    stackMeta[newIndex] = { ...stackMeta[newIndex], order: oldIndex }
+
+    // Prepare the updated stack metadata object
+    const updatedStackMetaObj = {
+      ...stackMetaObj.value,
+      [kanbanMetaData.value.fk_grp_col_id!]: stackMeta,
+    }
+
     await updateKanbanMeta({
-      meta: stackMetaObj,
+      meta: updatedStackMetaObj,
     })
+
     if (!undo) {
       addUndo({
         undo: {
           fn: async (e: any) => {
-            const temp = groupingFieldColOptions.value.splice(e.moved.newIndex, 1)
-            groupingFieldColOptions.value.splice(e.moved.oldIndex, 0, temp[0])
-            await onMoveStack(e, true)
+            const undoStackMeta = [...groupingFieldColOptions.value]
+            undoStackMeta[e.moved.newIndex] = { ...undoStackMeta[e.moved.newIndex], order: e.moved.oldIndex }
+            undoStackMeta[e.moved.oldIndex] = { ...undoStackMeta[e.moved.oldIndex], order: e.moved.newIndex }
+
+            const undoStackMetaObj = {
+              ...stackMetaObj.value,
+              [kanbanMetaData.value.fk_grp_col_id!]: undoStackMeta,
+            }
+
+            await updateKanbanMeta({ meta: undoStackMetaObj })
           },
           args: [{ moved: { oldIndex, newIndex } }],
         },
         redo: {
           fn: async (e: any) => {
-            const temp = groupingFieldColOptions.value.splice(e.moved.oldIndex, 1)
-            groupingFieldColOptions.value.splice(e.moved.newIndex, 0, temp[0])
-            await onMoveStack(e, true)
+            const redoStackMeta = [...groupingFieldColOptions.value]
+            redoStackMeta[e.moved.oldIndex] = { ...redoStackMeta[e.moved.oldIndex], order: e.moved.newIndex }
+            redoStackMeta[e.moved.newIndex] = { ...redoStackMeta[e.moved.newIndex], order: e.moved.oldIndex }
+
+            const redoStackMetaObj = {
+              ...stackMetaObj.value,
+              [kanbanMetaData.value.fk_grp_col_id!]: redoStackMeta,
+            }
+
+            await updateKanbanMeta({ meta: redoStackMetaObj })
           },
-          args: [{ moved: { oldIndex, newIndex } }, true],
+          args: [{ moved: { oldIndex, newIndex } }],
         },
         scope: defineViewScope({ view: view.value }),
       })
@@ -319,38 +413,31 @@ const handleDeleteStackConfirmClick = async () => {
 }
 
 const handleCollapseStack = async (stackIdx: number) => {
-  groupingFieldColOptions.value[stackIdx].collapsed = !groupingFieldColOptions.value[stackIdx].collapsed
-  if (!isPublic.value) {
-    await updateKanbanStackMeta()
-  }
+  const currentCollapsed = groupingFieldColOptions.value[stackIdx].collapsed
+  await updateStackProperty(stackIdx, { collapsed: !currentCollapsed })
+}
+
+const handleCollapseAllStack = async () => {
+  await updateAllStacksProperty((stack) => {
+    if (stack.id !== addNewStackId && !stack.collapsed) {
+      return { collapsed: true }
+    }
+    return null // No update needed
+  })
+}
+
+const handleExpandAllStack = async () => {
+  await updateAllStacksProperty((stack) => {
+    if (stack.id !== addNewStackId && stack.collapsed) {
+      return { collapsed: false }
+    }
+    return null // No update needed
+  })
 }
 
 const handleCellClick = (col, event) => {
   if (isButton(col)) {
     event.stopPropagation()
-  }
-}
-
-const handleCollapseAllStack = async () => {
-  groupingFieldColOptions.value.forEach((stack) => {
-    if (stack.id !== addNewStackId && !stack.collapsed) {
-      stack.collapsed = true
-    }
-  })
-
-  if (!isPublic.value) {
-    await updateKanbanStackMeta()
-  }
-}
-const handleExpandAllStack = async () => {
-  groupingFieldColOptions.value.forEach((stack) => {
-    if (stack.id !== addNewStackId && stack.collapsed) {
-      stack.collapsed = false
-    }
-  })
-
-  if (!isPublic.value) {
-    await updateKanbanStackMeta()
   }
 }
 
@@ -370,7 +457,12 @@ openNewRecordFormHook?.on(openNewRecordFormHookHandler)
 
 // remove openNewRecordFormHookHandler before unmounting
 // so that it won't be triggered multiple times
-onBeforeUnmount(() => openNewRecordFormHook.off(openNewRecordFormHookHandler))
+onBeforeUnmount(() => {
+  openNewRecordFormHook.off(openNewRecordFormHookHandler)
+  eventBus.off(smartsheetEventHandler)
+  reloadViewMetaHook?.off(reloadViewMetaListener)
+  reloadViewDataHook?.off(reloadViewDataListener)
+})
 
 // reset context menu target on hide
 watch(contextMenu, () => {
@@ -379,43 +471,27 @@ watch(contextMenu, () => {
   }
 })
 
-watch(
-  view,
-  async (nextView) => {
-    if (nextView?.type === ViewTypes.KANBAN) {
-      isViewDataLoading.value = true
+onMounted(async () => {
+  try {
+    isViewDataLoading.value = true
+    await loadKanbanData()
 
-      try {
-        // load kanban meta
-        await loadKanbanMeta()
-
-        isViewDataLoading.value = false
-
-        // load kanban data
-        await loadKanbanData()
-
-        // horizontally scroll to the end of the kanban container
-        // when a new option is added within kanban view
-        nextTick(() => {
-          if (shouldScrollToRight.value && kanbanContainerRef.value) {
-            kanbanContainerRef.value.scrollTo({
-              left: kanbanContainerRef.value.scrollWidth,
-              behavior: 'smooth',
-            })
-            // reset shouldScrollToRight
-            shouldScrollToRight.value = false
-          }
+    nextTick(() => {
+      if (shouldScrollToRight.value && kanbanContainerRef.value) {
+        kanbanContainerRef.value.scrollTo({
+          left: kanbanContainerRef.value.scrollWidth,
+          behavior: 'smooth',
         })
-      } catch (error) {
-        console.error(error)
-        isViewDataLoading.value = false
+        // reset shouldScrollToRight
+        shouldScrollToRight.value = false
       }
-    }
-  },
-  {
-    immediate: true,
-  },
-)
+    })
+    isViewDataLoading.value = false
+  } catch (error) {
+    console.error(error)
+    isViewDataLoading.value = false
+  }
+})
 
 const getRowId = (row: RowType) => {
   const pk = extractPkFromRow(row.row, meta.value!.columns!)
@@ -439,21 +515,50 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
   isRenameOrNewStack.value = null
 
   if (stack && stack?.title && stack?.color && stackIdx !== undefined) {
-    groupingFieldColOptions.value[stackIdx].title = stack.title
-    groupingFieldColOptions.value[stackIdx].color = stack.color
-  }
-
-  if (loadMeta) {
-    await loadKanbanMeta()
+    await updateStackProperty(stackIdx, {
+      title: stack.title,
+      color: stack.color,
+    })
   }
 
   isSavingStack.value = null
+}
+
+const draggableStackFilter = (event: Event) => {
+  return event.target?.closest('.not-draggable')
+  // || isTouchEvent(event) // allow drag and drop for touch devices for now
+}
+
+const draggableCardFilter = (event: Event, target: HTMLElement) => {
+  const eventTarget = event.target as HTMLElement | null
+  const closestNotDraggable = eventTarget?.closest('.not-draggable')
+
+  return !!(
+    eventTarget &&
+    target &&
+    target.contains(eventTarget) &&
+    closestNotDraggable &&
+    (target.contains(closestNotDraggable) || closestNotDraggable === target)
+  )
+  // || isTouchEvent(event) // allow drag and drop for touch devices for now
+}
+
+const handleOpenNewRecordForm = (stackTitle?: string) => {
+  if (showRecordPlanLimitExceededModal()) return
+
+  selectedStackTitle.value = stackTitle ?? ''
+
+  openNewRecordFormHook.trigger()
+}
+
+const resetPointerEvent = (record: RowType, col: ColumnType) => {
+  return isButton(col) || (isRowEmpty(record, col) && isAllowToRenderRowEmptyField(col))
 }
 </script>
 
 <template>
   <div
-    class="flex flex-col w-full bg-gray-50 h-full"
+    class="flex flex-col w-full bg-nc-bg-gray-extralight h-full"
     data-testid="nc-kanban-wrapper"
     :style="{
       minHeight: 'calc(100% - var(--topbar-height))',
@@ -461,11 +566,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
   >
     <div
       ref="kanbanContainerRef"
-      class="nc-kanban-container flex p-3 overflow-y-hidden w-full nc-scrollbar-x-lg"
-      :style="{
-        minHeight: isMobileMode ? 'calc(100%  - 2rem)' : 'calc(100vh - var(--topbar-height) - var(--toolbar-height) - 0.4rem)',
-        maxHeight: isMobileMode ? 'calc(100%  - 2rem)' : 'calc(100vh - var(--topbar-height) - var(--toolbar-height) - 0.4rem)',
-      }"
+      class="nc-kanban-container flex p-3 overflow-y-hidden w-full nc-view-scrollbar-x min-h-[calc(100%_-_0.4rem)] max-h-[calc(100%_-_0.4rem)]"
     >
       <div v-if="isViewDataLoading" class="flex flex-row min-h-full gap-x-2">
         <a-skeleton-input v-for="index of Array(20)" :key="index" class="!min-w-80 !min-h-full !rounded-xl overflow-hidden" />
@@ -480,12 +581,13 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
           <!-- Draggable Stack -->
           <Draggable
             v-model="groupingFieldColOptions"
+            v-bind="getDraggableAutoScrollOptions({ scrollSensitivity: 100 })"
             class="flex gap-3"
             item-key="id"
             group="kanban-stack"
             draggable=".nc-kanban-stack"
             handle=".nc-kanban-stack-drag-handler"
-            filter=".not-draggable"
+            :filter="draggableStackFilter"
             :move="onMoveCallback"
             @start="(e) => e.target.classList.add('grabbing')"
             @end="(e) => e.target.classList.remove('grabbing')"
@@ -496,7 +598,9 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                 class="nc-kanban-stack"
                 :class="{
                   'w-[44px]': stack.collapsed,
-                  'hidden': hideEmptyStack && !formattedData.get(stack.title)?.length,
+                  'hidden':
+                    (hideEmptyStack && !formattedData.get(stack.title)?.length) ||
+                    (isRequiredGroupingFieldColumn && stack.id === uncategorizedStackId),
                 }"
                 :data-testid="`nc-kanban-stack-${stack.title}`"
               >
@@ -504,7 +608,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                 <a-card
                   v-if="!stack.collapsed"
                   :key="`${stack.id}-${stackIdx}`"
-                  class="flex flex-col w-68.5 h-full !rounded-xl overflow-y-hidden !shadow-none !hover:shadow-none !border-gray-200"
+                  class="flex flex-col w-68.5 h-full !rounded-xl overflow-y-hidden !shadow-none !hover:shadow-none !border-nc-border-gray-medium"
                   :class="{
                     'not-draggable': stack.title === null || isLocked || isPublic || !hasEditPermission,
                     '!cursor-default': isLocked || !hasEditPermission,
@@ -524,7 +628,10 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
 
                   <!-- Stack -->
                   <a-layout v-else>
-                    <a-layout-header class="border-b-1 border-gray-100 min-h-[49px]">
+                    <a-layout-header
+                      class="border-b-1 border-nc-border-gray-light min-h-[49px]"
+                      :class="`nc-kanban-stack-header-${stack.id}`"
+                    >
                       <div
                         class="nc-kanban-stack-head w-full flex gap-1"
                         :class="{
@@ -570,7 +677,14 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                             <a-tag
                               v-else
                               class="max-w-full !rounded-full !px-2 !py-1 h-7 !m-0 !border-none !mt-0.5"
-                              :color="stack.color"
+                              :color="
+                                getSelectTypeFieldOptionBgColor({
+                                  color: stack.color || '#ccc',
+                                  isDark,
+                                  getColor,
+                                  isColorCodeEnabled,
+                                })
+                              "
                               @dblclick="
                                 () => {
                                   if (stack.title !== null && hasEditPermission && !isPublic && !isLocked) {
@@ -581,9 +695,12 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                             >
                               <span
                                 :style="{
-                                  color: tinycolor.isReadable(stack.color || '#ccc', '#fff', { level: 'AA', size: 'large' })
-                                    ? '#fff'
-                                    : tinycolor.mostReadable(stack.color || '#ccc', ['#0b1d05', '#fff']).toHex8String(),
+                                  color: getSelectTypeFieldOptionTextColor({
+                                    color: stack.color || '#ccc',
+                                    isDark,
+                                    getColor,
+                                    isColorCodeEnabled,
+                                  }),
                                 }"
                                 class="text-sm font-semibold"
                               >
@@ -608,10 +725,9 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                           </div>
                         </div>
                         <NcDropdown
-                          v-if="!isLocked"
                           placement="bottomRight"
                           overlay-class-name="nc-dropdown-kanban-stack-context-menu"
-                          class="bg-white !rounded-lg"
+                          class="bg-nc-bg-default !rounded-lg"
                         >
                           <NcButton
                             :disabled="compareStack(stack, isSavingStack)"
@@ -624,23 +740,28 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                           </NcButton>
 
                           <template #overlay>
-                            <NcMenu class="!text-sm">
-                              <NcMenuItem
-                                v-if="hasEditPermission && !isPublic && !isLocked"
-                                v-e="['c:kanban:add-new-record']"
-                                data-testid="nc-kanban-context-menu-add-new-record"
-                                @click="
-                                  () => {
-                                    selectedStackTitle = stack.title
-                                    openNewRecordFormHook.trigger(stack.title)
-                                  }
-                                "
+                            <NcMenu variant="small">
+                              <PermissionsTooltip
+                                v-if="hasEditPermission && !isPublic && !isSyncedTable"
+                                :entity="PermissionEntity.TABLE"
+                                :entity-id="meta?.id"
+                                :permission="PermissionKey.TABLE_RECORD_ADD"
+                                placement="right"
                               >
-                                <div class="flex gap-2 items-center">
-                                  <component :is="iconMap.plus" class="flex-none w-4 h-4" />
-                                  {{ $t('activity.newRecord') }}
-                                </div>
-                              </NcMenuItem>
+                                <template #default="{ isAllowed }">
+                                  <NcMenuItem
+                                    v-e="['c:kanban:add-new-record']"
+                                    data-testid="nc-kanban-context-menu-add-new-record"
+                                    :disabled="!isAllowed"
+                                    @click="handleOpenNewRecordForm(stack.title)"
+                                  >
+                                    <div class="flex gap-2 items-center">
+                                      <component :is="iconMap.plus" class="flex-none w-4 h-4" />
+                                      {{ $t('activity.newRecord') }}
+                                    </div>
+                                  </NcMenuItem>
+                                </template>
+                              </PermissionsTooltip>
                               <NcMenuItem
                                 v-if="stack.title !== null && hasEditPermission && !isPublic && !isLocked"
                                 v-e="['c:kanban:rename-stack']"
@@ -687,11 +808,11 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                                   {{ $t('activity.kanban.expandAll') }}
                                 </div>
                               </NcMenuItem>
-                              <template v-if="stack.title !== null && !isPublic && hasEditPermission">
+                              <template v-if="stack.title !== null && !isPublic && hasEditPermission && !isLocked">
                                 <NcDivider />
                                 <NcMenuItem
                                   v-e="['c:kanban:delete-stack']"
-                                  class="!text-red-600 !hover:bg-red-50"
+                                  danger
                                   data-testid="nc-kanban-context-menu-delete-stack"
                                   @click="handleDeleteStackClick(stack.title, stackIdx)"
                                 >
@@ -730,12 +851,14 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                       >
                         <!-- Draggable Record Card -->
                         <Draggable
+                          v-bind="getDraggableAutoScrollOptions({ scrollSensitivity: 150 })"
                           :list="formattedData.get(stack.title)"
                           item-key="row.Id"
                           draggable=".nc-kanban-item"
                           group="kanban-card"
                           class="flex flex-col h-full"
-                          filter=".not-draggable"
+                          :disabled="isMobileMode"
+                          :filter="draggableCardFilter"
                           @start="(e) => e.target.classList.add('grabbing')"
                           @end="(e) => e.target.classList.remove('grabbing')"
                           @change="onMove($event, stack.title)"
@@ -745,22 +868,34 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                               <LazySmartsheetRow :row="record">
                                 <a-card
                                   :key="`${getRowId(record)}-${index}`"
-                                  class="!rounded-lg h-full border-gray-200 border-1 group overflow-hidden break-all max-w-[450px] cursor-pointer"
-                                  :body-style="{ padding: '16px !important' }"
+                                  class="!rounded-lg h-full border-nc-border-gray-medium border-1 group overflow-hidden break-all max-w-[450px] cursor-pointer flex flex-col"
+                                  :body-style="{
+                                    padding: '12px !important',
+                                    flex: 1,
+                                    display: 'flex',
+                                  }"
                                   :data-stack="stack.title"
                                   :data-testid="`nc-gallery-card-${record.row.id}`"
                                   :class="{
-                                    'not-draggable': isLocked || !hasEditPermission || isPublic,
-                                    '!cursor-default': isLocked || !hasEditPermission || isPublic,
+                                    'not-draggable': !hasEditPermission || isPublic,
+                                    '!cursor-default': !hasEditPermission || isPublic,
+                                  }"
+                                  :style="{
+                                    ...extractRowBackgroundColorStyle(record).rowBgColor,
+                                    ...extractRowBackgroundColorStyle(record).rowBorderColor,
                                   }"
                                   @click="expandFormClick($event, record)"
                                   @contextmenu="showContextMenu($event, record)"
                                 >
-                                  <template v-if="kanbanMetaData?.fk_cover_image_col_id" #cover>
-                                    <template v-if="!reloadAttachments && attachments(record).length">
+                                  <!--
+                                    Check the coverImageColumn ID because kanbanMetaData?.fk_cover_image_col_id
+                                    could reference a non-existent column. This is a workaround to handle such scenarios properly.
+                                  -->
+                                  <template v-if="coverImageColumn?.id" #cover>
+                                    <template v-if="isMounted && !reloadAttachments && attachments(record).length">
                                       <a-carousel
                                         :key="attachments(record).reduce((acc, curr) => acc + curr?.path, '')"
-                                        class="gallery-carousel !border-b-1 !border-gray-200"
+                                        class="gallery-carousel !border-b-1 !border-nc-border-gray-medium !bg-nc-bg-default"
                                         arrows
                                       >
                                         <template #customPaging>
@@ -778,7 +913,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                                               size="xsmall"
                                               class="!absolute !left-1.5 !bottom-[-90px] !opacity-0 !group-hover:opacity-100 !rounded-lg cursor-pointer"
                                             >
-                                              <GeneralIcon icon="arrowLeft" class="text-gray-700 w-4 h-4" />
+                                              <GeneralIcon icon="arrowLeft" class="text-nc-content-inverted-secondary w-4 h-4" />
                                             </NcButton>
                                           </div>
                                         </template>
@@ -790,95 +925,177 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                                               size="xsmall"
                                               class="!absolute !right-1.5 !bottom-[-90px] !opacity-0 !group-hover:opacity-100 !rounded-lg cursor-pointer"
                                             >
-                                              <GeneralIcon icon="arrowRight" class="text-gray-700 w-4 h-4" />
+                                              <GeneralIcon icon="arrowRight" class="text-nc-content-inverted-secondary w-4 h-4" />
                                             </NcButton>
                                           </div>
                                         </template>
 
-                                        <template v-for="attachment in attachments(record)">
-                                          <LazyCellAttachmentPreviewImage
-                                            v-if="isImage(attachment.title, attachment.mimetype ?? attachment.type)"
-                                            :key="attachment.path"
+                                        <template v-for="attachment in attachments(record)" :key="attachment.path">
+                                          <LazyCellAttachmentPreviewThumbnail
+                                            :attachment="attachment"
                                             class="h-52"
-                                            :class="[`${coverImageObjectFitClass}`]"
-                                            :srcs="getPossibleAttachmentSrc(attachment, 'card_cover')"
+                                            image-class="!w-full"
+                                            thumbnail="card_cover"
+                                            :object-fit="coverImageObjectFitStyle"
+                                            @click="expandFormClick($event, record)"
                                           />
                                         </template>
                                       </a-carousel>
                                     </template>
                                     <div
                                       v-else
-                                      class="h-52 w-full !flex flex-row !border-b-1 !border-gray-200 items-center justify-center"
+                                      class="h-52 w-full !flex flex-row !border-b-1 !border-nc-border-gray-medium items-center justify-center bg-nc-bg-default"
                                     >
                                       <img class="object-contain w-[48px] h-[48px]" src="~assets/icons/FileIconImageBox.png" />
                                     </div>
                                   </template>
-                                  <div class="flex flex-col gap-3 !children:pointer-events-none">
-                                    <h2 v-if="displayField" class="nc-card-display-value-wrapper">
-                                      <template v-if="!isRowEmpty(record, displayField)">
-                                        <LazySmartsheetVirtualCell
-                                          v-if="isVirtualCol(displayField)"
-                                          v-model="record.row[displayField.title]"
-                                          class="!text-brand-500"
-                                          :column="displayField"
-                                          :row="record"
-                                        />
-
-                                        <LazySmartsheetCell
-                                          v-else
-                                          v-model="record.row[displayField.title]"
-                                          class="!text-brand-500"
-                                          :column="displayField"
-                                          :edit-enabled="false"
-                                          :read-only="true"
-                                        />
-                                      </template>
-                                      <template v-else> - </template>
-                                    </h2>
-
+                                  <div class="flex-1 flex content-stretch gap-3 w-full">
                                     <div
-                                      v-for="col in fieldsWithoutDisplay"
-                                      :key="`record-${record.row.id}-${col.id}`"
+                                      v-if="isRowColouringEnabled"
+                                      class="w-1 flex-none min-h-4 rounded-sm"
+                                      :style="extractRowBackgroundColorStyle(record).rowLeftBorderColor"
+                                    ></div>
+                                    <div
+                                      class="flex-1 flex flex-col !children:pointer-events-none"
                                       :class="{
-                                        '!children:pointer-events-auto': isButton(col),
+                                        'w-[calc(100%_-_16px)]': isRowColouringEnabled,
+                                        'w-full': !isRowColouringEnabled,
+                                        'gap-3': isActiveViewFieldHeaderVisible,
                                       }"
-                                      @click="handleCellClick(col, $event)"
                                     >
-                                      <div class="flex flex-col rounded-lg w-full">
-                                        <div class="flex flex-row w-full justify-start">
-                                          <div class="nc-card-col-header w-full !children:text-gray-500">
+                                      <div
+                                        v-if="displayField"
+                                        class="flex gap-2 rounded-lg w-full z-1 relative"
+                                        :class="getCellColorClass(record, displayField.id)"
+                                        :style="getCellColorBgVar(record, displayField.id)"
+                                      >
+                                        <div
+                                          v-if="getCellLeftBorderStyle(record, displayField.id)"
+                                          class="w-1 flex-none min-h-4 rounded-sm"
+                                          :style="getCellLeftBorderStyle(record, displayField.id)"
+                                        ></div>
+                                        <h2
+                                          class="nc-card-display-value-wrapper flex-1 min-w-0"
+                                          :class="{
+                                            '!children:pointer-events-auto': resetPointerEvent(record, displayField),
+                                          }"
+                                        >
+                                          <template
+                                            v-if="!isRowEmpty(record, displayField) || isAllowToRenderRowEmptyField(displayField)"
+                                          >
+                                            <LazySmartsheetVirtualCell
+                                              v-if="isVirtualCol(displayField)"
+                                              v-model="record.row[displayField.title]"
+                                              class="!text-nc-content-brand"
+                                              :column="displayField"
+                                              :row="record"
+                                            />
+
+                                            <LazySmartsheetCell
+                                              v-else
+                                              v-model="record.row[displayField.title]"
+                                              class="!text-nc-content-brand"
+                                              :column="displayField"
+                                              :edit-enabled="false"
+                                              :read-only="true"
+                                            />
+                                          </template>
+                                          <template v-else> -</template>
+                                        </h2>
+                                      </div>
+
+                                      <div
+                                        v-for="col in fieldsWithoutDisplay"
+                                        :key="`record-${record.row.id}-${col.id}`"
+                                        class="nc-card-col-wrapper"
+                                        :class="{
+                                          '!children:pointer-events-auto': resetPointerEvent(record, col),
+                                        }"
+                                        @click="handleCellClick(col, $event)"
+                                      >
+                                        <NcTooltip
+                                          hide-on-click
+                                          :disabled="isActiveViewFieldHeaderVisible"
+                                          class="w-full z-10 flex"
+                                          :class="{
+                                            'pointer-events-auto': !isActiveViewFieldHeaderVisible,
+                                          }"
+                                          placement="left"
+                                          :arrow="false"
+                                        >
+                                          <template #title>
                                             <LazySmartsheetHeaderVirtualCell
                                               v-if="isVirtualCol(col)"
                                               :column="col"
                                               :hide-menu="true"
+                                              hide-icon-tooltip
+                                              class="!text-gray-100 nc-record-cell-tooltip"
                                             />
+                                            <LazySmartsheetHeaderCell
+                                              v-else
+                                              :column="col"
+                                              :hide-menu="true"
+                                              hide-icon-tooltip
+                                              class="!text-gray-100 nc-record-cell-tooltip"
+                                            />
+                                          </template>
 
-                                            <LazySmartsheetHeaderCell v-else :column="col" :hide-menu="true" />
+                                          <div
+                                            class="flex gap-2 rounded-lg w-full z-1 relative"
+                                            :class="{
+                                              'pointer-events-none': !resetPointerEvent(record, col),
+                                              [getCellColorClass(record, col.id)]: true,
+                                            }"
+                                            :style="getCellColorBgVar(record, col.id)"
+                                          >
+                                            <div
+                                              v-if="getCellLeftBorderStyle(record, col.id)"
+                                              class="w-1 flex-none min-h-4 rounded-sm"
+                                              :style="getCellLeftBorderStyle(record, col.id)"
+                                            ></div>
+                                            <div class="flex flex-col w-full">
+                                              <div
+                                                v-if="isActiveViewFieldHeaderVisible"
+                                                class="flex flex-row w-full justify-start"
+                                              >
+                                                <div class="nc-card-col-header w-full !children:text-nc-content-gray-muted">
+                                                  <LazySmartsheetHeaderVirtualCell
+                                                    v-if="isVirtualCol(col)"
+                                                    :column="col"
+                                                    :hide-menu="true"
+                                                  />
+
+                                                  <LazySmartsheetHeaderCell v-else :column="col" :hide-menu="true" />
+                                                </div>
+                                              </div>
+
+                                              <div
+                                                v-if="
+                                                  !isRowEmpty(record, col) || isAllowToRenderRowEmptyField(col) || isPercent(col)
+                                                "
+                                                class="flex flex-row w-full text-nc-content-gray items-center justify-start min-h-7 py-1"
+                                              >
+                                                <LazySmartsheetVirtualCell
+                                                  v-if="isVirtualCol(col)"
+                                                  v-model="record.row[col.title]"
+                                                  :column="col"
+                                                  :row="record"
+                                                  class="!text-nc-content-gray"
+                                                />
+
+                                                <LazySmartsheetCell
+                                                  v-else
+                                                  v-model="record.row[col.title]"
+                                                  :column="col"
+                                                  :edit-enabled="false"
+                                                  :read-only="true"
+                                                  class="!text-nc-content-gray"
+                                                />
+                                              </div>
+                                              <div v-else class="flex flex-row w-full h-7 items-center justify-start">-</div>
+                                            </div>
                                           </div>
-                                        </div>
-
-                                        <div
-                                          v-if="!isRowEmpty(record, col)"
-                                          class="flex flex-row w-full text-gray-800 items-center justify-start min-h-7 py-1"
-                                        >
-                                          <LazySmartsheetVirtualCell
-                                            v-if="isVirtualCol(col)"
-                                            v-model="record.row[col.title]"
-                                            :column="col"
-                                            :row="record"
-                                            class="!text-gray-800"
-                                          />
-
-                                          <LazySmartsheetCell
-                                            v-else
-                                            v-model="record.row[col.title]"
-                                            :column="col"
-                                            :edit-enabled="false"
-                                            :read-only="true"
-                                            class="!text-gray-800"
-                                          />
-                                        </div>
-                                        <div v-else class="flex flex-row w-full h-7 pl-1 items-center justify-start">-</div>
+                                        </NcTooltip>
                                       </div>
                                     </div>
                                   </div>
@@ -888,7 +1105,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                           </template>
                           <template v-if="!formattedData.get(stack.title)?.length" #footer>
                             <div class="h-full w-full flex flex-col gap-4 items-center justify-center">
-                              <div class="flex flex-col items-center gap-2 text-gray-600 text-center">
+                              <div class="flex flex-col items-center gap-2 text-nc-content-gray-subtle2 text-center">
                                 <span class="text-sm font-semibold">
                                   {{ $t('general.empty') }} {{ $t('general.stack').toLowerCase() }}
                                 </span>
@@ -896,51 +1113,60 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                                   {{ $t('title.looksLikeThisStackIsEmpty') }}
                                 </span>
                               </div>
-                              <NcButton
-                                v-if="isUIAllowed('dataInsert')"
-                                size="xs"
-                                type="secondary"
-                                @click="
-                                  () => {
-                                    selectedStackTitle = stack.title
-                                    openNewRecordFormHook.trigger(stack.title)
-                                  }
-                                "
+                              <PermissionsTooltip
+                                v-if="isUIAllowed('dataInsert') && !isSyncedTable"
+                                :entity="PermissionEntity.TABLE"
+                                :entity-id="meta?.id"
+                                :permission="PermissionKey.TABLE_RECORD_ADD"
+                                placement="right"
                               >
-                                <div class="flex items-center gap-2">
-                                  <component :is="iconMap.plus" v-if="!isPublic && !isLocked" />
+                                <template #default="{ isAllowed }">
+                                  <NcButton
+                                    size="xs"
+                                    type="secondary"
+                                    :disabled="!isAllowed"
+                                    @click="handleOpenNewRecordForm(stack.title)"
+                                  >
+                                    <div class="flex items-center gap-2">
+                                      <component :is="iconMap.plus" v-if="!isPublic && !isLocked" />
 
-                                  {{ $t('activity.newRecord') }}
-                                </div>
-                              </NcButton>
+                                      {{ $t('activity.newRecord') }}
+                                    </div>
+                                  </NcButton>
+                                </template>
+                              </PermissionsTooltip>
                             </div>
                           </template>
                         </Draggable>
                       </div>
                     </a-layout-content>
-                    <a-layout-footer v-if="formattedData.get(stack.title)" class="border-t-1 border-gray-100">
+                    <a-layout-footer v-if="formattedData.get(stack.title)" class="border-t-1 border-nc-border-gray-light">
                       <div class="flex items-center justify-between">
-                        <NcButton
-                          v-if="isUIAllowed('dataInsert')"
-                          size="xs"
-                          type="secondary"
-                          @click="
-                            () => {
-                              selectedStackTitle = stack.title
-                              openNewRecordFormHook.trigger(stack.title)
-                            }
-                          "
+                        <PermissionsTooltip
+                          v-if="isUIAllowed('dataInsert') && !isSyncedTable"
+                          :entity="PermissionEntity.TABLE"
+                          :entity-id="meta?.id"
+                          :permission="PermissionKey.TABLE_RECORD_ADD"
                         >
-                          <div class="flex items-center gap-2">
-                            <component :is="iconMap.plus" v-if="!isPublic && !isLocked" class="" />
+                          <template #default="{ isAllowed }">
+                            <NcButton
+                              size="xs"
+                              type="secondary"
+                              :disabled="!isAllowed"
+                              @click="handleOpenNewRecordForm(stack.title)"
+                            >
+                              <div class="flex items-center gap-2">
+                                <component :is="iconMap.plus" v-if="!isPublic && !isLocked" class="" />
 
-                            {{ $t('activity.newRecord') }}
-                          </div>
-                        </NcButton>
+                                {{ $t('activity.newRecord') }}
+                              </div>
+                            </NcButton>
+                          </template>
+                        </PermissionsTooltip>
                         <div v-else>&nbsp;</div>
 
                         <!-- Record Count -->
-                        <div class="nc-kanban-data-count text-gray-500 font-weight-500 px-1">
+                        <div class="nc-kanban-data-count text-nc-content-gray-muted font-weight-500 px-1">
                           {{ formattedData.get(stack.title)!.length }}/{{ countByStack.get(stack.title) ?? 0 }}
                           {{ countByStack.get(stack.title) !== 1 ? $t('objects.records') : $t('objects.record') }}
                         </div>
@@ -953,7 +1179,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                 <a-card
                   v-else
                   :key="`${stack.id}-collapsed`"
-                  class="nc-kanban-collapsed-stack flex items-center w-68.5 h-[44px] !rounded-xl cursor-pointer h-full !p-2 overflow-hidden !shadow-none !hover:shadow-none !border-gray-200"
+                  class="nc-kanban-collapsed-stack flex items-center w-68.5 h-[44px] !rounded-xl cursor-pointer h-full !p-2 overflow-hidden !shadow-none !hover:shadow-none !border-nc-border-gray-medium"
                   :class="{
                     'not-draggable': stack.title === null || isLocked || isPublic || !hasEditPermission,
                   }"
@@ -986,12 +1212,25 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                         </NcButton>
 
                         <div class="flex-1 flex max-w-[115px]">
-                          <a-tag class="max-w-full !rounded-full !px-2 !py-1 h-7 !m-0 !border-none" :color="stack.color">
+                          <a-tag
+                            class="max-w-full !rounded-full !px-2 !py-1 h-7 !m-0 !border-none"
+                            :color="
+                              getSelectTypeFieldOptionBgColor({
+                                color: stack.color || '#ccc',
+                                isDark,
+                                getColor,
+                                isColorCodeEnabled,
+                              })
+                            "
+                          >
                             <span
                               :style="{
-                                color: tinycolor.isReadable(stack.color || '#ccc', '#fff', { level: 'AA', size: 'large' })
-                                  ? '#fff'
-                                  : tinycolor.mostReadable(stack.color || '#ccc', ['#0b1d05', '#fff']).toHex8String(),
+                                color: getSelectTypeFieldOptionTextColor({
+                                  color: stack.color || '#ccc',
+                                  isDark,
+                                  getColor,
+                                  isColorCodeEnabled,
+                                }),
                               }"
                               class="text-sm font-semibold"
                             >
@@ -1018,7 +1257,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
 
                       <div class="flex items-center gap-2 truncate">
                         <div
-                          class="nc-kanban-data-count px-1 rounded bg-gray-200 text-gray-800 text-sm font-weight-500 truncate"
+                          class="nc-kanban-data-count px-1 rounded bg-nc-bg-gray-medium text-nc-content-gray text-sm font-weight-500 truncate"
                           :style="{ 'word-break': 'keep-all', 'white-space': 'nowrap' }"
                         >
                           <!-- Record Count -->
@@ -1027,7 +1266,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
                         </div>
 
                         <NcButton type="text" size="xs" class="!px-1.5">
-                          <component :is="iconMap.arrowDown" class="text-grey h-4 w-4 flex-none" />
+                          <component :is="iconMap.arrowDown" class="h-4 w-4 flex-none opacity-75" />
                         </NcButton>
                       </div>
                     </div>
@@ -1040,11 +1279,13 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
           <div v-if="hasEditPermission && !isPublic && !isLocked && groupingFieldColumn?.id" class="nc-kanban-add-new-stack">
             <!-- Add New Stack -->
             <a-card
-              class="flex flex-col w-68.5 !rounded-xl overflow-y-hidden !shadow-none !hover:shadow-none border-gray-200"
-              :class="{
-                '!cursor-default': isLocked || !hasEditPermission,
-                '!border-none': !compareStack(addNewStackObj, isRenameOrNewStack),
-              }"
+              class="flex flex-col w-68.5 !rounded-xl overflow-y-hidden !shadow-none !hover:shadow-none border-nc-border-gray-medium nc-kanban-stack-header-new-stack"
+              :class="[
+                {
+                  '!cursor-default': isLocked || !hasEditPermission,
+                  '!border-none': !compareStack(addNewStackObj, isRenameOrNewStack),
+                },
+              ]"
               :head-style="{ paddingBottom: '0px' }"
               :body-style="{
                 padding: '0px !important',
@@ -1117,26 +1358,45 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
         </div>
         <!-- Drop down Menu -->
         <template v-if="!isLocked && !isPublic && hasEditPermission" #overlay>
-          <NcMenu @click="contextMenu = false">
-            <NcMenuItem v-if="contextMenuTarget" @click="expandForm(contextMenuTarget)">
-              <div v-e="['a:kanban:expand-record']" class="flex items-center gap-2 nc-kanban-context-menu-item">
-                <component :is="iconMap.expand" class="flex" />
+          <NcMenu variant="small" @click="contextMenu = false">
+            <NcMenuItem v-if="contextMenuTarget" v-e="['a:kanban:expand-record']" @click="expandForm(contextMenuTarget)">
+              <div class="flex items-center gap-2 nc-kanban-context-menu-item">
+                <component :is="iconMap.maximize" class="flex" />
                 <!-- Expand Record -->
                 {{ $t('activity.expandRecord') }}
               </div>
             </NcMenuItem>
-            <NcDivider />
-            <NcMenuItem v-if="contextMenuTarget" class="!text-red-600 !hover:bg-red-50" @click="deleteRow(contextMenuTarget)">
-              <div v-e="['a:kanban:delete-record']" class="flex items-center gap-2 nc-kanban-context-menu-item">
-                <component :is="iconMap.delete" class="flex" />
-                <!-- Delete Record -->
-                {{
-                  $t('general.deleteEntity', {
-                    entity: $t('objects.record').toLowerCase(),
-                  })
-                }}
+            <NcMenuItem
+              v-if="contextMenuTarget && contextMenuRowId && !isPublic && appInfo.ee"
+              @click="showSendRecordModal = true"
+            >
+              <div class="flex items-center gap-2 nc-kanban-context-menu-item">
+                <GeneralIcon icon="mail" class="flex" />
+                {{ $t('activity.sendRecord') }}
               </div>
             </NcMenuItem>
+            <NcDivider />
+            <PermissionsTooltip
+              v-if="contextMenuTarget"
+              :entity="PermissionEntity.TABLE"
+              :entity-id="meta?.id"
+              :permission="PermissionKey.TABLE_RECORD_DELETE"
+              placement="right"
+            >
+              <template #default="{ isAllowed }">
+                <NcMenuItem v-e="['a:kanban:delete-record']" danger :disabled="!isAllowed" @click="deleteRow(contextMenuTarget)">
+                  <div class="flex items-center gap-2 nc-kanban-context-menu-item">
+                    <GeneralIcon icon="delete" class="flex" />
+                    <!-- Delete Record -->
+                    {{
+                      $t('general.deleteEntity', {
+                        entity: $t('objects.record').toLowerCase(),
+                      })
+                    }}
+                  </div>
+                </NcMenuItem>
+              </template>
+            </PermissionsTooltip>
           </NcMenu>
         </template>
       </NcDropdown>
@@ -1152,6 +1412,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
       :meta="meta"
       :load-row="!isPublic"
       :view="view"
+      :allow-null-field-ids="groupingFieldColumn?.id ? [groupingFieldColumn.id] : []"
       @cancel="removeRowFromUncategorizedStack"
     />
   </Suspense>
@@ -1166,21 +1427,28 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
       :expand-form="expandForm"
       :row-id="route.query.rowId"
       :view="view"
+      :allow-null-field-ids="groupingFieldColumn?.id ? [groupingFieldColumn.id] : []"
     />
   </Suspense>
 
-  <GeneralDeleteModal v-model:visible="deleteStackVModel" entity-name="Stack" :on-delete="handleDeleteStackConfirmClick">
+  <GeneralDeleteModal
+    v-model:visible="deleteStackVModel"
+    entity-name="Stack"
+    :show-default-delete-msg="false"
+    :on-delete="handleDeleteStackConfirmClick"
+  >
     <template #entity-preview>
-      <div v-if="stackToBeDeleted" class="flex flex-row items-center py-2 px-2.25 bg-gray-100 rounded-lg text-gray-700 mb-4">
-        <div
-          class="capitalize text-ellipsis overflow-hidden select-none w-full pl-1.75"
-          :style="{ wordBreak: 'keep-all', whiteSpace: 'nowrap', display: 'inline' }"
-        >
-          {{ stackToBeDeleted }}
+      <div v-if="stackToBeDeleted" class="text-nc-content-gray flex flex-col gap-3">
+        <div>
+          This action will also remove the <b>"{{ stackToBeDeleted }}"</b> option from the
+          <b> "{{ groupingFieldColumn?.title ?? 'Grouping' }}"</b> field.
         </div>
+        <div>Records will be moved to Uncategorized stack.</div>
       </div>
     </template>
   </GeneralDeleteModal>
+
+  <DlgSendRecordEmail v-model="showSendRecordModal" :meta="meta" :view="view" :row-id="contextMenuRowId" />
 </template>
 
 <style lang="scss" scoped>
@@ -1188,11 +1456,13 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
 .a-layout,
 .ant-layout-header,
 .ant-layout-footer {
-  @apply !bg-white;
+  @apply !bg-nc-bg-default;
 }
+
 .ant-layout-content {
   background-color: unset;
 }
+
 .ant-layout-header,
 .ant-layout-footer {
   @apply p-2 text-sm;
@@ -1214,17 +1484,18 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
 }
 
 .ant-carousel.gallery-carousel :deep(.slick-dots li div > div) {
-  @apply rounded-full border-0 cursor-pointer block opacity-100 p-0 outline-none transition-all duration-500 text-transparent h-2 w-2 bg-[#d9d9d9];
+  @apply rounded-full border-0 cursor-pointer block opacity-100 p-0 outline-none transition-all duration-500 text-transparent h-2 w-2 bg-nc-bg-gray-medium;
   font-size: 0;
 }
 
 .ant-carousel.gallery-carousel :deep(.slick-dots li.slick-active div > div) {
-  @apply bg-brand-500 opacity-100;
+  @apply bg-nc-content-brand opacity-100;
 }
 
 .ant-carousel.gallery-carousel :deep(.slick-dots li) {
   @apply !w-auto;
 }
+
 .ant-carousel.gallery-carousel :deep(.slick-prev) {
   @apply left-0;
 }
@@ -1252,17 +1523,41 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
 }
 
 .nc-card-display-value-wrapper {
-  @apply my-0 text-base leading-8 text-gray-800;
+  @apply my-0 text-xl leading-8 text-nc-content-gray-subtle2;
 
   .nc-cell,
   .nc-virtual-cell {
-    @apply text-base leading-6;
+    @apply text-xl leading-8;
 
     :deep(.nc-cell-field),
     :deep(input),
     :deep(textarea),
     :deep(.nc-cell-field-link) {
-      @apply !text-base leading-6 text-gray-800;
+      @apply !text-xl leading-8 text-nc-content-gray-subtle2;
+
+      &:not(.ant-select-selection-search-input) {
+        @apply !text-xl leading-8 text-nc-content-gray-subtle2;
+      }
+    }
+  }
+}
+
+.nc-card-col-wrapper {
+  @apply !text-small !leading-[18px];
+
+  .nc-cell,
+  .nc-virtual-cell {
+    @apply !text-small !leading-[18px];
+
+    :deep(.nc-cell-field),
+    :deep(input),
+    :deep(textarea),
+    :deep(.nc-cell-field-link) {
+      @apply !text-small leading-[18px];
+
+      &:not(.ant-select-selection-search-input) {
+        @apply !text-small leading-[18px];
+      }
     }
   }
 }
@@ -1274,17 +1569,6 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
   }
 }
 
-:deep(.nc-cell),
-:deep(.nc-virtual-cell) {
-  @apply text-small leading-[18px];
-
-  .nc-cell-field,
-  input,
-  textarea,
-  .nc-cell-field-link {
-    @apply !text-small !leading-[18px];
-  }
-}
 :deep(.nc-cell) {
   &.nc-cell-longtext {
     .long-text-wrapper {
@@ -1292,6 +1576,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
       .nc-readonly-rich-text-wrapper {
         @apply !min-h-1;
       }
+
       .nc-rich-text {
         @apply pl-0;
         .tiptap.ProseMirror {
@@ -1300,15 +1585,19 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
       }
     }
   }
+
   &.nc-cell-checkbox {
     @apply children:pl-0;
   }
+
   &.nc-cell-singleselect .nc-cell-field > div {
     @apply flex items-center;
   }
+
   &.nc-cell-multiselect .nc-cell-field > div {
     @apply h-5;
   }
+
   &.nc-cell-email,
   &.nc-cell-phonenumber {
     @apply flex items-center;
@@ -1321,12 +1610,32 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
       @apply py-0;
     }
   }
+  &.nc-cell-datetime {
+    @apply !w-auto;
+    & > div {
+      @apply !w-auto;
+    }
+    div {
+      @apply flex-none !max-w-none !w-auto;
+    }
+  }
+
+  .nc-date-picker > div > div {
+    &:first-child {
+      @apply pl-0;
+    }
+
+    &:last-child {
+      @apply pr-0;
+    }
+  }
 }
 
 :deep(.nc-virtual-cell) {
   .nc-links-wrapper {
     @apply py-0 children:min-h-4;
   }
+
   &.nc-virtual-cell-linktoanotherrecord {
     .chips-wrapper {
       @apply min-h-4 !children:min-h-4;
@@ -1335,6 +1644,7 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
       }
     }
   }
+
   &.nc-virtual-cell-lookup {
     .nc-lookup-cell {
       &:has(.nc-attachment-wrapper) {
@@ -1348,14 +1658,17 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
           }
         }
       }
+
       &:not(:has(.nc-attachment-wrapper)) {
         @apply !h-5.5;
       }
+
       .nc-cell-lookup-scroll {
         @apply py-0 h-auto;
       }
     }
   }
+
   &.nc-virtual-cell-formula {
     .nc-cell-field {
       @apply py-0;
@@ -1365,6 +1678,37 @@ const handleSubmitRenameOrNewStack = async (loadMeta: boolean, stack?: any, stac
   &.nc-virtual-cell-qrcode,
   &.nc-virtual-cell-barcode {
     @apply children:justify-start;
+  }
+
+  .nc-date-picker > div > div {
+    &:first-child {
+      @apply pl-0;
+    }
+
+    &:last-child {
+      @apply pr-0;
+    }
+  }
+}
+.nc-record-cell-tooltip {
+  @apply !bg-transparent !hover:bg-transparent;
+  :deep(.nc-cell-icon) {
+    @apply !ml-0 h-3.5 w-3.5;
+  }
+  :deep(.name) {
+    @apply text-captionSm;
+  }
+  :deep(.nc-cell-name-wrapper),
+  :deep(.nc-virtual-cell-name-wrapper) {
+    @apply !max-w-full;
+  }
+}
+
+.has-cell-bg-color {
+  &::before {
+    content: '';
+    @apply absolute inset-0 -left-1 rounded-lg -z-1;
+    background-color: var(--cell-bg-color);
   }
 }
 </style>

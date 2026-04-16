@@ -2,15 +2,16 @@
 interface Prop {
   extensionId: string
   error?: any
+  clearError?: () => void
 }
 
-const { extensionId, error } = defineProps<Prop>()
+const props = defineProps<Prop>()
 
-const { extensionList, extensionsLoaded, availableExtensions, eventBus } = useExtensions()
+const { extensionList, extensionsLoaded, availableExtensions, userHasAccessToExtension, extensionAccess } = useExtensions()
+
+const activeError = toRef(props, 'error')
 
 const isLoadedExtension = ref<boolean>(true)
-
-const activeError = ref(error)
 
 const extensionRef = ref<HTMLElement>()
 
@@ -19,7 +20,7 @@ const extensionModalRef = ref<HTMLElement>()
 const isMouseDown = ref(false)
 
 const extension = computed(() => {
-  const ext = extensionList.value.find((ext) => ext.id === extensionId)
+  const ext = extensionList.value.find((ext) => ext.id === props.extensionId)
   if (!ext) {
     throw new Error('Extension not found')
   }
@@ -30,11 +31,19 @@ const extensionManifest = computed<ExtensionManifest | undefined>(() => {
   return availableExtensions.value.find((ext) => ext.id === extension.value?.extensionId)
 })
 
+const activeExtensionId = computed(() => extensionManifest.value?.id ?? '')
+
+const hasAccessToExtension = computed(() => {
+  return userHasAccessToExtension(activeExtensionId.value)
+})
+
+provide(ExtensionConfigInj, ref({ activeExtensionId }))
+
 const {
   fullscreen,
   fullscreenModalSize: currentExtensionModalSize,
   collapsed,
-} = useProvideExtensionHelper(extension, extensionManifest, activeError)
+} = useProvideExtensionHelper(extension, extensionManifest, activeError, hasAccessToExtension)
 
 const { height } = useElementSize(extensionRef)
 
@@ -59,6 +68,14 @@ const closeFullscreen = (e: MouseEvent) => {
   }
 }
 
+const onClearData = () => {
+  if (extensionAccess.value.update) {
+    extension.value.clear()
+  }
+
+  props.clearError?.()
+}
+
 onMounted(() => {
   until(extensionsLoaded)
     .toMatch((v) => v)
@@ -67,18 +84,22 @@ onMounted(() => {
         return
       }
 
-      import(`../../extensions/${extensionManifest.value.entry}/index.vue`).then((mod) => {
-        component.value = markRaw(mod.default)
-        isLoadedExtension.value = false
-      })
+      import(`../../extensions/${extensionManifest.value.entry}/index.vue`)
+        .then((mod) => {
+          component.value = markRaw(mod.default)
+          isLoadedExtension.value = false
+        })
+        .catch((e) => {
+          isLoadedExtension.value = false
+          throw new Error(e)
+        })
     })
     .catch((err) => {
       if (!extensionManifest.value) {
-        activeError.value = 'There was an error loading the extension'
-        return
+        throw new Error('There was an error loading the extension')
       }
-      activeError.value = err
       isLoadedExtension.value = false
+      throw new Error(err)
     })
 })
 
@@ -95,15 +116,24 @@ useEventListener('keydown', (e) => {
   }
 })
 
-eventBus.on((event, payload) => {
-  if (event === ExtensionsEvents.DUPLICATE && extension.value.id === payload) {
-    setTimeout(() => {
-      nextTick(() => {
-        extensionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      })
-    }, 500)
-  }
-})
+const noExplicitHeightExtensions = ['nc-data-exporter']
+
+const isNoExplicitHeightExtension = computed(() => noExplicitHeightExtensions.includes(extension.value.extensionId))
+
+/**
+ * Log extension error so that we can debug easily.
+ */
+watch(
+  activeError,
+  (newVal) => {
+    if (!newVal) return
+
+    console.error(newVal)
+  },
+  {
+    immediate: true,
+  },
+)
 </script>
 
 <template>
@@ -120,7 +150,7 @@ eventBus.on((event, payload) => {
       :style="
         !collapsed
           ? {
-              height: extensionHeight,
+              height: isNoExplicitHeightExtension ? '100%' : extensionHeight,
               minHeight: extensionManifest?.config?.contentMinHeight,
             }
           : {}
@@ -139,15 +169,19 @@ eventBus.on((event, payload) => {
           }"
         >
           <a-result status="error" title="Extension Error" class="nc-extension-error">
-            <template #subTitle>{{ activeError }}</template>
+            <template #subTitle>
+              <span class="text-nc-content-gray-muted">
+                {{ activeError }}
+              </span>
+            </template>
             <template #extra>
-              <NcButton size="small" @click="extension.clear()">
+              <NcButton size="small" @click="onClearData">
                 <div class="flex items-center gap-2">
                   <GeneralIcon icon="reload" />
-                  Clear Data
+                  {{ extensionAccess.update ? 'Clear Data' : 'Reload Extension' }}
                 </div>
               </NcButton>
-              <NcButton size="small" type="danger" @click="extension.delete()">
+              <NcButton v-if="extensionAccess.delete" size="small" type="danger" @click="extension.delete()">
                 <div class="flex items-center gap-2">
                   <GeneralIcon icon="delete" />
                   Delete
@@ -161,11 +195,19 @@ eventBus.on((event, payload) => {
         <Teleport to="body" :disabled="!fullscreen">
           <div
             ref="extensionModalRef"
-            :class="{ 'extension-modal': fullscreen, 'h-[calc(100%_-_50px)]': !fullscreen }"
+            :class="[
+              fullscreen ? `nc-${extensionManifest?.id}` : '',
+              { 'extension-modal': fullscreen, 'h-[calc(100%_-_50px)]': !fullscreen },
+            ]"
             @click="closeFullscreen"
           >
             <div
-              :class="{ 'extension-modal-content': fullscreen, 'h-full': !fullscreen }"
+              :class="{
+                'extension-modal-content': fullscreen,
+                'h-full': !fullscreen,
+                '!nc-h-screen !nc-w-screen': fullscreen && currentExtensionModalSize === 'fullscreen',
+                'nc-extension-fullscreen': fullscreen && currentExtensionModalSize === 'extensionFullscreen',
+              }"
               :style="
                 fullscreen
                   ? {
@@ -188,7 +230,7 @@ eventBus.on((event, payload) => {
       </template>
 
       <general-overlay :model-value="isLoadedExtension" inline transition class="!bg-opacity-15 rounded-xl overflow-hidden">
-        <div class="flex flex-col items-center justify-center h-full w-full !bg-white !bg-opacity-80">
+        <div class="flex flex-col items-center justify-center h-full w-full !bg-nc-bg-default !bg-opacity-80">
           <a-spin size="large" />
         </div>
       </general-overlay>
@@ -198,7 +240,8 @@ eventBus.on((event, payload) => {
 
 <style scoped lang="scss">
 .extension-wrapper {
-  @apply bg-white rounded-xl w-full border-1 relative;
+  @apply bg-nc-bg-default rounded-xl w-full border-1 relative;
+  box-shadow: 0px 0px 8px 0px rgba(0, 0, 0, 0.08);
 
   &.isOpen {
     resize: vertical;
@@ -211,18 +254,26 @@ eventBus.on((event, payload) => {
 }
 
 .extension-content {
-  @apply rounded-lg;
-
-  &:not(.fullscreen) {
-    @apply p-3;
-  }
+  @apply rounded-b-lg;
 }
 
 .extension-modal {
-  @apply absolute top-0 left-0 z-1000 w-full h-full bg-black bg-opacity-50 flex items-center justify-center;
+  @apply absolute top-0 left-0 z-1000 w-full h-full bg-black/50 flex items-center justify-center;
 
   .extension-modal-content {
-    @apply bg-white rounded-2xl w-[90%] h-[90vh]  mx-auto flex flex-col;
+    @apply bg-nc-bg-default rounded-2xl mx-auto flex flex-col overflow-hidden dark:(border-1 border-nc-border-gray-medium);
+
+    &:not(.nc-extension-fullscreen) {
+      @apply w-[90%] h-[90vh];
+    }
+
+    &.nc-extension-fullscreen {
+      @apply w-[calc(100vw-32px)] h-[calc(100vh-var(--topbar-height)-16px)];
+    }
+  }
+
+  &:has(.nc-extension-fullscreen) {
+    @apply pt-[var(--topbar-height)] !items-start;
   }
 }
 
@@ -236,7 +287,7 @@ eventBus.on((event, payload) => {
   }
 
   .ant-result-title {
-    @apply text-base text-gray-800 font-semibold;
+    @apply text-base text-nc-content-gray font-semibold;
   }
 
   .ant-result-extra {

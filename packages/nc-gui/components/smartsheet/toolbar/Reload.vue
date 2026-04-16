@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { WatchHandle } from 'vue'
+
 const { $e, $state } = useNuxtApp()
 
 const { isPaginationLoading } = storeToRefs(useViewsStore())
@@ -8,15 +10,15 @@ const isReloading = ref(false)
 
 const onClick = () => {
   $e('a:table:reload:navbar')
-  isReloading.value = true
-  reloadHook.trigger()
-
-  const stop = watch($state.isLoading, (isLoading) => {
+  // watch first so a very fast reload is still tracked
+  const stop: WatchHandle = watch($state.isLoading, (isLoading) => {
     if (!isLoading) {
       isReloading.value = false
-      stop()
+      stop?.()
     }
   })
+  isReloading.value = true
+  reloadHook.trigger()
 }
 
 watch(isReloading, () => {
@@ -29,7 +31,7 @@ watch(isReloading, () => {
     <template #title> {{ $t('general.reload') }} </template>
 
     <div
-      class="flex ml-1 items-center justify-center select-none cursor-pointer text-gray-500 w-5.5 h-5.5 hover:(bg-gray-100 text-black) rounded"
+      class="flex ml-1 items-center justify-center select-none cursor-pointer text-gray-500 w-5.5 h-5.5 hover:(bg-nc-bg-gray-light text-nc-content-gray-extreme) rounded"
     >
       <component
         :is="iconMap.reload"

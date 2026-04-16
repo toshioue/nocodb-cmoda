@@ -1,3 +1,5 @@
+import { v4 as uuidv4 } from 'uuid'
+
 export const generateUniqueName = async () => {
   const { adjectives, animals, starWars, uniqueNamesGenerator } = await import('unique-names-generator')
 
@@ -29,8 +31,8 @@ export const generateUniqueTitle = <T extends Record<string, any> = Record<strin
   title: string,
   arr: T[],
   predicate: keyof T,
-  splitOperator: string = '-',
-  startFromZero: boolean = false,
+  splitOperator = '-',
+  startFromZero = false,
 ) => {
   // If we start from zero and the title is not already in the array, return the title as is.
   if (startFromZero && !arr.map((item) => item[predicate]).includes(title as T[keyof T])) {
@@ -51,4 +53,30 @@ export const generateUniqueTitle = <T extends Record<string, any> = Record<strin
 
 export const generateRandomNumber = () => {
   return window.crypto.getRandomValues(new Uint8Array(10)).join('')
+}
+
+export const generateRandomUUID = () => {
+  // if window.crypto.randomUUID available & function, use it
+  // otherwise use uuid package
+  if (window?.crypto && typeof window.crypto.randomUUID === 'function') {
+    return window.crypto.randomUUID()
+  }
+
+  // Fallback for SSR or older browsers - use a simple UUID v4 implementation
+  // This avoids async import issues while maintaining compatibility
+  return uuidv4()
+}
+
+export const generateUniqueRandomUUID = (list: Record<string, any>[] = [], keys: string[] = ['id']) => {
+  let id: string
+
+  do {
+    id = generateRandomUUID()
+  } while (
+    list.some((item) => {
+      return keys.some((key) => item[key] === id)
+    })
+  )
+
+  return id
 }

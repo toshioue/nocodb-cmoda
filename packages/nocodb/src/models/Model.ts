@@ -1,16 +1,27 @@
 import {
+  getFirstNonPersonalView,
   isLinksOrLTAR,
   isVirtualCol,
   ModelTypes,
+  NcApiVersion,
   UITypes,
   ViewTypes,
 } from 'nocodb-sdk';
 import dayjs from 'dayjs';
 import { Logger } from '@nestjs/common';
-import type { BoolType, TableReqType, TableType } from 'nocodb-sdk';
+import hash from 'object-hash';
+import type { NcRequest } from 'nocodb-sdk';
+import type { Knex } from 'knex';
+import type {
+  BoolType,
+  DateDependencyType,
+  TableReqType,
+  TableType,
+} from 'nocodb-sdk';
+import type PQueue from 'p-queue';
 import type { XKnex } from '~/db/CustomKnex';
 import type { LinksColumn, LinkToAnotherRecordColumn } from '~/models/index';
-import type { NcContext } from '~/interface/config';
+import { NcContext } from '~/interface/config';
 import Hook from '~/models/Hook';
 import View from '~/models/View';
 import Comment from '~/models/Comment';
@@ -35,8 +46,27 @@ import {
   prepareForResponse,
 } from '~/utils/modelUtils';
 import { Source } from '~/models';
+import { cleanBaseSchemaCacheForBase } from '~/helpers/scriptHelper';
+import { dataWrapper } from '~/helpers/dbHelpers';
+import { isEE } from '~/utils';
+import { NcCache } from '~/decorators/nc-cache.decorator';
 
 const logger = new Logger('Model');
+
+const modelOrViewXcCondition = {
+  _or: [
+    {
+      type: {
+        eq: ModelTypes.TABLE,
+      },
+    },
+    {
+      type: {
+        eq: ModelTypes.VIEW,
+      },
+    },
+  ],
+};
 
 export default class Model implements TableType {
   copy_enabled: BoolType;
@@ -64,21 +94,31 @@ export default class Model implements TableType {
 
   uuid: string;
 
+  date_dependency?: DateDependencyType | null;
+
   columns?: Column[];
   columnsById?: { [id: string]: Column };
+  columnsHash?: string;
   views?: View[];
   meta?: Record<string, any> | string;
 
+  synced?: boolean;
+
   constructor(data: Partial<TableType | Model>) {
     Object.assign(this, data);
+  }
+
+  public static castType(data: Model): Model {
+    return data && new Model(data);
   }
 
   public async getColumns(
     context: NcContext,
     ncMeta = Noco.ncMeta,
     defaultViewId = undefined,
+    updateColumns = true,
   ): Promise<Column[]> {
-    this.columns = await Column.list(
+    const columns = await Column.list(
       context,
       {
         fk_model_id: this.id,
@@ -86,7 +126,35 @@ export default class Model implements TableType {
       },
       ncMeta,
     );
+
+    if (!updateColumns) return columns;
+
+    this.columns = columns;
+
+    this.columnsById = this.columns.reduce((agg, c) => {
+      agg[c.id] = c;
+      return agg;
+    }, {});
+
     return this.columns;
+  }
+
+  public async getColumnsHash(
+    context: NcContext,
+    ncMeta = Noco.ncMeta,
+  ): Promise<string> {
+    const columns = await this.getColumns(context, ncMeta, undefined, false);
+
+    return (this.columnsHash = hash(columns));
+  }
+
+  // get columns cached under the instance or fetch from db/redis cache
+  public async getCachedColumns(
+    context: NcContext,
+    ncMeta = Noco.ncMeta,
+  ): Promise<Column[]> {
+    if (this.columns) return this.columns;
+    return this.getColumns(context, ncMeta);
   }
 
   // @ts-ignore
@@ -102,7 +170,7 @@ export default class Model implements TableType {
 
   public get primaryKey(): Column {
     if (!this.columns) return null;
-    //  return first auto increment or augto generated column
+    //  return first auto increment or auto generated column
     // if not found return first pk column
     return (
       this.columns.find((c) => c.pk && (c.ai || c.meta?.ag)) ||
@@ -140,6 +208,7 @@ export default class Model implements TableType {
       mm?: BoolType;
       type?: ModelTypes;
       source_id?: string;
+      user_id: string;
     },
     ncMeta = Noco.ncMeta,
   ) {
@@ -152,16 +221,36 @@ export default class Model implements TableType {
       'type',
       'id',
       'meta',
+      'synced',
     ]);
 
     insertObj.mm = !!insertObj.mm;
 
+    const condition: Record<string, any> = {
+      base_id: baseId,
+    };
+
+    if (isEE) {
+      condition.fk_workspace_id = context.workspace_id;
+    }
+
     if (!insertObj.order) {
       insertObj.order = await ncMeta.metaGetNextOrder(
-        MetaTable.FORM_VIEW_COLUMNS,
+        MetaTable.MODELS,
+        condition,
         {
-          base_id: baseId,
-          source_id: sourceId,
+          _or: [
+            {
+              source_id: {
+                eq: sourceId, // Match the given source_id
+              },
+            },
+            {
+              source_id: {
+                eq: null, // Also include records with null source_id
+              },
+            },
+          ],
         },
       );
     }
@@ -193,15 +282,19 @@ export default class Model implements TableType {
     await View.insertMetaOnly(
       context,
       {
-        fk_model_id: id,
-        title: model.title || model.table_name,
-        is_default: true,
-        type: ViewTypes.GRID,
-        base_id: baseId,
-        source_id: sourceId,
-      },
-      {
-        getColumns: async () => insertedColumns,
+        view: {
+          fk_model_id: id,
+          title: model.title || model.table_name,
+          type: ViewTypes.GRID,
+          base_id: baseId,
+          source_id: sourceId,
+          created_by: model.user_id,
+          owned_by: model.user_id,
+        },
+        model: {
+          getColumns: async () => insertedColumns,
+        },
+        req: { user: {} } as unknown as NcRequest,
       },
       ncMeta,
     );
@@ -211,6 +304,7 @@ export default class Model implements TableType {
     // append to model list since model list cache will be there already
     if (sourceId) {
       await NocoCache.appendToList(
+        context,
         CacheScope.MODEL,
         [baseId, sourceId],
         `${CacheScope.MODEL}:${id}`,
@@ -219,6 +313,7 @@ export default class Model implements TableType {
     // cater cases where sourceId is not required
     // e.g. xcVisibilityMetaGet
     await NocoCache.appendToList(
+      context,
       CacheScope.MODEL,
       [baseId],
       `${CacheScope.MODEL}:${id}`,
@@ -226,6 +321,10 @@ export default class Model implements TableType {
 
     cleanCommandPaletteCache(context.workspace_id).catch(() => {
       logger.error('Failed to clean command palette cache');
+    });
+
+    cleanBaseSchemaCacheForBase(context.base_id).catch(() => {
+      logger.error('Failed to clean base schema cache');
     });
 
     return modelRes;
@@ -238,13 +337,13 @@ export default class Model implements TableType {
       source_id,
     }: {
       base_id: string;
-      source_id: string;
+      source_id?: string;
     },
     ncMeta = Noco.ncMeta,
   ): Promise<Model[]> {
-    const cachedList = await NocoCache.getList(CacheScope.MODEL, [
+    const cachedList = await NocoCache.getList(context, CacheScope.MODEL, [
       base_id,
-      source_id,
+      ...(source_id ? [source_id] : []),
     ]);
     let { list: modelList } = cachedList;
     const { isNoneList } = cachedList;
@@ -259,6 +358,7 @@ export default class Model implements TableType {
             order: 'asc',
           },
           ...(source_id ? { condition: { source_id } } : {}),
+          xcCondition: modelOrViewXcCondition,
         },
       );
 
@@ -270,12 +370,18 @@ export default class Model implements TableType {
       // set cache based on source_id presence
       if (source_id) {
         await NocoCache.setList(
+          context,
           CacheScope.MODEL,
           [base_id, source_id],
           modelList,
         );
       } else {
-        await NocoCache.setList(CacheScope.MODEL, [base_id], modelList);
+        await NocoCache.setList(
+          context,
+          CacheScope.MODEL,
+          [base_id],
+          modelList,
+        );
       }
     }
     modelList.sort(
@@ -284,20 +390,7 @@ export default class Model implements TableType {
         (b.order != null ? b.order : Infinity),
     );
 
-    for (const model of modelList) {
-      if (model.meta?.hasNonDefaultViews === undefined) {
-        model.meta = {
-          ...(model.meta ?? {}),
-          hasNonDefaultViews: await Model.getNonDefaultViewsCountAndReset(
-            context,
-            { modelId: model.id },
-            ncMeta,
-          ),
-        };
-      }
-    }
-
-    return modelList.map((m) => new Model(m));
+    return modelList.map((m) => this.castType(m));
   }
 
   public static async listWithInfo(
@@ -311,7 +404,7 @@ export default class Model implements TableType {
     },
     ncMeta = Noco.ncMeta,
   ): Promise<Model[]> {
-    const cachedList = await NocoCache.getList(CacheScope.MODEL, [
+    const cachedList = await NocoCache.getList(context, CacheScope.MODEL, [
       base_id,
       db_alias,
     ]);
@@ -322,6 +415,9 @@ export default class Model implements TableType {
         context.workspace_id,
         context.base_id,
         MetaTable.MODELS,
+        {
+          xcCondition: modelOrViewXcCondition,
+        },
       );
 
       // parse meta of each model
@@ -329,25 +425,15 @@ export default class Model implements TableType {
         model.meta = parseMetaProp(model);
       }
 
-      await NocoCache.setList(CacheScope.MODEL, [base_id], modelList);
+      await NocoCache.setList(context, CacheScope.MODEL, [base_id], modelList);
     }
 
-    for (const model of modelList) {
-      if (model.meta?.hasNonDefaultViews === undefined) {
-        model.meta = {
-          ...(model.meta ?? {}),
-          hasNonDefaultViews: await Model.getNonDefaultViewsCountAndReset(
-            context,
-            { modelId: model.id },
-            ncMeta,
-          ),
-        };
-      }
-    }
-
-    return modelList.map((m) => new Model(m));
+    return modelList.map((m) => this.castType(m));
   }
 
+  @NcCache({
+    key: (args) => args[1],
+  })
   public static async get(
     context: NcContext,
     id: string,
@@ -356,6 +442,7 @@ export default class Model implements TableType {
     let modelData =
       id &&
       (await NocoCache.get(
+        context,
         `${CacheScope.MODEL}:${id}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -365,16 +452,29 @@ export default class Model implements TableType {
         context.base_id,
         MetaTable.MODELS,
         id,
+        undefined,
+        modelOrViewXcCondition,
       );
 
       if (modelData) {
         modelData.meta = parseMetaProp(modelData);
-        await NocoCache.set(`${CacheScope.MODEL}:${modelData.id}`, modelData);
+        await NocoCache.set(
+          context,
+          `${CacheScope.MODEL}:${modelData.id}`,
+          modelData,
+        );
       }
     }
-    return modelData && new Model(modelData);
+    return this.castType(modelData);
   }
 
+  @NcCache({
+    key: (args) =>
+      `${
+        args[1].id ||
+        `${args[1].base_id}:${args[1].source_id}:${args[1].table_name}`
+      }`,
+  })
   public static async getByIdOrName(
     context: NcContext,
     args:
@@ -388,10 +488,15 @@ export default class Model implements TableType {
         },
     ncMeta = Noco.ncMeta,
   ): Promise<Model> {
+    if ('id' in args && args?.id) {
+      return this.get(context, args.id, ncMeta);
+    }
+
     const k = 'id' in args ? args?.id : args;
     let modelData =
       k &&
       (await NocoCache.get(
+        context,
         `${CacheScope.MODEL}:${k}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -401,6 +506,8 @@ export default class Model implements TableType {
         context.base_id,
         MetaTable.MODELS,
         k,
+        undefined,
+        modelOrViewXcCondition,
       );
       if (modelData) {
         modelData.meta = parseMetaProp(modelData);
@@ -408,8 +515,12 @@ export default class Model implements TableType {
     }
     if (modelData) {
       modelData.meta = parseMetaProp(modelData);
-      await NocoCache.set(`${CacheScope.MODEL}:${modelData.id}`, modelData);
-      return new Model(modelData);
+      await NocoCache.set(
+        context,
+        `${CacheScope.MODEL}:${modelData.id}`,
+        modelData,
+      );
+      return this.castType(modelData);
     }
     return null;
   }
@@ -428,6 +539,7 @@ export default class Model implements TableType {
     let modelData =
       id &&
       (await NocoCache.get(
+        context,
         `${CacheScope.MODEL}:${id}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -439,10 +551,29 @@ export default class Model implements TableType {
         id || {
           table_name,
         },
+        undefined,
+        {
+          _or: [
+            {
+              type: {
+                eq: ModelTypes.TABLE,
+              },
+            },
+            {
+              type: {
+                eq: ModelTypes.VIEW,
+              },
+            },
+          ],
+        },
       );
       if (modelData) {
         modelData.meta = parseMetaProp(modelData);
-        await NocoCache.set(`${CacheScope.MODEL}:${modelData.id}`, modelData);
+        await NocoCache.set(
+          context,
+          `${CacheScope.MODEL}:${modelData.id}`,
+          modelData,
+        );
       }
       // modelData.filters = await Filter.getFilterObject({
       //   viewId: modelData.id
@@ -450,41 +581,72 @@ export default class Model implements TableType {
       // modelData.sorts = await Sort.list({ modelId: modelData.id });
     }
     if (modelData) {
-      const m = new Model(modelData);
+      const m = this.castType(modelData);
 
       await m.getViews(context, false, ncMeta);
 
-      const defaultViewId = m.views.find((view) => view.is_default).id;
+      const defaultViewId = getFirstNonPersonalView(m.views, {
+        includeViewType: ViewTypes.GRID,
+      })?.id;
 
-      const columns = await m.getColumns(context, ncMeta, defaultViewId);
+      await m.getColumns(context, ncMeta, defaultViewId);
 
-      m.columnsById = columns.reduce((agg, c) => ({ ...agg, [c.id]: c }), {});
+      await m.getColumnsHash(context, ncMeta);
+
       return m;
     }
     return null;
   }
 
+  /**
+   * Creates a BaseModelSqlv2 instance with optional transaction support.
+   *
+   * @param context - The NocoDB context
+   * @param args - Configuration arguments
+   * @param args.dbDriver - The base database driver
+   * @param args.transaction - Optional transaction instance to use for operations
+   * @param args.model - The model instance (optional, will be fetched if not provided)
+   * @param args.extractFirstCollaborativeView - Whether to extract the first collaborative grid view if viewId not provided
+   * @param args.viewId - The view ID (optional)
+   * @param args.source - The data source (optional, will be fetched if not provided)
+   * @param ncMeta - The NocoDB metadata instance
+   * @returns A configured BaseModelSqlv2 instance
+   */
   public static async getBaseModelSQL(
     context: NcContext,
     args: {
       id?: string;
       viewId?: string;
       dbDriver: XKnex;
+      transaction?: XKnex | Knex.Transaction;
       model?: Model;
-      extractDefaultView?: boolean;
+      extractFirstCollaborativeView?: boolean;
       source?: Source;
+      queryQueue?: PQueue;
     },
     ncMeta = Noco.ncMeta,
   ): Promise<BaseModelSqlv2> {
     const model = args?.model || (await this.get(context, args.id, ncMeta));
+
+    if (!model) {
+      NcError.get(context).tableNotFound(args.id);
+    }
+
     const source =
       args.source ||
       (await Source.get(context, model.source_id, false, ncMeta));
 
-    if (!args?.viewId && args.extractDefaultView) {
-      const view = await View.getDefaultView(context, model.id, ncMeta);
-      args.viewId = view.id;
+    if (!args?.viewId && args.extractFirstCollaborativeView) {
+      const view = await View.getFirstCollaborativeView(
+        context,
+        model.id,
+        ncMeta,
+      );
+      if (view) {
+        args.viewId = view.id;
+      }
     }
+
     let schema: string;
 
     if (source?.isMeta(true, 1)) {
@@ -496,9 +658,11 @@ export default class Model implements TableType {
     return new BaseModelSqlv2({
       context,
       dbDriver: args.dbDriver,
+      transaction: args.transaction,
       viewId: args.viewId,
       model,
       schema,
+      queryQueue: args.queryQueue,
     });
   }
 
@@ -567,6 +731,7 @@ export default class Model implements TableType {
           },
         );
         await NocoCache.deepDel(
+          context,
           `${cacheScopeName}:${col.id}`,
           CacheDelDirection.CHILD_TO_PARENT,
         );
@@ -587,6 +752,7 @@ export default class Model implements TableType {
 
       for (const col of leftOverColumns) {
         await NocoCache.deepDel(
+          context,
           `${CacheScope.COL_RELATION}:${col.fk_column_id}`,
           CacheDelDirection.CHILD_TO_PARENT,
         );
@@ -600,9 +766,39 @@ export default class Model implements TableType {
           fk_related_model_id: this.id,
         },
       );
+
+      // Also clean up MM columns that reference this model as their junction table
+      const leftOverMmColumns = await ncMeta.metaList2(
+        context.workspace_id,
+        context.base_id,
+        MetaTable.COL_RELATIONS,
+        {
+          condition: {
+            fk_mm_model_id: this.id,
+          },
+        },
+      );
+
+      for (const col of leftOverMmColumns) {
+        await NocoCache.deepDel(
+          context,
+          `${CacheScope.COL_RELATION}:${col.fk_column_id}`,
+          CacheDelDirection.CHILD_TO_PARENT,
+        );
+      }
+
+      await ncMeta.metaDelete(
+        context.workspace_id,
+        context.base_id,
+        MetaTable.COL_RELATIONS,
+        {
+          fk_mm_model_id: this.id,
+        },
+      );
     }
 
     await NocoCache.deepDel(
+      context,
       `${CacheScope.COLUMN}:${this.id}`,
       CacheDelDirection.CHILD_TO_PARENT,
     );
@@ -619,6 +815,7 @@ export default class Model implements TableType {
     await FileReference.bulkDelete(context, { fk_model_id: this.id }, ncMeta);
 
     await NocoCache.deepDel(
+      context,
       `${CacheScope.MODEL}:${this.id}`,
       CacheDelDirection.CHILD_TO_PARENT,
     );
@@ -630,7 +827,7 @@ export default class Model implements TableType {
     );
 
     // delete alias cache
-    await NocoCache.del([
+    await NocoCache.del(context, [
       `${CacheScope.MODEL_ALIAS}:${this.base_id}:${this.id}`,
       `${CacheScope.MODEL_ALIAS}:${this.base_id}:${this.source_id}:${this.id}`,
       `${CacheScope.MODEL_ALIAS}:${this.base_id}:${this.title}`,
@@ -639,6 +836,10 @@ export default class Model implements TableType {
 
     cleanCommandPaletteCache(context.workspace_id).catch(() => {
       logger.error('Failed to clean command palette cache');
+    });
+
+    cleanBaseSchemaCacheForBase(context.base_id).catch(() => {
+      logger.error('Failed to clean base schema cache');
     });
 
     return true;
@@ -650,25 +851,26 @@ export default class Model implements TableType {
     clientMeta = {
       isMySQL: false,
       isSqlite: false,
-      isMssql: false,
       isPg: false,
     },
     knex,
     columns?: Column[],
   ) {
+    const dbDataWrapper = dataWrapper(data);
     const insertObj = {};
     for (const col of columns || (await this.getColumns(context))) {
       if (isVirtualCol(col)) continue;
-      let val =
-        data?.[col.column_name] !== undefined
-          ? data?.[col.column_name]
-          : data?.[col.title];
+      let val = dbDataWrapper.getByColumnNameTitleOrId(col);
       if (val !== undefined) {
         if (col.uidt === UITypes.Attachment && typeof val !== 'string') {
           val = JSON.stringify(val);
         }
-        if (col.uidt === UITypes.DateTime && dayjs(val).isValid()) {
-          const { isMySQL, isSqlite, isMssql, isPg } = clientMeta;
+        if (
+          context.api_version !== NcApiVersion.V3 &&
+          col.uidt === UITypes.DateTime &&
+          dayjs(val).isValid()
+        ) {
+          const { isMySQL, isSqlite, isPg } = clientMeta;
           if (
             val.indexOf('-') < 0 &&
             val.indexOf('+') < 0 &&
@@ -705,14 +907,6 @@ export default class Model implements TableType {
             val = knex.raw(`? AT TIME ZONE CURRENT_SETTING('timezone')`, [
               dayjs(val).utc().format('YYYY-MM-DD HH:mm:ssZ'),
             ]);
-          } else if (isMssql) {
-            // convert ot UTC
-            // e.g. 2023-05-10T08:49:32.000Z -> 2023-05-10 08:49:32-08:00
-            // then convert to db timezone
-            val = knex.raw(
-              `SWITCHOFFSET(CONVERT(datetimeoffset, ?), DATENAME(TzOffset, SYSDATETIMEOFFSET()))`,
-              [dayjs(val).utc().format('YYYY-MM-DD HH:mm:ssZ')],
-            );
           } else {
             // e.g. 2023-01-01T12:00:00.000Z -> 2023-01-01 12:00:00+00:00
             val = dayjs(val).utc().format('YYYY-MM-DD HH:mm:ssZ');
@@ -737,12 +931,10 @@ export default class Model implements TableType {
 
   async mapColumnToAlias(context: NcContext, data, columns?: Column[]) {
     const res = {};
+    const dbDataWrapper = dataWrapper(data);
     for (const col of columns || (await this.getColumns(context))) {
       if (isVirtualCol(col)) continue;
-      let val =
-        data?.[col.title] !== undefined
-          ? data?.[col.title]
-          : data?.[col.column_name];
+      let val = dbDataWrapper.getByColumnNameTitleOrId(col);
       if (val !== undefined) {
         if (col.uidt === UITypes.Attachment && typeof val !== 'string') {
           val = JSON.stringify(val);
@@ -781,23 +973,13 @@ export default class Model implements TableType {
       tableId,
     );
 
-    // get default view and update alias
-    {
-      const defaultView = await View.getDefaultView(context, tableId, ncMeta);
-      if (defaultView) {
-        await View.update(context, defaultView.id, {
-          title,
-        });
-      }
-    }
-
-    await NocoCache.update(`${CacheScope.MODEL}:${tableId}`, {
+    await NocoCache.update(context, `${CacheScope.MODEL}:${tableId}`, {
       title,
       table_name,
     });
 
     // delete alias cache
-    await NocoCache.del([
+    await NocoCache.del(context, [
       `${CacheScope.MODEL_ALIAS}:${oldModel.base_id}:${oldModel.id}`,
       `${CacheScope.MODEL_ALIAS}:${oldModel.base_id}:${oldModel.source_id}:${oldModel.id}`,
       `${CacheScope.MODEL_ALIAS}:${oldModel.base_id}:${oldModel.title}`,
@@ -852,7 +1034,7 @@ export default class Model implements TableType {
       tableId,
     );
 
-    await NocoCache.update(`${CacheScope.MODEL}:${tableId}`, {
+    await NocoCache.update(context, `${CacheScope.MODEL}:${tableId}`, {
       mm: isMm,
     });
 
@@ -894,7 +1076,7 @@ export default class Model implements TableType {
       tableId,
     );
 
-    await NocoCache.update(`${CacheScope.MODEL}:${tableId}`, {
+    await NocoCache.update(context, `${CacheScope.MODEL}:${tableId}`, {
       order,
     });
 
@@ -908,7 +1090,7 @@ export default class Model implements TableType {
     ncMeta = Noco.ncMeta,
   ) {
     const model = await this.getWithInfo(context, { id: tableId }, ncMeta);
-    const newPvCol = model.columns.find((c) => c.id === columnId);
+    const newPvCol = model.columnsById[columnId];
 
     if (!newPvCol) NcError.fieldNotFound(columnId);
 
@@ -925,7 +1107,7 @@ export default class Model implements TableType {
         col.id,
       );
 
-      await NocoCache.update(`${CacheScope.COLUMN}:${col.id}`, {
+      await NocoCache.update(context, `${CacheScope.COLUMN}:${col.id}`, {
         pv: false,
       });
     }
@@ -941,7 +1123,7 @@ export default class Model implements TableType {
       newPvCol.id,
     );
 
-    await NocoCache.update(`${CacheScope.COLUMN}:${newPvCol.id}`, {
+    await NocoCache.update(context, `${CacheScope.COLUMN}:${newPvCol.id}`, {
       pv: true,
     });
 
@@ -995,11 +1177,15 @@ export default class Model implements TableType {
       id,
     );
 
-    await NocoCache.update(`${CacheScope.MODEL}:${id}`, {
+    await NocoCache.update(context, `${CacheScope.MODEL}:${id}`, {
       mm: true,
     });
   }
 
+  @NcCache({
+    key: (args) =>
+      `${args[1].base_id}:${args[1].source_id}:${args[1].aliasOrId}`,
+  })
   static async getByAliasOrId(
     context: NcContext,
     {
@@ -1019,7 +1205,7 @@ export default class Model implements TableType {
     const modelId =
       base_id &&
       aliasOrId &&
-      (await NocoCache.get(cacheKey, CacheGetType.TYPE_STRING));
+      (await NocoCache.get(context, cacheKey, CacheGetType.TYPE_STRING));
     if (!modelId) {
       const model = source_id
         ? await ncMeta.metaGet2(
@@ -1029,16 +1215,21 @@ export default class Model implements TableType {
             { base_id, source_id },
             null,
             {
-              _or: [
+              _and: [
+                modelOrViewXcCondition,
                 {
-                  id: {
-                    eq: aliasOrId,
-                  },
-                },
-                {
-                  title: {
-                    eq: aliasOrId,
-                  },
+                  _or: [
+                    {
+                      id: {
+                        eq: aliasOrId,
+                      },
+                    },
+                    {
+                      title: {
+                        eq: aliasOrId,
+                      },
+                    },
+                  ],
                 },
               ],
             },
@@ -1050,25 +1241,30 @@ export default class Model implements TableType {
             { base_id },
             null,
             {
-              _or: [
+              _and: [
+                modelOrViewXcCondition,
                 {
-                  id: {
-                    eq: aliasOrId,
-                  },
-                },
-                {
-                  title: {
-                    eq: aliasOrId,
-                  },
+                  _or: [
+                    {
+                      id: {
+                        eq: aliasOrId,
+                      },
+                    },
+                    {
+                      title: {
+                        eq: aliasOrId,
+                      },
+                    },
+                  ],
                 },
               ],
             },
           );
       if (model) {
-        await NocoCache.set(cacheKey, model.id);
-        await NocoCache.set(`${CacheScope.MODEL}:${model.id}`, model);
+        await NocoCache.set(context, cacheKey, model.id);
+        await NocoCache.set(context, `${CacheScope.MODEL}:${model.id}`, model);
       }
-      return model && new Model(model);
+      return this.castType(model);
     }
     return modelId && this.get(context, modelId);
   }
@@ -1091,7 +1287,20 @@ export default class Model implements TableType {
         ...(source_id ? { source_id } : {}),
       },
       null,
-      exclude_id && { id: { neq: exclude_id } },
+      {
+        _and: [
+          {
+            ...modelOrViewXcCondition,
+            ...(exclude_id
+              ? {
+                  id: {
+                    neq: exclude_id,
+                  },
+                }
+              : {}),
+          },
+        ],
+      },
     ));
   }
 
@@ -1113,14 +1322,35 @@ export default class Model implements TableType {
         ...(source_id ? { source_id } : {}),
       },
       null,
-      exclude_id && { id: { neq: exclude_id } },
+      {
+        _and: [
+          {
+            ...modelOrViewXcCondition,
+            ...(exclude_id
+              ? {
+                  id: {
+                    neq: exclude_id,
+                  },
+                }
+              : {}),
+          },
+        ],
+      },
     ));
   }
 
   async getAliasColObjMap(context: NcContext, columns?: Column[]) {
-    return (columns || (await this.getColumns(context))).reduce(
-      (sortAgg, c) => ({ ...sortAgg, [c.title]: c }),
+    const mapColumns = columns || (await this.getColumns(context));
+    const idReduce = mapColumns.reduce(
+      (sortAgg, c) => ({ ...sortAgg, [c.id]: c }),
       {},
+    );
+
+    // 2nd reduce start by using idReduce props
+    // if title is same as column id, even if it's a different column, it'll take priority over id
+    return mapColumns.reduce(
+      (sortAgg, c) => ({ ...sortAgg, [c.title]: c }),
+      idReduce,
     );
   }
 
@@ -1140,36 +1370,15 @@ export default class Model implements TableType {
       MetaTable.MODELS,
       prepareForDb(updateObj),
       tableId,
+      modelOrViewXcCondition,
     );
 
     await NocoCache.update(
+      context,
       `${CacheScope.MODEL}:${tableId}`,
       prepareForResponse(updateObj),
     );
 
     return res;
-  }
-
-  static async getNonDefaultViewsCountAndReset(
-    context: NcContext,
-    {
-      modelId,
-    }: {
-      modelId: string;
-    },
-    ncMeta = Noco.ncMeta,
-  ) {
-    const model = await this.get(context, modelId, ncMeta);
-    let modelMeta = parseMetaProp(model);
-
-    const views = await View.list(context, modelId, ncMeta);
-    modelMeta = {
-      ...(modelMeta ?? {}),
-      hasNonDefaultViews: views.length > 1,
-    };
-
-    await this.updateMeta(context, modelId, { meta: modelMeta }, ncMeta);
-
-    return modelMeta?.hasNonDefaultViews;
   }
 }

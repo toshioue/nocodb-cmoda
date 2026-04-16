@@ -8,18 +8,34 @@ import { NodeModulesPolyfillPlugin } from '@esbuild-plugins/node-modules-polyfil
 import { FileSystemIconLoader } from 'unplugin-icons/loaders'
 
 import PurgeIcons from 'vite-plugin-purge-icons'
-
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
-  modules: ['@vueuse/nuxt', 'nuxt-windicss', '@nuxt/image', '@pinia/nuxt'],
+  future: {
+    compatibilityVersion: 4,
+  },
 
+  ignore: [...(process.env.NODE_ENV === 'production' ? ['pages/playground/**/*'] : [])],
+
+  modules: ['@vueuse/nuxt', 'nuxt-windicss', '@nuxt/image', '@pinia/nuxt', '@productdevbook/chatwoot'],
   ssr: false,
+
   router: {
     options: {
-      hashMode: true,
+      hashMode: false,
+    },
+  },
+  chatwoot: {
+    init: {
+      websiteToken: 'ke2YjiPnKw9gnz4PCq4RuQqR',
+      baseUrl: 'https://app.chatwoot.com',
+    },
+    settings: {
+      darkMode: 'light',
+      hideMessageBubble: true,
     },
   },
   spaLoadingTemplate: false,
+
   app: {
     pageTransition: process.env.NUXT_PAGE_TRANSITION_DISABLE
       ? false
@@ -36,14 +52,19 @@ export default defineNuxtConfig({
     // todo: enable it back after fixing the issue with layout transition
     layoutTransition: false,
 
-    /** In production build we need to load assets using relative path, to achieve the result we are using cdnURL */
-    cdnURL: process.env.NODE_ENV === 'production' ? process.env.NC_CDN_URL || '.' : undefined,
+    /** In production build we need to load assets using absolute path for history-mode routing */
+    cdnURL: process.env.NODE_ENV === 'production' ? process.env.NC_CDN_URL || '/' : undefined,
     head: {
       link: [
         {
           rel: 'icon',
           type: 'image/x-icon',
-          href: './favicon.ico',
+          href: '/favicon.ico',
+        },
+        {
+          rel: 'apple-touch-icon',
+          href: '/apple-touch-icon-180x180.png',
+          sizes: '180x180',
         },
 
         ...(process.env.NC_CDN_URL
@@ -55,7 +76,7 @@ export default defineNuxtConfig({
                 type: 'font/woff2',
                 crossorigin: 'anonymous',
               } as any,
-              { rel: 'stylesheet', href: new URL('/shared/style/fonts.css', process.env.NC_CDN_URL).href },
+              { rel: 'stylesheet', href: new URL('/shared/style/fonts-new.css', process.env.NC_CDN_URL).href },
             ]
           : []),
       ],
@@ -64,6 +85,10 @@ export default defineNuxtConfig({
         {
           name: 'viewport',
           content: 'width=device-width, initial-scale=1',
+        },
+        {
+          name: 'theme-color',
+          content: '#3366FF',
         },
         {
           hid: 'description',
@@ -105,17 +130,19 @@ export default defineNuxtConfig({
   },
 
   css: [
-    ...(process.env.NC_CDN_URL ? [] : ['~/assets/style/fonts.css']),
+    ...(process.env.NC_CDN_URL ? [] : ['~/assets/style/fonts-new.css']),
     'virtual:windi.css',
     'virtual:windi-devtools',
     '~/assets/css/global.css',
     '~/assets/style.scss',
-    '~/assets/css/typesense-docsearch.css',
+    '~/assets/css/theme-overrides.scss',
   ],
 
   runtimeConfig: {
     public: {
       ncBackendUrl: '',
+      env: 'production',
+      maxPageDesignerTableRows: 100,
     },
   },
 
@@ -133,7 +160,15 @@ export default defineNuxtConfig({
         ignoreTryCatch: true,
       },
       minify: true,
-      rollupOptions: {},
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('/nocodb-sdk/')) {
+              return 'nocodb-sdk'
+            }
+          },
+        },
+      },
     },
     plugins: [
       VueI18nPlugin({
@@ -209,6 +244,94 @@ export default defineNuxtConfig({
       },
     },
     optimizeDeps: {
+      include: [
+        '@ckpack/vue-color',
+        '@tiptap/core',
+        '@tiptap/extension-code',
+        '@tiptap/extension-hard-break',
+        '@tiptap/extension-italic',
+        '@tiptap/extension-link',
+        '@tiptap/extension-mention',
+        '@tiptap/extension-placeholder',
+        '@tiptap/extension-strike',
+        '@tiptap/extension-task-list',
+        '@tiptap/extension-underline',
+        '@tiptap/html',
+        '@tiptap/pm/history',
+        '@tiptap/pm/markdown',
+        '@tiptap/pm/model',
+        '@tiptap/pm/state',
+        '@tiptap/pm/tables',
+        '@tiptap/pm/transform',
+        '@tiptap/pm/view',
+        '@tiptap/starter-kit',
+        '@tiptap/vue-3',
+        '@vue-flow/additional-components',
+        '@vue-flow/core',
+        '@vue-flow/minimap',
+        '@vuelidate/core',
+        '@vuelidate/validators',
+        '@vueuse/integrations/useQRCode',
+        '@vvo/tzdb',
+        'company-email-validator',
+        'crossoriginworker',
+        'd3-scale',
+        'dagre',
+        'dayjs/plugin/utc',
+        'dayjs/plugin/timezone',
+        'dayjs/plugin/relativeTime',
+        'deep-object-diff',
+        'diff',
+        'embla-carousel-vue',
+        'emoji-mart-vue-fast/src',
+        'esbuild-wasm',
+        'fflate',
+        'file-saver',
+        'fuse.js',
+        '@readme/httpsnippet',
+        'isomorphic-dompurify',
+        'jsbarcode',
+        'locale-codes',
+        'markdown-it',
+        'markdown-it-regexp',
+        'markdown-it-task-lists',
+        'marked',
+        'monaco-editor',
+        'monaco-editor/esm/vs/basic-languages/javascript/javascript',
+        'papaparse',
+        'rehype-sanitize',
+        'rehype-stringify',
+        'remark-parse',
+        'remark-rehype',
+        'sortablejs',
+        'splitpanes',
+        'tippy.js',
+        'tiptap-markdown',
+        'unified',
+        'v3-infinite-loading',
+        'validator',
+        'validator/es/lib/isEmail',
+        'validator/lib/isMobilePhone',
+        'vue-advanced-cropper',
+        'vue-barcode-reader',
+        'vuedraggable',
+        'xlsx',
+        'youtube-vue3',
+        'lru-cache',
+        'qrcode',
+        'validator',
+        '@floating-ui/vue',
+        'validator',
+        '@stripe/stripe-js',
+        'typesense',
+        'vue3-moveable',
+        'vue-fullscreen',
+        'cronstrue',
+        'plyr',
+        'leaflet',
+        'leaflet.markercluster',
+        'uuid',
+      ],
       esbuildOptions: {
         define: {
           global: 'globalThis',
@@ -227,6 +350,7 @@ export default defineNuxtConfig({
   image: {
     dir: 'assets/',
   },
+
   imports: {
     dirs: ['./context', './utils/**', './lib', './composables/**', './store/**', './helpers'],
     imports: [
@@ -239,4 +363,6 @@ export default defineNuxtConfig({
       { name: 'storeToRefs', from: 'pinia' },
     ],
   },
+
+  compatibilityDate: '2024-12-04',
 })

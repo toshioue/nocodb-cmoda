@@ -4,9 +4,11 @@ import type { XcPluginConfig } from '~/types/nc-plugin';
 
 const config: XcPluginConfig = {
   builder: SESPlugin,
+  id: 'ses',
   title: 'SES',
-  version: '0.0.2',
+  version: '0.0.4',
   logo: 'plugins/aws.png',
+  icon: 'NcAmazonAws',
   description:
     'Amazon Simple Email Service (SES) is a cost-effective, flexible, and scalable email service that enables developers to send mail from within any application.',
   price: 'Free',

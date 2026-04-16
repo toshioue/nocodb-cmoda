@@ -5,7 +5,10 @@ import {
   type FormulaType,
   type LinkToAnotherRecordType,
   type LookupType,
+  PermissionEntity,
+  PermissionKey,
   type RollupType,
+  type TableType,
   isLinksOrLTAR,
   readonlyMetaAllowedTypes,
 } from 'nocodb-sdk'
@@ -16,7 +19,10 @@ const props = defineProps<{
   hideMenu?: boolean
   required?: boolean | number
   hideIcon?: boolean
+  hideIconTooltip?: boolean
   isHiddenCol?: boolean
+  showLockIcon?: boolean
+  showMenuMobile?: boolean
 }>()
 
 const { t } = useI18n()
@@ -33,19 +39,29 @@ const hideMenu = toRef(props, 'hideMenu')
 
 const { isMobileMode } = useGlobal()
 
+const isMobileMenuHidden = computed(() => props.hideMenu || (isMobileMode.value && !props.showMenuMobile))
+
 const editColumnDropdown = ref(false)
 
 const isDropDownOpen = ref(false)
 
 const enableDescription = ref(false)
 
-const isLocked = inject(IsLockedInj, ref(false))
-
 provide(ColumnInj, column)
 
-const { metas } = useMetas()
+const { isAllowed } = usePermissions()
+
+const isAllowedToEditField = computed(() => {
+  if (!props.showLockIcon || !column.value?.id) return true
+
+  return isAllowed(PermissionEntity.FIELD, column.value.id, PermissionKey.RECORD_FIELD_EDIT)
+})
+
+const { getMetaByKey } = useMetas()
 
 const { isUIAllowed, isMetaReadOnly } = useRoles()
+
+const isPublic = inject(IsPublicInj, ref(false))
 
 const meta = inject(MetaInj, ref())
 
@@ -56,6 +72,8 @@ const isForm = inject(IsFormInj, ref(false))
 const isExpandedForm = inject(IsExpandedFormOpenInj, ref(false))
 
 const isExpandedBulkUpdateForm = inject(IsExpandedBulkUpdateFormOpenInj, ref(false))
+
+const isSqlView = computed(() => (meta.value as TableType)?.type === 'view')
 
 const tableTile = computed(() => meta?.value?.title)
 
@@ -70,10 +88,11 @@ const relationColumnOptions = computed<LinkToAnotherRecordType | null>(() => {
   return null
 })
 
-const relatedTableMeta = computed(
-  () =>
-    relationColumnOptions.value?.fk_related_model_id && metas.value?.[relationColumnOptions.value?.fk_related_model_id as string],
-)
+const relatedTableMeta = computed(() => {
+  if (!relationColumnOptions.value?.fk_related_model_id) return null
+  const relatedBaseId = (relationColumnOptions.value as any)?.fk_related_base_id || meta.value?.base_id
+  return getMetaByKey(relatedBaseId, relationColumnOptions.value?.fk_related_model_id as string)
+})
 
 const relatedTableTitle = computed(() => relatedTableMeta.value?.title)
 
@@ -85,17 +104,19 @@ const tooltipMsg = computed(() => {
   let suffix = ''
   if (isLinksOrLTAR(column.value) && relatedTableTitle.value && isExternalSource.value) {
     if (isMm(column.value)) {
+      const mmBaseId = (column.value?.colOptions as any)?.fk_mm_base_id || meta.value?.base_id
       const mmTableMeta =
         tables.value?.find((t) => t.id === column.value?.colOptions?.fk_mm_model_id) ||
-        metas.value?.[column.value?.colOptions?.fk_mm_model_id as string]
+        getMetaByKey(mmBaseId, column.value?.colOptions?.fk_mm_model_id as string)
       suffix = mmTableMeta ? `\nJunction Table: ${mmTableMeta.title}` : ''
     } else if (isHm(column.value)) {
-      const fkColumn = metas.value?.[column.value?.colOptions?.fk_related_model_id as string]?.columns?.find(
+      const relatedBaseId = (column.value?.colOptions as any)?.fk_related_base_id || meta.value?.base_id
+      const fkColumn = getMetaByKey(relatedBaseId, column.value?.colOptions?.fk_related_model_id as string)?.columns?.find(
         (c) => c.id === column.value?.colOptions?.fk_child_column_id,
       )
       suffix = fkColumn?.title?.startsWith('nc_') ? '' : `\nForeign Key Column: ${fkColumn.title}`
     } else if (isBt(column.value)) {
-      const fkColumn = meta.value?.find((c) => c.id === column.value?.colOptions?.fk_child_column_id)
+      const fkColumn = meta.value?.columns?.find((c) => c.id === column.value?.colOptions?.fk_child_column_id)
       suffix = fkColumn?.title?.startsWith('nc_') ? '' : `\nForeign Key Column: ${fkColumn.title}`
     }
   }
@@ -126,11 +147,12 @@ const showTooltipAlways = computed(() => {
 const columnOrder = ref<Pick<ColumnReqType, 'column_order'> | null>(null)
 
 const columnTypeName = computed(() => {
-  if (column.value.uidt === UITypes.LongText && parseProp(column?.value?.meta)?.richMode) {
-    return UITypesName.RichText
-  }
   if (column.value.uidt === UITypes.LinkToAnotherRecord && column.value.colOptions?.type === RelationTypes.ONE_TO_ONE) {
     return UITypesName[UITypes.Links]
+  }
+
+  if (isAiButton(column.value)) {
+    return UITypesName.AIButton
   }
 
   return column.value.uidt ? UITypesName[column.value.uidt] : ''
@@ -155,12 +177,19 @@ watch(editColumnDropdown, (val) => {
 })
 
 const openHeaderMenu = (e?: MouseEvent, description = false) => {
-  if (isLocked.value || (isExpandedForm.value && e?.type === 'dblclick') || isExpandedBulkUpdateForm.value) return
+  if (
+    (isExpandedForm.value && e?.type === 'dblclick') ||
+    isExpandedBulkUpdateForm.value ||
+    isSqlView.value ||
+    props.hideIconTooltip
+  ) {
+    return
+  }
 
   if (
     !isForm.value &&
     isUIAllowed('fieldEdit') &&
-    !isMobileMode.value &&
+    !isMobileMenuHidden.value &&
     (!isMetaReadOnly.value || readonlyMetaAllowedTypes.includes(column.value.uidt))
   ) {
     if (description) {
@@ -171,9 +200,7 @@ const openHeaderMenu = (e?: MouseEvent, description = false) => {
 }
 
 const openDropDown = (e: Event) => {
-  if (isLocked.value) return
-
-  if (isForm.value || (!isUIAllowed('fieldEdit') && !isMobileMode.value)) return
+  if (isForm.value || (!isUIAllowed('fieldEdit') && !isMobileMenuHidden.value) || props.hideIconTooltip) return
 
   e.preventDefault()
   e.stopPropagation()
@@ -183,14 +210,20 @@ const openDropDown = (e: Event) => {
 
 const onVisibleChange = () => {
   editColumnDropdown.value = true
-  if (!editOrAddProviderRef.value?.isWebHookModalOpen()) {
+  if (!editOrAddProviderRef.value?.shouldKeepModalOpen?.()) {
     editColumnDropdown.value = false
     enableDescription.value = false
   }
 }
 
 const onClick = (e: Event) => {
-  if (isMobileMode.value || !isUIAllowed('fieldEdit')) return
+  if (isMobileMenuHidden.value || !isUIAllowed('fieldEdit') || props.hideIconTooltip) return
+
+  // On mobile, only respond to clicks within the name wrapper
+  if (isMobileMode.value && props.showMenuMobile) {
+    const target = e.target as HTMLElement
+    if (!target?.closest('.nc-virtual-cell-name-wrapper')) return
+  }
 
   if (isDropDownOpen.value) {
     e.preventDefault()
@@ -208,34 +241,39 @@ const onClick = (e: Event) => {
 
 <template>
   <div
-    class="flex items-center w-full h-full text-small text-gray-500 font-weight-medium group"
+    class="flex items-center w-full h-full text-small text-nc-content-gray-muted font-weight-medium group"
     :class="{
-      'flex-col !items-start justify-center pt-0.5': isExpandedForm && !isMobileMode && !isExpandedBulkUpdateForm,
-      'bg-gray-100': isExpandedForm && !isExpandedBulkUpdateForm ? editColumnDropdown || isDropDownOpen : false,
-      'nc-cell-expanded-form-header cursor-pointer hover:bg-gray-100':
-        isExpandedForm && !isMobileMode && isUIAllowed('fieldEdit') && !isExpandedBulkUpdateForm,
+      'flex-col !items-start justify-center pt-0.5': isExpandedForm && !isMobileMenuHidden && !isExpandedBulkUpdateForm,
+      'nc-cell-expanded-form-header cursor-pointer hover:bg-nc-bg-gray-light':
+        isExpandedForm && !isMobileMenuHidden && !isMobileMode && isUIAllowed('fieldEdit') && !isExpandedBulkUpdateForm,
+      'cursor-pointer':
+        isExpandedForm && !isMobileMenuHidden && isMobileMode && isUIAllowed('fieldEdit') && !isExpandedBulkUpdateForm,
+      'bg-nc-bg-gray-light':
+        isExpandedForm && !isMobileMode && !isExpandedBulkUpdateForm ? editColumnDropdown || isDropDownOpen : false,
     }"
     @dblclick="openHeaderMenu"
     @click.right="openDropDown"
     @click="onClick"
   >
     <div
-      class="nc-virtual-cell-name-wrapper flex-1 flex items-center"
+      class="nc-virtual-cell-name-wrapper flex items-center"
       :class="{
-        'max-w-[calc(100%_-_23px)]': !isExpandedForm,
+        'w-full flex-1': !(isMobileMode && props.showMenuMobile && isExpandedForm),
+        'max-w-[calc(100%_-_23px)]': !isExpandedForm && !column.description?.length,
+        'max-w-[calc(100%_-_44px)]': !isExpandedForm && column.description?.length,
         'max-w-full': isExpandedForm && !isExpandedBulkUpdateForm,
       }"
     >
       <template v-if="column && !props.hideIcon">
-        <NcTooltip v-if="isGrid" class="flex items-center" placement="bottom">
+        <NcTooltip v-if="isGrid" :disabled="hideIconTooltip" class="flex items-center" placement="bottom">
           <template #title> {{ columnTypeName }} </template>
           <LazySmartsheetHeaderVirtualCellIcon />
         </NcTooltip>
         <LazySmartsheetHeaderVirtualCellIcon v-else />
       </template>
-      <NcTooltip placement="bottom" class="truncate name pl-1" :show-on-truncate-only="!showTooltipAlways">
+      <NcTooltip placement="bottom" class="truncate name pl-1 rtl:(pr-1 pl-0)" :show-on-truncate-only="!showTooltipAlways">
         <template #title>
-          <template v-for="msg in tooltipMsg.split('\n')">
+          <template v-for="(msg, i) in tooltipMsg.split('\n')" :key="i">
             <div>{{ msg }}</div>
           </template>
         </template>
@@ -249,17 +287,50 @@ const onClick = (e: Event) => {
         </span>
       </NcTooltip>
 
-      <span v-if="isVirtualColRequired(column, meta?.columns || []) || required" class="text-red-500">&nbsp;*</span>
+      <span v-if="isVirtualColRequired(column, meta?.columns || []) || required" class="text-nc-content-red-medium">&nbsp;*</span>
+
+      <PermissionsTooltip
+        v-if="!isAllowedToEditField"
+        :entity="PermissionEntity.FIELD"
+        :entity-id="column.id"
+        :permission="PermissionKey.RECORD_FIELD_EDIT"
+        :show-pointer-event-none="false"
+        hide-on-click
+        class="!ml-1 flex children:flex"
+      >
+        <GeneralIcon icon="ncLock" class="nc-column-lock-icon flex-none w-3.5 h-3.5 opacity-90" />
+      </PermissionsTooltip>
+
       <GeneralIcon
-        v-if="isExpandedForm && !isMobileMode && isUIAllowed('fieldEdit') && !isExpandedBulkUpdateForm"
+        v-if="isExpandedForm && !isMobileMenuHidden && isUIAllowed('fieldEdit') && !isExpandedBulkUpdateForm"
         icon="arrowDown"
-        class="flex-none cursor-pointer ml-1 group-hover:visible w-4 h-4"
+        class="nc-column-context-menu flex-none cursor-pointer ml-1 group-hover:visible w-4 h-4"
         :class="{
           visible: editColumnDropdown || isDropDownOpen,
           invisible: !(editColumnDropdown || isDropDownOpen),
         }"
       />
+
+      <div class="flex-1" />
+      <NcTooltip
+        v-if="meta?.synced && column?.readonly && isExpandedForm && !isPublic"
+        class="flex items-center"
+        placement="bottom"
+      >
+        <template #title> {{ $t('tooltip.fieldIsExternallySynced') }} </template>
+        <GeneralIcon icon="ncZap" class="flex-none !w-3.5 !h-3.5 !text-nc-content-gray-disabled" />
+      </NcTooltip>
     </div>
+
+    <NcTooltip v-if="column.description?.length && isPublic && isGrid && !isExpandedForm && !hideMenu">
+      <template #title>
+        <div class="whitespace-pre-wrap break-words">{{ column.description }}</div>
+      </template>
+      <div>
+        <GeneralIcon icon="info" class="group-hover:opacity-100 !w-3.5 !h-3.5 !text-nc-content-gray-muted flex-none" />
+      </div>
+    </NcTooltip>
+
     <template v-if="!hideMenu">
       <div v-if="!isExpandedForm" class="flex-1" />
 
@@ -278,7 +349,7 @@ const onClick = (e: Event) => {
       class="h-full"
       :trigger="['click']"
       :placement="isExpandedForm && !isExpandedBulkUpdateForm ? 'bottomLeft' : 'bottomRight'"
-      :overlay-class-name="`nc-dropdown-edit-column ${editColumnDropdown ? 'active' : ''}`"
+      :overlay-class-name="`nc-dropdown-edit-column ${editColumnDropdown ? 'active rounded-2xl' : ''}`"
       @visible-change="onVisibleChange"
     >
       <div v-if="isExpandedForm && !isExpandedBulkUpdateForm" class="h-[1px]" @dblclick.stop>&nbsp;</div>

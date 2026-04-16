@@ -2,6 +2,7 @@
 import type { ColumnType } from 'nocodb-sdk'
 import { isSystemColumn } from 'nocodb-sdk'
 import type { Ref } from 'vue'
+import { forcedNextTick } from '../../utils/browserUtils'
 
 const column = inject(ColumnInj)!
 
@@ -11,11 +12,30 @@ const row = inject(RowInj)!
 
 const reloadRowTrigger = inject(ReloadRowDataHookInj, createEventHook())
 
-const isForm = inject(IsFormInj)
+const isForm = inject(IsFormInj, ref(false))
+
+const isExpandedForm = inject(IsExpandedFormOpenInj, ref(false))
+
+const cellClickHook = inject(CellClickHookInj, null)
+
+const onDivDataCellEventHook = inject(OnDivDataCellEventHookInj, null)
 
 const readOnly = inject(ReadonlyInj, ref(false))
 
 const isUnderLookup = inject(IsUnderLookupInj, ref(false))
+
+// Inject breadcrumbs before dropdown teleport boundary
+const parentBreadcrumbs = inject(TemplateBreadcrumbsInj, ref([]))
+
+const canvasCellEventData = inject(CanvasCellEventDataInj, reactive<CanvasCellEventDataInjType>({}))
+
+const cellEventHook = inject(CellEventHookInj, null)
+
+const rowHeight = inject(RowHeightInj, ref())
+
+const isCanvasInjected = inject(IsCanvasInjectionInj, false)
+
+const clientMousePosition = inject(ClientMousePositionInj, reactive(clientMousePositionDefaultValue))
 
 const listItemsDlg = ref(false)
 
@@ -37,6 +57,10 @@ const { relatedTableMeta, loadRelatedTableMeta, relatedTableDisplayValueProp, un
 )
 
 await loadRelatedTableMeta()
+
+const hasEditPermission = computed(() => {
+  return (!readOnly.value && isUIAllowed('dataEdit') && !isUnderLookup.value) || (isForm.value && !readOnly.value)
+})
 
 const localCellValue = computed<any[]>(() => {
   if (cellValue?.value) {
@@ -92,7 +116,7 @@ const openChildList = () => {
 }
 
 const openListDlg = () => {
-  if (isUnderLookup.value) return
+  if (!hasEditPermission.value) return
 
   listItemsDlg.value = true
   childListDlg.value = false
@@ -100,7 +124,7 @@ const openListDlg = () => {
   hideBackBtn.value = true
 }
 
-useSelectedCellKeyupListener(inject(ActiveCellInj, ref(false)), (e: KeyboardEvent) => {
+useSelectedCellKeydownListener(inject(ActiveCellInj, ref(false)), (e: KeyboardEvent) => {
   switch (e.key) {
     case 'Enter':
       listItemsDlg.value = true
@@ -123,12 +147,68 @@ watch(
   },
   { flush: 'post' },
 )
+
+const active = inject(ActiveCellInj, ref(false))
+
+function onCellClick(e: Event) {
+  if (e.type !== 'click') return
+  if (isExpandedForm.value || isForm.value || active.value) {
+    openChildList()
+  }
+}
+
+const onCellEvent = (event?: Event) => {
+  if (!(event instanceof KeyboardEvent) || !event.target || isActiveInputElementExist(event)) return
+
+  if (isExpandCellKey(event)) {
+    if (childListDlg.value) {
+      listItemsDlg.value = false
+      childListDlg.value = false
+    } else {
+      openChildList()
+    }
+
+    return true
+  }
+}
+
+onMounted(() => {
+  onDivDataCellEventHook?.on(onCellClick)
+  cellClickHook?.on(onCellClick)
+  cellEventHook?.on(onCellEvent)
+
+  if (isUnderLookup.value || !isCanvasInjected || isExpandedForm.value || !clientMousePosition) return
+
+  forcedNextTick(() => {
+    if (onCellEvent(canvasCellEventData.event)) return
+
+    if (getElementAtMouse('.nc-canvas-table-editable-cell-wrapper .nc-has-many-plus-icon', clientMousePosition)) {
+      openListDlg()
+    } else if (getElementAtMouse('.nc-canvas-table-editable-cell-wrapper .nc-has-many-maximize-icon', clientMousePosition)) {
+      openChildList()
+    } else if (hasEditPermission.value) {
+      openListDlg()
+    } else {
+      openChildList()
+    }
+  })
+})
+
+onUnmounted(() => {
+  onDivDataCellEventHook?.off(onCellClick)
+  cellClickHook?.off(onCellClick)
+  cellEventHook?.off(onCellEvent)
+})
 </script>
 
 <template>
   <LazyVirtualCellComponentsLinkRecordDropdown v-model:is-open="isOpen">
-    <div class="nc-cell-field flex items-center gap-1 w-full chips-wrapper min-h-4">
-      <div class="chips flex items-center img-container flex-1 hm-items flex-nowrap min-w-0 overflow-hidden">
+    <div class="nc-cell-field flex items-center gap-1 w-full chips-wrapper min-h-6.5 relative">
+      <div
+        class="chips flex items-center img-container flex-1 hm-items min-w-0 overflow-y-auto overflow-x-hidden"
+        :class="{ 'flex-wrap': rowHeight !== 1 }"
+        :style="{ maxHeight: `${rowHeightInPx[rowHeight]}px` }"
+      >
         <template v-if="cells">
           <VirtualCellComponentsItemChip
             v-for="(cell, i) of cells"
@@ -136,7 +216,8 @@ watch(
             :item="cell.item"
             :value="cell.value"
             :column="hasManyColumn"
-            :show-unlink-button="true"
+            :show-unlink-button="false"
+            :truncate="false"
             @unlink="unlinkRef(cell.item)"
           />
 
@@ -144,19 +225,31 @@ watch(
         </template>
       </div>
 
-      <div v-if="!isUnderLookup && !isSystemColumn(column)" class="flex justify-end gap-1 min-h-4 items-center">
-        <GeneralIcon
-          icon="expand"
-          class="select-none transform text-sm nc-action-icon text-gray-500/50 hover:text-gray-500 nc-arrow-expand"
-          @click.stop="openChildList"
-        />
-
-        <GeneralIcon
-          v-if="(!readOnly && isUIAllowed('dataEdit')) || isForm"
-          icon="plus"
-          class="select-none text-sm nc-action-icon text-gray-500/50 hover:text-gray-500 nc-plus"
+      <div
+        v-if="!isUnderLookup && !isSystemColumn(column)"
+        class="flex justify-end gap-[2px] min-h-4 items-center absolute right-0 top-0 bottom-0 has-many-actions"
+        :class="{ active }"
+        @click.stop
+      >
+        <NcButton
+          v-if="hasEditPermission"
+          size="xsmall"
+          type="secondary"
+          class="nc-action-icon nc-has-many-plus-icon !h-5 !w-5 !min-w-5"
           @click.stop="openListDlg"
-        />
+        >
+          <GeneralIcon icon="plus" class="text-sm nc-plus !h-3 !w-3" />
+        </NcButton>
+        <NcTooltip :title="$t('tooltip.expandShiftSpace')" :disabled="isExpandedForm" class="flex">
+          <NcButton
+            size="xsmall"
+            type="secondary"
+            class="nc-action-icon nc-has-many-maximize-icon !h-5 !w-5 !min-w-5"
+            @click.stop="openChildList"
+          >
+            <GeneralIcon icon="maximize" class="!h-3 !w-3" />
+          </NcButton>
+        </NcTooltip>
       </div>
     </div>
     <template #overlay>
@@ -165,7 +258,9 @@ watch(
         v-model="listItemsDlg"
         :column="hasManyColumn"
         :hide-back-btn="hideBackBtn"
+        :parent-breadcrumbs="parentBreadcrumbs"
         @attach-linked-record="onAttachLinkedRecord"
+        @escape="isOpen = false"
       />
 
       <LazyVirtualCellComponentsLinkedItems
@@ -173,18 +268,32 @@ watch(
         v-model="childListDlg"
         :cell-value="localCellValue"
         :column="hasManyColumn"
+        :items="cells.length"
+        :parent-breadcrumbs="parentBreadcrumbs"
         @attach-record="onAttachRecord"
+        @escape="isOpen = false"
       />
     </template>
   </LazyVirtualCellComponentsLinkRecordDropdown>
 </template>
 
 <style scoped>
-.nc-action-icon {
-  @apply hidden cursor-pointer;
+.has-many-actions {
+  @apply hidden;
 }
 
-.chips-wrapper:hover .nc-action-icon {
+.has-many-actions.active,
+.chips-wrapper:hover .has-many-actions {
   @apply flex;
+}
+</style>
+
+<style lang="scss">
+.nc-default-value-wrapper,
+.nc-expanded-cell,
+.ant-form-item-control-input {
+  .has-many-actions {
+    @apply !flex;
+  }
 }
 </style>

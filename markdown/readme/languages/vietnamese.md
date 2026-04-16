@@ -13,7 +13,7 @@ NocoDB là cách nhanh nhất và dễ dàng nhất để xây dựng một cơ 
 
 <p align="center">
     <a href="http://www.nocodb.com"><b>Website</b></a> •
-    <a href="https://discord.gg/5RgZmkW"><b>Discord</b></a> •
+    <a href="https://discord.gg/c7GEYrvFtT"><b>Discord</b></a> •
     <a href="https://community.nocodb.com/"><b>Community</b></a> •
     <a href="https://twitter.com/nocodb"><b>Twitter</b></a> •
     <a href="https://www.reddit.com/r/NocoDB/"><b>Reddit</b></a> •
@@ -24,7 +24,7 @@ NocoDB là cách nhanh nhất và dễ dàng nhất để xây dựng một cơ 
 
 # Tham gia cộng đồng của chúng tôi
 
-<a href="https://discord.gg/5RgZmkW" target="_blank">
+<a href="https://discord.gg/c7GEYrvFtT" target="_blank">
 <img src="https://discordapp.com/api/guilds/661905455894888490/widget.png?style=banner3" alt="">
 </a>
 
@@ -35,23 +35,23 @@ NocoDB là cách nhanh nhất và dễ dàng nhất để xây dựng một cơ 
 ## Docker với SQLite
 
 ```bash 
-docker run -d --name noco 
-           -v "$(pwd)"/nocodb:/usr/app/data/ 
-           -p 8080:8080 
-           nocodb/nocodb:latest
-```
+docker run -d \
+  --name noco \
+  -v "$(pwd)"/nocodb:/usr/app/data/ \
+  -p 8080:8080 \
+  nocodb/nocodb:latest
+  ```
 
 ## Docker với PostgreSQL
 ```bash
-docker run -d --name noco 
-           -v "$(pwd)"/nocodb:/usr/app/data/ 
-           -p 8080:8080 
-            # thay bằng đường dẫn đến postgres
-           -e NC_DB="pg://host.docker.internal:5432?u=root&p=password&d=d1" 
-           # thay bằng một chuỗi ngẫu nhiên
-           -e NC_AUTH_JWT_SECRET="569a1821-0a93-45e8-87ab-eb857f20a010"  
-           nocodb/nocodb:latest
-```
+docker run -d \
+  --name noco \
+  -v "$(pwd)"/nocodb:/usr/app/data/ \
+  -p 8080:8080 \
+  -e NC_DB="pg://host.docker.internal:5432?u=root&p=password&d=d1" \
+  -e NC_AUTH_JWT_SECRET="569a1821-0a93-45e8-87ab-eb857f20a010" \
+  nocodb/nocodb:latest
+  ```
 
 ## Auto-upstall
 Auto-upstall là một câu lệnh duy nhất để triển khai NocoDB trên môi trường production.

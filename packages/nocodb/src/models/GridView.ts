@@ -33,6 +33,7 @@ export default class GridView implements GridType {
     let view =
       viewId &&
       (await NocoCache.get(
+        context,
         `${CacheScope.GRID_VIEW}:${viewId}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -45,7 +46,7 @@ export default class GridView implements GridType {
           fk_view_id: viewId,
         },
       );
-      await NocoCache.set(`${CacheScope.GRID_VIEW}:${viewId}`, view);
+      await NocoCache.set(context, `${CacheScope.GRID_VIEW}:${viewId}`, view);
     }
 
     return view && new GridView(view);
@@ -61,6 +62,7 @@ export default class GridView implements GridType {
       'base_id',
       'source_id',
       'row_height',
+      'meta',
     ]);
 
     const viewRef = await View.get(context, insertObj.fk_view_id, ncMeta);
@@ -109,6 +111,7 @@ export default class GridView implements GridType {
     );
 
     await NocoCache.update(
+      context,
       `${CacheScope.GRID_VIEW}:${viewId}`,
       prepareForResponse(updateObj),
     );

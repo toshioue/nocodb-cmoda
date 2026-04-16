@@ -1,7 +1,6 @@
 <script lang="ts" setup>
 import { UITypes, isVirtualCol } from 'nocodb-sdk'
 import { breakpointsTailwind } from '@vueuse/core'
-import tinycolor from 'tinycolor2'
 
 enum TransitionDirection {
   Left = 'left',
@@ -32,6 +31,7 @@ const {
   isRequired,
   handleAddMissingRequiredFieldDefaultState,
   fieldMappings,
+  backgroundAndTextColor,
 } = useSharedFormStoreOrThrow()
 
 const { isMobileMode } = storeToRefs(useConfigStore())
@@ -266,26 +266,31 @@ onMounted(() => {
     })
   }
 })
+
+const { message: templatedMessage } = useTemplatedMessage(
+  computed(() => sharedFormView?.value?.success_msg),
+  computed(() => formState.value),
+)
 </script>
 
 <template>
   <div class="h-full">
     <div class="survey md:p-0 w-full h-full flex flex-col max-w-[max(33%,688px)] mx-auto mb-4rem lg:mb-10rem">
-      <div v-if="sharedFormView" class="my-auto">
+      <div v-if="sharedFormView" class="my-auto z-2">
         <template v-if="!isStarted || submitted">
           <GeneralFormBanner
             v-if="sharedFormView && !parseProp(sharedFormView?.meta).hide_banner"
             :banner-image-url="sharedFormView.banner_image_url"
             class="flex-none mb-4"
           />
-          <div class="rounded-3xl border-1 border-gray-200 p-6 lg:p-12 bg-white">
-            <h1 class="text-2xl font-bold text-gray-900 mb-4" data-testid="nc-survey-form__heading">
+          <div class="rounded-3xl border-1 border-nc-border-gray-medium p-6 lg:p-12 bg-nc-bg-default">
+            <h1 class="text-2xl font-bold text-nc-content-gray-emphasis mb-4" data-testid="nc-survey-form__heading">
               {{ sharedFormView.heading }}
             </h1>
 
             <div v-if="submitted" class="flex flex-col justify-center items-center text-center">
               <a-alert
-                class="nc-survey-form__success-msg !p-4 !rounded-lg text-left w-full !bg-white !border-gray-200 !items-start"
+                class="nc-survey-form__success-msg !p-4 !rounded-lg text-left w-full !bg-nc-bg-default !border-nc-border-gray-medium !items-start"
                 type="success"
                 data-testid="nc-survey-form__success-msg"
                 outlined
@@ -293,8 +298,8 @@ onMounted(() => {
               >
                 <template #message>
                   <LazyCellRichText
-                    v-if="sharedFormView?.success_msg?.trim()"
-                    :value="sharedFormView?.success_msg"
+                    v-if="templatedMessage"
+                    :value="templatedMessage"
                     class="!h-auto -ml-1"
                     is-form-field
                     read-only
@@ -304,7 +309,7 @@ onMounted(() => {
                     {{ $t('msg.info.thankYou') }}
                   </span>
                 </template>
-                <template v-if="!sharedFormView?.success_msg?.trim()" #description>
+                <template v-if="!templatedMessage" #description>
                   {{ $t('msg.info.submittedFormData') }}
                 </template>
 
@@ -322,7 +327,7 @@ onMounted(() => {
                 "
                 class="mt-16 w-full flex justify-between items-center flex-wrap gap-3"
               >
-                <p v-if="sharedFormView?.show_blank_form" class="text-sm text-gray-500 dark:text-slate-300 m-0">
+                <p v-if="sharedFormView?.show_blank_form" class="text-sm text-nc-content-gray-muted m-0">
                   {{ $t('labels.newFormLoaded') }} {{ secondsRemain }} {{ $t('general.seconds').toLowerCase() }}
                 </p>
 
@@ -343,7 +348,7 @@ onMounted(() => {
               <div v-if="sharedFormView.subheading?.trim()">
                 <LazyCellRichText
                   :value="sharedFormView.subheading"
-                  class="font-medium text-base text-gray-500 dark:text-slate-300 !h-auto mb-4 -ml-1"
+                  class="font-medium text-base text-nc-content-gray-muted !h-auto mb-4 -ml-1"
                   is-form-field
                   read-only
                   sync-value-change
@@ -353,7 +358,7 @@ onMounted(() => {
 
               <div class="flex justify-end mt-12">
                 <div class="flex items-center gap-3">
-                  <div class="hidden md:flex text-sm items-center gap-1 text-gray-800">
+                  <div class="hidden md:flex text-sm items-center gap-1 text-nc-content-gray">
                     <span> {{ $t('labels.pressEnter') }} ↵ </span>
                   </div>
                   <NcButton
@@ -361,7 +366,7 @@ onMounted(() => {
                     data-testid="nc-survey-form__fill-form-btn"
                     @click="onStart()"
                   >
-                    Fill Form
+                    {{ $t('labels.fillForm') }}
                   </NcButton>
                 </div>
               </div>
@@ -369,7 +374,7 @@ onMounted(() => {
           </div>
         </template>
         <div v-else class="px-6 lg:px-12">
-          <h1 class="text-2xl font-bold text-gray-900 line-clamp-2 text-center mb-2rem md:mb-4rem">
+          <h1 class="text-2xl font-bold text-nc-content-gray-emphasis line-clamp-2 text-center mb-2rem md:mb-4rem">
             {{ sharedFormView.heading }}
           </h1>
         </div>
@@ -379,22 +384,22 @@ onMounted(() => {
               <div
                 ref="el"
                 :key="field?.title"
-                class="flex flex-col gap-4 w-full m-auto rounded-xl border-1 border-gray-200 bg-white p-6 lg:p-12"
+                class="flex flex-col gap-4 w-full m-auto rounded-xl border-1 border-nc-border-gray-medium bg-nc-bg-default p-6 lg:p-12"
               >
-                <div class="select-none text-gray-500 mb-4 md:mb-2" data-testid="nc-survey-form__footer">
+                <div class="select-none text-nc-content-gray-muted mb-4 md:mb-2" data-testid="nc-survey-form__footer">
                   {{ index + 1 }} / {{ formColumns?.length }}
                 </div>
 
                 <div v-if="field" class="flex flex-col gap-2">
-                  <div class="nc-form-column-label text-sm font-semibold text-gray-800" data-testid="nc-form-column-label">
+                  <div class="nc-form-column-label text-sm font-semibold text-nc-content-gray" data-testid="nc-form-column-label">
                     <span>
                       {{ field.label || field.title }}
                     </span>
-                    <span v-if="isRequired(field)" class="text-red-500 text-base leading-[18px]">&nbsp;*</span>
+                    <span v-if="isRequired(field)" class="text-nc-content-red-medium text-base leading-[18px]">&nbsp;*</span>
                   </div>
                   <div
                     v-if="field?.description"
-                    class="nc-form-column-description text-gray-500 text-sm"
+                    class="nc-form-column-description text-nc-content-gray-muted text-sm"
                     data-testid="nc-survey-form__field-description"
                   >
                     <LazyCellRichText
@@ -411,7 +416,7 @@ onMounted(() => {
                     <a-form-item
                       v-if="field.title && fieldMappings[field.title]"
                       :name="fieldMappings[field.title]"
-                      class="!my-0 nc-input-required-error"
+                      class="nc-input-required-error"
                       v-bind="validateInfos[fieldMappings[field.title]]"
                     >
                       <SmartsheetDivDataCell class="relative nc-form-data-cell" @click.stop="handleFocus">
@@ -440,18 +445,18 @@ onMounted(() => {
                           :read-only="field?.read_only"
                           @update:model-value="validateField(field.title)"
                         />
+                        <template v-if="field.uidt === UITypes.LongText" #help>
+                          <div class="flex flex-col gap-2 text-nc-content-gray-muted text-xs mt-2">
+                            <div class="hidden text-sm text-nc-content-gray-muted md:flex flex-wrap items-center">
+                              {{ $t('general.shift') }} <span class="text-primary"> &nbsp;⇧&nbsp; </span> +
+                              {{ $t('general.enter') }}
+                              <span class="text-primary"> &nbsp;↵&nbsp; </span>
+                              {{ $t('msg.info.makeLineBreak') }}
+                            </div>
+                          </div>
+                        </template>
                       </SmartsheetDivDataCell>
                     </a-form-item>
-                    <div class="flex flex-col gap-2 text-slate-500 dark:text-slate-300 text-xs my-2 px-1">
-                      <div
-                        v-if="field.uidt === UITypes.LongText"
-                        class="hidden text-sm text-gray-500 md:flex flex-wrap items-center"
-                      >
-                        {{ $t('general.shift') }} <MdiAppleKeyboardShift class="mx-1 text-primary" /> + {{ $t('general.enter') }}
-                        <MaterialSymbolsKeyboardReturn class="mx-1 text-primary" />
-                        {{ $t('msg.info.makeLineBreak') }}
-                      </div>
-                    </div>
                   </NcTooltip>
                 </div>
 
@@ -469,14 +474,14 @@ onMounted(() => {
                         data-testid="nc-survey-form__btn-submit-confirm"
                         @click="showSubmitConfirmModal"
                       >
-                        {{ $t('general.submit') }} form
+                        {{ $t('general.submit') }} {{ $t('objects.viewType.form') }}
                       </NcButton>
                     </div>
 
                     <div v-else class="flex items-center gap-3">
                       <div
                         class="hidden md:flex text-sm items-center gap-1"
-                        :class="fieldHasError ? 'text-gray-200' : 'text-gray-800'"
+                        :class="fieldHasError ? 'text-gray-200' : 'text-nc-content-gray'"
                       >
                         <span> {{ $t('labels.pressEnter') }} ↵ </span>
                       </div>
@@ -502,20 +507,13 @@ onMounted(() => {
           </Transition>
         </template>
       </div>
-      <div class="md:(absolute bottom-0 left-0 right-0 px-4 pb-4) lg:px-10 lg:pb-10">
-        <div class="flex justify-end items-center gap-4">
+      <div class="lg:(absolute bottom-0 right-0 px-4 pb-4) lg:px-10 lg:pb-10">
+        <div class="flex justify-end items-center gap-4 nc-survey-form-branding">
           <div class="flex justify-center">
             <GeneralFormBranding
               class="inline-flex mx-auto"
               :style="{
-                color: tinycolor.isReadable(parseProp(sharedFormView?.meta)?.background_color || '#F9F9FA', '#D5D5D9', {
-                  level: 'AA',
-                  size: 'large',
-                })
-                  ? '#fff'
-                  : tinycolor
-                      .mostReadable(parseProp(sharedFormView?.meta)?.background_color || '#F9F9FA', ['#374151', '#D5D5D9'])
-                      .toHex8String(),
+                color: backgroundAndTextColor.textColor,
               }"
             />
           </div>
@@ -568,6 +566,18 @@ onMounted(() => {
 </template>
 
 <style lang="scss" scoped>
+:deep(.ant-form-item.nc-input-required-error) {
+  @apply !mt-0;
+
+  &:not(.ant-form-item-with-help) {
+    @apply !mb-7;
+  }
+
+  .ant-form-item-explain {
+    @apply !min-h-7;
+  }
+}
+
 .nc-input-required-error {
   max-width: 100%;
   white-space: pre-line;
@@ -579,7 +589,7 @@ onMounted(() => {
 
   &:focus-within {
     :deep(.ant-form-item-explain-error) {
-      @apply text-gray-400;
+      @apply text-nc-content-gray-disabled;
     }
   }
 }
@@ -620,6 +630,12 @@ onMounted(() => {
     .ant-alert-icon {
       @apply flex items-start;
     }
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1170px) {
+  .nc-survey-form-branding {
+    @apply flex-col;
   }
 }
 </style>

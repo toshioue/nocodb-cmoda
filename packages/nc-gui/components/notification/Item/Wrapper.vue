@@ -16,17 +16,17 @@ const { toggleRead, deleteNotification } = notificationStore
 </script>
 
 <template>
-  <div class="flex pl-6 pr-4 w-full overflow-x-hidden group py-4 hover:bg-gray-50 gap-3 relative cursor-pointer">
+  <div class="flex pl-6 pr-4 w-full overflow-x-hidden group py-4 hover:bg-nc-bg-gray-extralight gap-3 relative cursor-pointer">
     <div class="w-9.625">
       <slot name="avatar">
-        <img src="~assets/img/brand/nocodb-logo.svg" alt="NocoDB" class="w-8" />
+        <GeneralIcon icon="nocodb1" class="w-8 h-8" />
       </slot>
     </div>
 
     <div class="text-[13px] min-h-12 w-full leading-5">
       <slot />
     </div>
-    <div v-if="item" class="text-xs whitespace-nowrap absolute right-4.1 bottom-5 text-gray-600">
+    <div v-if="item" class="text-xs whitespace-nowrap absolute right-4.1 bottom-5 text-nc-content-gray-subtle2">
       {{ timeAgo(item.created_at) }}
     </div>
     <div class="flex items-start">
@@ -44,7 +44,7 @@ const { toggleRead, deleteNotification } = notificationStore
           size="xsmall"
           @click.stop="() => toggleRead(item)"
         >
-          <GeneralIcon icon="check" class="text-gray-700" />
+          <GeneralIcon icon="check" class="text-nc-content-gray-subtle" />
         </NcButton>
       </NcTooltip>
       <NcDropdown
@@ -53,21 +53,20 @@ const { toggleRead, deleteNotification } = notificationStore
           '!opacity-100': isMobileMode,
         }"
         class="transition-all duration-100 opacity-0 !group-hover:opacity-100"
+        placement="bottomRight"
       >
         <NcButton size="xsmall" type="secondary" @click.stop>
           <GeneralIcon icon="threeDotVertical" />
         </NcButton>
 
         <template #overlay>
-          <NcMenu>
+          <NcMenu variant="small">
             <NcMenuItem @click.stop="() => toggleRead(item)"> Mark as unread </NcMenuItem>
             <NcDivider />
-            <NcMenuItem class="!text-red-500 !hover:bg-red-50" @click.stop="deleteNotification(item)"> Delete </NcMenuItem>
+            <NcMenuItem danger @click.stop="deleteNotification(item)"> Delete </NcMenuItem>
           </NcMenu>
         </template>
       </NcDropdown>
     </div>
   </div>
 </template>
-
-<style scoped lang="scss"></style>

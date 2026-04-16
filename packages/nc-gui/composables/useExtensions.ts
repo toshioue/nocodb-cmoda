@@ -1,43 +1,29 @@
-import type { ExtensionsEvents } from '#imports'
+import { useStorage } from '@vueuse/core'
+import type { ProjectRoles } from 'nocodb-sdk'
+import { PlanLimitTypes, getProjectRole, hasMinimumRoleAccess } from 'nocodb-sdk'
+import { usePlugin } from './usePlugin'
+import { ExtensionsEvents } from '#imports'
+import { extensionUserPrefsManager } from '~/helpers/extensionUserPrefsManager'
 
 const extensionsState = createGlobalState(() => {
   const baseExtensions = ref<Record<string, any>>({})
 
-  // Egg
-  const extensionsEgg = ref(false)
-
-  const extensionsEggCounter = ref(0)
-
-  return { baseExtensions, extensionsEgg, extensionsEggCounter }
+  return { baseExtensions }
 })
 
-export interface ExtensionManifest {
-  id: string
-  title: string
-  subTitle: string
-  description: string
-  entry: string
-  version: string
-  iconUrl: string
-  publisher: {
-    name: string
-    email: string
-    url: string
-    icon?: {
-      src: string
-      width?: number
-      height?: number
-    }
-  }
-  disabled?: boolean
-  links: {
-    title: string
-    href: string
-  }[]
-  config: {
-    modalSize?: 'xs' | 'sm' | 'md' | 'lg'
-    contentMinHeight?: string
-  }
+interface ExtensionPanelState {
+  width: number
+  isOpen: boolean
+}
+const extensionsPanelState = createGlobalState(() =>
+  useStorage<Record<string, ExtensionPanelState>>('nc-extensions-global-state', {}),
+)
+
+export interface IKvStore<T extends Record<string, any>> {
+  get<K extends keyof T>(key: K): T[K] | null
+  set<K extends keyof T>(key: K, value: T[K]): Promise<void>
+  delete<K extends keyof T>(key: K): Promise<void>
+  serialize(): Record<string, T[keyof T]>
 }
 
 abstract class ExtensionType {
@@ -47,7 +33,7 @@ abstract class ExtensionType {
   abstract fkUserId: string
   abstract extensionId: string
   abstract title: string
-  abstract kvStore: any
+  abstract kvStore: IKvStore<any>
   abstract meta: any
   abstract order: number
   abstract setTitle(title: string): Promise<any>
@@ -61,22 +47,41 @@ abstract class ExtensionType {
 export { ExtensionType }
 
 export const useExtensions = createSharedComposable(() => {
-  const { baseExtensions, extensionsEgg, extensionsEggCounter } = extensionsState()
+  const {
+    pluginsLoaded,
+    getPluginAssetUrl,
+    availableExtensions,
+    availableExtensionIds,
+    availableExtensionMapById,
+    pluginTypes,
+    pluginDescriptionContent,
+    isPluginsEnabled,
+  } = usePlugin()
 
-  const { $api } = useNuxtApp()
+  const { baseExtensions } = extensionsState()
+
+  const { $api, $e } = useNuxtApp()
+
+  const { user } = useGlobal()
+
+  const { isUIAllowed } = useRoles()
 
   const { base } = storeToRefs(useBase())
 
+  const { updateStatLimit, blockExtensions, showUpgradeToUseExtensions } = useEeConfig()
+
+  const { isSharedBase } = storeToRefs(useWorkspace())
+
   const eventBus = useEventBus<ExtensionsEvents>(Symbol('useExtensions'))
 
-  const extensionsLoaded = ref(false)
-
-  const availableExtensions = ref<ExtensionManifest[]>([])
-
-  // Object to store description content for each extension
-  const descriptionContent = ref<Record<string, string>>({})
-
-  const extensionPanelSize = ref(40)
+  const extensionAccess = computed(() => {
+    return {
+      list: isUIAllowed('extensionList') && !isSharedBase.value,
+      create: isUIAllowed('extensionCreate'),
+      delete: isUIAllowed('extensionDelete'),
+      update: isUIAllowed('extensionUpdate'),
+    }
+  })
 
   const activeBaseExtensions = computed(() => {
     if (!base.value || !base.value.id) {
@@ -85,25 +90,72 @@ export const useExtensions = createSharedComposable(() => {
     return baseExtensions.value[base.value.id]
   })
 
-  const isPanelExpanded = computed(() => {
-    return activeBaseExtensions.value ? activeBaseExtensions.value.expanded : false
-  })
+  const panelState = extensionsPanelState()
 
-  const extensionList = computed<ExtensionType[]>(() => {
-    return (activeBaseExtensions.value ? activeBaseExtensions.value.extensions : []).sort(
-      (a: ExtensionType, b: ExtensionType) => {
-        return (a?.order ?? Infinity) - (b?.order ?? Infinity)
+  const extensionPanelSize = ref(40)
+  const isPanelExpanded = ref(false)
+
+  const savePanelState = () => {
+    panelState.value = {
+      ...panelState.value,
+      [base.value.id!]: {
+        width: extensionPanelSize.value,
+        isOpen: isPanelExpanded.value,
       },
-    )
-  })
-
-  const toggleExtensionPanel = () => {
-    if (activeBaseExtensions.value) {
-      activeBaseExtensions.value.expanded = !activeBaseExtensions.value.expanded
     }
   }
 
+  watch(
+    base,
+    () => {
+      extensionPanelSize.value = +(panelState.value[base.value.id!]?.width || 40)
+      isPanelExpanded.value = panelState.value[base.value.id!]?.isOpen || false
+    },
+    { immediate: true },
+  )
+
+  // Debounce since width is updated continuously when user drags.
+  watchDebounced([extensionPanelSize, isPanelExpanded], savePanelState, { debounce: 500, maxWait: 1000 })
+
+  const toggleExtensionPanel = () => {
+    isPanelExpanded.value = !isPanelExpanded.value
+  }
+
+  /**
+   * @param extensionId - The id of the extension which is defined in manifest.json to get the minimum access role for
+   * @returns The minimum access role for the extension
+   */
+  const getExtensionMinAccessRole = (extensionId: string): ExtensionManifest['minAccessRole'] => {
+    const extension = availableExtensionMapById.value[extensionId]
+    return extension?.minAccessRole || 'creator'
+  }
+
+  const extensionList = computed<ExtensionType[]>(() => {
+    return (activeBaseExtensions.value ? activeBaseExtensions.value.extensions : [])
+      .filter((e: ExtensionType) => availableExtensionIds.value.includes(e.extensionId))
+      .sort((a: ExtensionType, b: ExtensionType) => {
+        return (a?.order ?? Infinity) - (b?.order ?? Infinity)
+      })
+  })
+
+  const userCurrentBaseRole = computed(() => {
+    return getProjectRole(user.value, true)
+  })
+
+  /**
+   * @param extensionId - The id of the extension which is defined in manifest.json to check if the user has access to
+   * @returns True if the user has access to the extension, false otherwise
+   */
+  const userHasAccessToExtension = (extensionId: string) => {
+    return hasMinimumRoleAccess(user.value, getExtensionMinAccessRole(extensionId) as ProjectRoles)
+  }
+
   const addExtension = async (extension: any) => {
+    if (blockExtensions.value) {
+      showUpgradeToUseExtensions()
+      return
+    }
+
     if (!base.value || !base.value.id || !baseExtensions.value[base.value.id]) {
       return
     }
@@ -117,31 +169,60 @@ export const useExtensions = createSharedComposable(() => {
       },
     }
 
-    const newExtension = await $api.extensions.create(base.value.id, extensionReq)
+    try {
+      const newExtension = await $api.internal.postOperation(
+        base.value!.fk_workspace_id!,
+        base.value.id,
+        {
+          operation: 'extensionCreate',
+        },
+        extensionReq,
+      )
 
-    if (newExtension) {
-      baseExtensions.value[base.value.id].extensions.push(new Extension(newExtension))
+      if (newExtension) {
+        updateStatLimit(PlanLimitTypes.LIMIT_EXTENSION_PER_WORKSPACE, 1)
+
+        baseExtensions.value[base.value.id].extensions.push(new Extension(newExtension))
+
+        nextTick(() => {
+          eventBus.emit(ExtensionsEvents.ADD, newExtension?.id)
+          $e('a:extension:add', { extensionId: extensionReq.extension_id })
+        })
+      }
+      return newExtension
+    } catch (e: any) {
+      message.error(await extractSdkResponseErrorMsg(e))
     }
-
-    return newExtension
   }
 
   const updateExtension = async (extensionId: string, extension: any) => {
-    if (!base.value || !base.value.id || !baseExtensions.value[base.value.id]) {
+    if (!extensionList.value.length || !extensionAccess.value.update) {
       return
     }
 
-    const updatedExtension = await $api.extensions.update(extensionId, extension)
+    const extensionToUpdate = extensionList.value.find((ext: any) => ext.id === extensionId)
 
-    if (updatedExtension) {
-      const extension = baseExtensions.value[base.value.id].extensions.find((ext: any) => ext.id === extensionId)
+    if (!extensionToUpdate) return
 
-      if (extension) {
-        extension.deserialize(updatedExtension)
+    try {
+      const updatedExtension = await $api.internal.postOperation(
+        base.value!.fk_workspace_id!,
+        base.value!.id!,
+        {
+          operation: 'extensionUpdate',
+          extensionId,
+        },
+        extension,
+      )
+
+      if (updatedExtension) {
+        extensionToUpdate.deserialize(updatedExtension)
       }
-    }
 
-    return updatedExtension
+      return updatedExtension
+    } catch (e: any) {
+      message.error(await extractSdkResponseErrorMsg(e))
+    }
   }
 
   const updateExtensionMeta = async (extensionId: string, key: string, value: any) => {
@@ -160,19 +241,40 @@ export const useExtensions = createSharedComposable(() => {
   }
 
   const deleteExtension = async (extensionId: string) => {
-    if (!base.value || !base.value.id || !baseExtensions.value[base.value.id]) {
+    if (!base.value || !base.value.id || !baseExtensions.value[base.value.id] || !extensionAccess.value.delete) {
       return
     }
 
-    await $api.extensions.delete(extensionId)
+    const extensionToDelete = baseExtensions.value[base.value.id].extensions.find((e: any) => e.id === extensionId)
 
-    baseExtensions.value[base.value.id].extensions = baseExtensions.value[base.value.id].extensions.filter(
-      (ext: any) => ext.id !== extensionId,
-    )
+    if (!extensionToDelete) return
+
+    try {
+      await $api.internal.postOperation(
+        base.value!.fk_workspace_id!,
+        base.value.id,
+        {
+          operation: 'extensionDelete',
+          extensionId,
+        },
+        {},
+      )
+
+      updateStatLimit(PlanLimitTypes.LIMIT_EXTENSION_PER_WORKSPACE, -1)
+
+      baseExtensions.value[base.value.id].extensions = baseExtensions.value[base.value.id].extensions.filter(
+        (ext: any) => ext.id !== extensionId,
+      )
+
+      extensionUserPrefsManager.deleteExtension(extensionId)
+      $e('a:extension:delete', { extensionId: extensionToDelete.extensionId })
+    } catch (e: any) {
+      message.error(await extractSdkResponseErrorMsg(e))
+    }
   }
 
   const duplicateExtension = async (extensionId: string) => {
-    if (!base.value || !base.value.id || !baseExtensions.value[base.value.id]) {
+    if (!base.value || !base.value.id || !baseExtensions.value[base.value.id] || !extensionAccess.value.create) {
       return
     }
 
@@ -184,13 +286,24 @@ export const useExtensions = createSharedComposable(() => {
 
     const { id: _id, order: _order, ...extensionData } = extension.serialize()
 
-    const newExtension = await $api.extensions.create(base.value.id, {
-      ...extensionData,
-      title: `${extension.title} (Copy)`,
-    })
+    const newExtension = await $api.internal.postOperation(
+      base.value!.fk_workspace_id!,
+      base.value.id,
+      {
+        operation: 'extensionCreate',
+      },
+      {
+        ...extensionData,
+        title: `${extension.title} (Copy)`,
+      },
+    )
 
     if (newExtension) {
-      baseExtensions.value[base.value.id].extensions.push(new Extension(newExtension))
+      const duplicatedExtension = new Extension(newExtension)
+      baseExtensions.value[base.value.id].extensions.push(duplicatedExtension)
+      eventBus.emit(ExtensionsEvents.DUPLICATE, duplicatedExtension.id)
+
+      $e('a:extension:duplicate', { extensionId: extension.extensionId })
     }
 
     return newExtension
@@ -203,18 +316,33 @@ export const useExtensions = createSharedComposable(() => {
       return
     }
 
+    let defaultKvStore = {}
+
+    switch (extension.extensionId) {
+      case 'nc-data-exporter': {
+        defaultKvStore = {
+          ...defaultKvStore,
+          deletedExports: extension.kvStore.get('deletedExports') || [],
+        }
+      }
+    }
+
     return updateExtension(extensionId, {
-      kv_store: {},
+      kv_store: {
+        ...defaultKvStore,
+      },
     })
   }
 
   const loadExtensionsForBase = async (baseId: string) => {
-    if (!baseId) {
+    if (!baseId || !extensionAccess.value.list) {
       return
     }
 
     try {
-      const { list } = await $api.extensions.list(baseId)
+      const { list } = await $api.internal.getOperation(base.value!.fk_workspace_id!, baseId, {
+        operation: 'extensionList',
+      })
 
       const extensions = list?.map((ext: any) => new Extension(ext))
 
@@ -226,40 +354,47 @@ export const useExtensions = createSharedComposable(() => {
           expanded: false,
         }
       }
+
+      if (user.value?.id && extensions) {
+        const validExtensionIds = extensions.map((ext: any) => ext.id)
+        extensionUserPrefsManager.verifyAndCleanup(user.value.id, validExtensionIds)
+      }
     } catch (e) {
+      baseExtensions.value[baseId] = {
+        extensions: [],
+        expanded: false,
+      }
       console.log(e)
     }
   }
-
-  const getExtensionAssetsUrl = (pathOrUrl: string) => {
-    if (pathOrUrl.startsWith('http')) {
-      return pathOrUrl
-    } else {
-      return new URL(`../extensions/${pathOrUrl}`, import.meta.url).href
-    }
-  }
-
-  class KvStore {
+  class KvStore<T extends Record<string, any> = any> implements IKvStore<T> {
     private _id: string
-    private data: Record<string, any>
+    private data: T
+    private _extension: Extension | null = null
 
-    constructor(id: string, data: any) {
+    constructor(id: string, data: T, extension?: Extension) {
       this._id = id
       this.data = data || {}
+      this._extension = extension || null
     }
 
-    get(key: string) {
+    get<K extends keyof T = any>(key: K) {
       return this.data[key] || null
     }
 
-    set(key: string, value: any) {
+    set<K extends keyof T = any>(key: K, value: any) {
       this.data[key] = value
+      // Skip update if last change was from realtime
+      if (this._extension?.is_last_update_from_realtime) {
+        this._extension.is_last_update_from_realtime = false
+        return Promise.resolve()
+      }
       return updateExtension(this._id, { kv_store: this.data })
     }
 
-    delete(key: string) {
+    async delete<K extends keyof T = any>(key: K) {
       delete this.data[key]
-      return updateExtension(this._id, { kv_store: this.data })
+      await updateExtension(this._id, { kv_store: this.data })
     }
 
     serialize() {
@@ -276,8 +411,8 @@ export const useExtensions = createSharedComposable(() => {
     private _kvStore: KvStore
     private _meta: any
     private _order: number
-
     public uiKey = 0
+    public is_last_update_from_realtime = false
 
     constructor(data: any) {
       this._id = data.id
@@ -285,7 +420,7 @@ export const useExtensions = createSharedComposable(() => {
       this._fkUserId = data.fk_user_id
       this._extensionId = data.extension_id
       this._title = data.title
-      this._kvStore = new KvStore(this._id, data.kv_store)
+      this._kvStore = new KvStore(this._id, data.kv_store, this)
       this._meta = data.meta
       this._order = data.order
     }
@@ -341,7 +476,7 @@ export const useExtensions = createSharedComposable(() => {
       this._fkUserId = data.fk_user_id
       this._extensionId = data.extension_id
       this._title = data.title
-      this._kvStore = new KvStore(this._id, data.kv_store)
+      this._kvStore = new KvStore(this._id, data.kv_store, this)
       this._meta = data.meta
       this._order = data.order
     }
@@ -351,12 +486,23 @@ export const useExtensions = createSharedComposable(() => {
     }
 
     setMeta(key: string, value: any): Promise<any> {
+      if (!this._meta) {
+        this._meta = {}
+      }
+
+      this._meta[key] = value
+
       return updateExtensionMeta(this.id, key, value)
     }
 
-    clear(): Promise<any> {
+    async clear(): Promise<any> {
       return clearKvStore(this.id).then(() => {
         this.uiKey++
+
+        nextTick(() => {
+          eventBus.emit(ExtensionsEvents.CLEARDATA, this.id)
+          $e('c:extension:clear-data', { extensionId: this._extensionId })
+        })
       })
     }
 
@@ -365,88 +511,16 @@ export const useExtensions = createSharedComposable(() => {
     }
   }
 
-  // Function to load extensions
-  onMounted(async () => {
-    try {
-      // Load all JSON modules from the specified glob pattern
-      const modules = import.meta.glob('../extensions/*/*.json')
-
-      const markdownModules = import.meta.glob('../extensions/*/*.md', {
-        query: '?raw',
-        import: 'default',
-      })
-
-      const extensionCount = Object.keys(modules).length
-      let disabledCount = 0
-
-      // Array to hold the promises
-      const promises = Object.keys(modules).map(async (path) => {
-        try {
-          // Load the module
-          const mod = (await modules[path]()) as any
-          const manifest = mod.default as ExtensionManifest
-
-          if (!Array.isArray(manifest.links)) {
-            manifest.links = []
-          }
-
-          if (!manifest?.config || !manifest?.config?.modalSize) {
-            manifest.config = {
-              ...(manifest.config || {}),
-              modalSize: 'lg',
-            }
-          }
-
-          if (manifest?.disabled !== true) {
-            availableExtensions.value.push(manifest)
-
-            // Load the descriptionMarkdown if available
-            if (manifest.description) {
-              const markdownPath = `../extensions/${manifest.description}`
-
-              if (markdownModules[markdownPath] && manifest?.id) {
-                try {
-                  const markdownContent = await markdownModules[markdownPath]()
-
-                  descriptionContent.value[manifest.id] = `${markdownContent}`
-                } catch (markdownError) {
-                  console.error(`Failed to load Markdown file at ${markdownPath}:`, markdownError)
-                }
-              }
-            }
-          } else {
-            disabledCount++
-          }
-        } catch (error) {
-          console.error(`Failed to load module at ${path}:`, error)
-        }
-      })
-
-      // Wait for all modules to be processed
-      await Promise.all(promises)
-
-      if (availableExtensions.value.length + disabledCount === extensionCount) {
-        // Sort extensions
-        availableExtensions.value.sort((a, b) => a.title.localeCompare(b.title))
-        extensionsLoaded.value = true
-      }
-    } catch (error) {
-      console.error('Error loading extensions:', error)
-    }
-
-    // if (isEeUI) {
-    //   extensionsEgg.value = true
-    // }
-  })
-
   watch(
-    () => base.value?.id,
-    (baseId) => {
-      if (baseId && !baseExtensions.value[baseId]) {
-        loadExtensionsForBase(baseId).catch((e) => {
-          console.error(e)
-        })
+    [() => base.value?.id, isPluginsEnabled, () => extensionAccess.value.list, () => pluginsLoaded.value],
+    ([baseId, newPluginsEnabled, isAllowed, isPluginsLoaded]) => {
+      if (!newPluginsEnabled || !baseId || !isAllowed || !isPluginsLoaded) {
+        return
       }
+
+      loadExtensionsForBase(baseId).catch((e) => {
+        console.error(e)
+      })
     },
     {
       immediate: true,
@@ -462,22 +536,16 @@ export const useExtensions = createSharedComposable(() => {
     detailsExtensionId.value = extensionId
     isDetailsVisible.value = true
     detailsFrom.value = from || 'market'
-  }
 
+    $e('c:extension:details', { source: from, extensionId })
+  }
   // Extension market modal
   const isMarketVisible = ref(false)
 
-  const onEggClick = () => {
-    extensionsEggCounter.value++
-    if (extensionsEggCounter.value >= 2) {
-      extensionsEgg.value = true
-    }
-  }
-
   return {
-    extensionsLoaded,
+    extensionsLoaded: pluginsLoaded,
     availableExtensions,
-    descriptionContent,
+    descriptionContent: pluginDescriptionContent,
     extensionList,
     isPanelExpanded,
     toggleExtensionPanel,
@@ -487,15 +555,20 @@ export const useExtensions = createSharedComposable(() => {
     updateExtensionMeta,
     clearKvStore,
     deleteExtension,
-    getExtensionAssetsUrl,
+    loadExtensionsForBase,
+    getExtensionAssetsUrl: (pathOrUrl: string) => getPluginAssetUrl(pathOrUrl, pluginTypes.extension),
     isDetailsVisible,
     detailsExtensionId,
     detailsFrom,
     showExtensionDetails,
     isMarketVisible,
-    onEggClick,
-    extensionsEgg,
     extensionPanelSize,
     eventBus,
+    getExtensionMinAccessRole,
+    userHasAccessToExtension,
+    userCurrentBaseRole,
+    extensionAccess,
+    baseExtensions,
+    Extension,
   }
 })

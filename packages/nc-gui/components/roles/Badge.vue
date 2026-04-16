@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { RoleColors, RoleIcons, RoleLabels } from 'nocodb-sdk'
+import { ProjectRoles, RoleColors, RoleIcons, RoleLabels, WorkspaceUserRoles } from 'nocodb-sdk'
 
 const props = withDefaults(
   defineProps<{
@@ -9,8 +9,11 @@ const props = withDefaults(
     border?: boolean
     showIcon?: boolean
     iconOnly?: boolean
-    size?: 'sm' | 'md' | 'lg'
+    size?: 'xs' | 'sm' | 'md' | 'lg'
     disabled?: boolean
+    ncBadgeClass?: string
+    showTooltip?: boolean
+    inheritedRoleIcon?: string
   }>(),
   {
     clickable: false,
@@ -19,6 +22,9 @@ const props = withDefaults(
     size: 'sm',
     iconOnly: false,
     showIcon: true,
+    ncBadgeClass: '',
+    showTooltip: false,
+    inheritedRoleIcon: undefined,
   },
 )
 
@@ -28,13 +34,20 @@ const borderRef = toRef(props, 'border')
 
 const sizeSelect = computed(() => props.size)
 
+const isInheritRole = computed(() => {
+  const role = roleRef.value
+  return role === 'inherit' || role === ProjectRoles.INHERIT || role === WorkspaceUserRoles.INHERIT
+})
+
 const roleProperties = computed(() => {
   const role = roleRef.value
   const color = RoleColors[role]
-  const icon = RoleIcons[role]
+  // Use inherited role icon if role is INHERIT and inheritedRoleIcon is provided
+  const icon = isInheritRole.value && props.inheritedRoleIcon ? props.inheritedRoleIcon : RoleIcons[role]
   const label = RoleLabels[role]
+
   return {
-    color: props.disabled ? 'grey' : color,
+    color: props.disabled ? 'disabled' : color,
     icon,
     label,
   }
@@ -42,43 +55,50 @@ const roleProperties = computed(() => {
 </script>
 
 <template>
-  <div
+  <NcTooltip
+    :disabled="!showTooltip"
     class="flex items-start rounded-md w-[fit-content] nc-role-badge"
     :class="{
       'cursor-pointer': clickableRef,
     }"
   >
-    <NcBadge class="!px-2 w-full" :color="roleProperties.color" :border="borderRef" :size="sizeSelect">
+    <template #title>
+      <slot name="tooltip" :label="roleProperties.label">
+        {{ $t(`objects.roleType.${roleProperties.label}`) }}
+      </slot>
+    </template>
+
+    <NcBadge
+      class="!px-2 w-full"
+      :class="[ncBadgeClass, roleColorsMapping[roleProperties.color]?.badgeClass ?? '']"
+      :color="roleProperties.color === 'disabled' ? 'gray' : roleProperties.color"
+      :border="borderRef"
+      :size="sizeSelect"
+    >
       <div
         class="badge-text w-full flex items-center justify-between gap-2"
-        :class="{
-          'text-purple-700': roleProperties.color === 'purple',
-          'text-blue-700': roleProperties.color === 'blue',
-          'text-green-700': roleProperties.color === 'green',
-          'text-orange-700': roleProperties.color === 'orange',
-          'text-yellow-700': roleProperties.color === 'yellow',
-          'text-red-700': roleProperties.color === 'red',
-          'text-maroon-700': roleProperties.color === 'maroon',
-          'text-gray-400': !roleProperties.color === 'grey',
-          'text-gray-300': !roleProperties.color,
-          sizeSelect,
-        }"
+        :class="
+          roleColorsMapping[roleProperties.color]?.badgeContent ??
+          roleColorsMapping[roleProperties.color]?.content ??
+          'text-nc-content-brand-hover'
+        "
       >
         <div class="flex items-center gap-2">
           <GeneralIcon v-if="showIcon" :icon="roleProperties.icon" />
           <span v-if="!iconOnly" class="flex whitespace-nowrap">
-            {{ $t(`objects.roleType.${roleProperties.label}`) }}
+            <slot name="label">
+              {{ $t(`objects.roleType.${roleProperties.label}`) }}
+            </slot>
           </span>
         </div>
         <GeneralIcon v-if="clickableRef" icon="arrowDown" class="flex-none" />
       </div>
     </NcBadge>
+
     <!--
     <a-tooltip v-if="inheritRef" placement="bottom">
       <div class="text-gray-400 text-xs p-1 rounded-md">Workspace Role</div>
     </a-tooltip>
     -->
-  </div>
+  </NcTooltip>
 </template>
-
-<style scoped lang="scss"></style>

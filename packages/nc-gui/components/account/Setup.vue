@@ -3,9 +3,19 @@ const { t } = useI18n()
 
 const { loadSetupApps, emailConfigured, storageConfigured, listModalDlg } = useAccountSetupStoreOrThrow()
 
-// const { appInfo } = useGlobal()
+const isAdminPanel = inject(IsAdminPanelInj, ref(false))
 
 const openedCategory = ref<string | null>(null)
+
+const navigateToSetup = (category: 'email' | 'storage', app?: string) => {
+  if (isAdminPanel.value) {
+    const query: Record<string, string> = { tab: `setup-${category}` }
+    if (app) query.app = app
+    navigateTo({ path: '/admin', query })
+  } else {
+    navigateTo(`/account/setup/${category}${app ? `/${app}` : ''}`)
+  }
+}
 
 const configs = computed(() => [
   {
@@ -13,38 +23,28 @@ const configs = computed(() => [
     key: 'email',
     description:
       'Configure your preferred email service to manage how your application sends alerts, notifications and other essential emails.',
-    docsLink: 'https://docs.nocodb.com/account-settings/oss-specific-details#configure-email',
+    docsLink: 'https://nocodb.com/docs/product-docs/account-settings/oss-specific-details#configure-email',
     buttonClick: () => {
-      navigateTo(`/account/setup/email${emailConfigured.value ? `/${emailConfigured.value.title}` : ''}`)
+      navigateToSetup('email', emailConfigured.value?.title)
     },
     itemClick: () => {
-      navigateTo(`/account/setup/email`)
+      navigateToSetup('email')
     },
     configured: emailConfigured.value,
   },
   {
     title: t('labels.configLabel', { label: t('labels.storage') }),
     key: 'storage',
-    description: 'Set up and manage your preferred storage solution for securely handling and storing your application’s data.',
-    docsLink: 'https://docs.nocodb.com/account-settings/oss-specific-details#configure-storage',
+    description: "Set up and manage your preferred storage solution for securely handling and storing your application's data.",
+    docsLink: 'https://nocodb.com/docs/product-docs/account-settings/oss-specific-details#configure-storage',
     buttonClick: () => {
-      navigateTo(`/account/setup/storage${storageConfigured.value ? `/${storageConfigured.value.title}` : ''}`)
+      navigateToSetup('storage', storageConfigured.value?.title)
     },
     itemClick: () => {
-      navigateTo(`/account/setup/storage`)
+      navigateToSetup('storage')
     },
     configured: storageConfigured.value,
   },
-  // {
-  //   title: t('labels.switchToProd'),
-  //   key: 'switchToProd',
-  //   description: 'Switch to production-ready app database from existing application database.',
-  //   docsLink: 'https://docs.nocodb.com',
-  //   buttonClick: () => {
-  //     //  TODO: Implement the logic to switch to production
-  //   },
-  //   isPending: !(appInfo.value as any)?.prodReady,
-  // },
 ])
 
 onMounted(async () => {
@@ -74,7 +74,7 @@ onMounted(async () => {
         <div
           v-for="config of configs"
           :key="config.key"
-          class="flex flex-col border-1 rounded-2xl border-gray-200 p-6 gap-2 hover:(shadow bg-gray-10)"
+          class="flex flex-col border-1 rounded-2xl border-nc-border-gray-medium p-6 gap-2 hover:(shadow bg-gray-10 dark:bg-nc-bg-gray-extralight)"
           :class="{
             'cursor-pointer': config.itemClick,
           }"
@@ -88,13 +88,13 @@ onMounted(async () => {
                   {{ $t('activity.pending') }}
                 </span>
               </template>
-              <GeneralIcon icon="ncAlertCircle" class="text-orange-500 -mt-1 w-6 h-6 nc-pending" />
+              <GeneralIcon icon="ncAlertCircle" class="text-nc-content-orange-medium -mt-1 w-6 h-6 nc-pending" />
             </NcTooltip>
-            <GeneralIcon v-else icon="circleCheckSolid" class="text-success w-6 h-6 bg-white-500 nc-configured" />
+            <GeneralIcon v-else icon="circleCheckSolid" class="text-success w-6 h-6 nc-configured" />
 
             <span class="font-bold text-base"> {{ config.title }}</span>
           </div>
-          <div class="text-gray-600 text-sm">{{ config.description }}</div>
+          <div class="text-nc-content-gray-subtle2 text-sm">{{ config.description }}</div>
 
           <div class="flex justify-between mt-4">
             <NcButton
@@ -126,5 +126,3 @@ onMounted(async () => {
     <LazyAccountSetupListModal v-if="openedCategory" v-model="listModalDlg" :category="openedCategory" />
   </div>
 </template>
-
-<style scoped lang="scss"></style>

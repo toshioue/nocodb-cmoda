@@ -7,11 +7,13 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { HookReqType, HookTestReqType } from 'nocodb-sdk';
 import type { HookType } from 'nocodb-sdk';
+import { NcError } from '~/helpers/ncError';
 import { GlobalGuard } from '~/guards/global/global.guard';
 import { PagedResponseImpl } from '~/helpers/PagedResponse';
 import { HooksService } from '~/services/hooks.service';
@@ -110,25 +112,29 @@ export class HooksController {
       return { msg: 'The hook has been tested successfully' };
     } catch (e) {
       console.error(e);
-      throw e;
+      NcError.get(context).webhookError(e.message);
     }
   }
 
   @Get([
-    '/api/v1/db/meta/tables/:tableId/hooks/samplePayload/:operation/:version',
-    '/api/v2/meta/tables/:tableId/hooks/samplePayload/:operation/:version',
+    '/api/v1/db/meta/tables/:tableId/hooks/samplePayload/:event/:operation/:version',
+    '/api/v2/meta/tables/:tableId/hooks/samplePayload/:event/:operation/:version',
   ])
   @Acl('tableSampleData')
   async tableSampleData(
     @TenantContext() context: NcContext,
     @Param('tableId') tableId: string,
-    @Param('operation') operation: HookType['operation'],
+    @Param('event') event: HookType['event'][number],
+    @Param('operation') operation: HookType['operation'][number],
     @Param('version') version: HookType['version'],
+    @Query('includeUser') includeUser: string,
   ) {
     return await this.hooksService.tableSampleData(context, {
       tableId,
+      event,
       operation,
       version,
+      includeUser: includeUser === 'true',
     });
   }
 

@@ -1,3 +1,8 @@
+import {
+  isCreatedOrLastModifiedTimeCol,
+  isSupportedDisplayValueColumn,
+  isSystemColumn,
+} from 'nocodb-sdk';
 import type { ColumnType } from 'nocodb-sdk';
 
 export default function mapDefaultDisplayValue<T extends ColumnType>(
@@ -6,6 +11,27 @@ export default function mapDefaultDisplayValue<T extends ColumnType>(
   if (!columnsArr.some((column) => column.pv)) {
     const pkIndex = columnsArr.findIndex((column) => column.pk);
 
+    // find first supported display value column which is not system column
+    const displayValueColumn = columnsArr.find(
+      (column) =>
+        isSupportedDisplayValueColumn(column) &&
+        !isSystemColumn(column) &&
+        !isCreatedOrLastModifiedTimeCol(column),
+    );
+
+    if (displayValueColumn) {
+      displayValueColumn.pv = true;
+      return displayValueColumn;
+    }
+
+    // Fallback: pick the first non-system column
+    const fallback = columnsArr.find((column) => !isSystemColumn(column));
+    if (fallback) {
+      fallback.pv = true;
+      return fallback;
+    }
+
+    // Last resort: pick any non-pk column by position
     // if PK is at the end of table
     if (pkIndex === columnsArr.length - 1) {
       if (pkIndex > 0) {

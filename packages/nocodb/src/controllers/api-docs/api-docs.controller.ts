@@ -32,6 +32,7 @@ export class ApiDocsController {
     const swagger = await this.apiDocsService.swaggerJson(context, {
       baseId: baseId,
       siteUrl: req.ncSiteUrl,
+      req,
     });
 
     return swagger;
@@ -48,6 +49,7 @@ export class ApiDocsController {
     const swagger = await this.apiDocsService.swaggerJsonV2(context, {
       baseId: baseId,
       siteUrl: req.ncSiteUrl,
+      req,
     });
 
     return swagger;
@@ -89,6 +91,45 @@ export class ApiDocsController {
   @UseGuards(PublicApiLimiterGuard)
   @Get(['/api/v2/meta/bases/:baseId/redoc'])
   redocHtmlV2(@Param('baseId') baseId: string, @Response() res) {
+    res.send(
+      getRedocHtml({
+        ncSiteUrl: process.env.NC_PUBLIC_URL || '',
+        dashboardPath: Noco.getConfig().dashboardPath || '',
+      }),
+    );
+  }
+
+  @Get(['/api/v3/meta/bases/:baseId/swagger.json'])
+  @UseGuards(MetaApiLimiterGuard, GlobalGuard)
+  @Acl('swaggerJson')
+  async swaggerJsonV3(
+    @TenantContext() context: NcContext,
+    @Param('baseId') baseId: string,
+    @Request() req,
+  ) {
+    const swagger = await this.apiDocsService.swaggerJsonV3(context, {
+      baseId: baseId,
+      siteUrl: req.ncSiteUrl,
+      req,
+    });
+
+    return swagger;
+  }
+
+  @Get(['/api/v3/meta/bases/:baseId/swagger'])
+  @UseGuards(PublicApiLimiterGuard)
+  swaggerHtmlV3(@Param('baseId') baseId: string, @Response() res) {
+    res.send(
+      getSwaggerHtml({
+        ncSiteUrl: process.env.NC_PUBLIC_URL || '',
+        dashboardPath: Noco.getConfig().dashboardPath || '',
+      }),
+    );
+  }
+
+  @UseGuards(PublicApiLimiterGuard)
+  @Get(['/api/v3/meta/bases/:baseId/redoc'])
+  redocHtmlV3(@Param('baseId') baseId: string, @Response() res) {
     res.send(
       getRedocHtml({
         ncSiteUrl: process.env.NC_PUBLIC_URL || '',

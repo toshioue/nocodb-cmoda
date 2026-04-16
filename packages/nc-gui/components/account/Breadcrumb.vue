@@ -16,6 +16,26 @@ const breadcrumb = computed<BreadcrumbType[]>(() => {
     },
   ]
 
+  // Handle /account/tokens and /account/tokens/new (specific route, not dynamic [page])
+  if (route.path.startsWith('/account/tokens')) {
+    if (route.path.endsWith('/new')) {
+      payload.push({
+        title: t('title.tokens'),
+        path: '/account/tokens',
+      })
+      payload.push({
+        title: t('general.create'),
+        active: true,
+      })
+    } else {
+      payload.push({
+        title: t('title.tokens'),
+        active: true,
+      })
+    }
+    return payload
+  }
+
   switch (route.params.page) {
     case 'profile': {
       payload.push({
@@ -27,6 +47,27 @@ const breadcrumb = computed<BreadcrumbType[]>(() => {
     case 'tokens': {
       payload.push({
         title: t('title.tokens'),
+        active: true,
+      })
+      break
+    }
+    case 'mcp': {
+      payload.push({
+        title: t('title.mcpServer'),
+        active: true,
+      })
+      break
+    }
+    case 'oauth-clients': {
+      payload.push({
+        title: t('title.oauthClients'),
+        active: true,
+      })
+      break
+    }
+    case 'external-integrations': {
+      payload.push({
+        title: t('title.externalIntegrations'),
         active: true,
       })
       break
@@ -130,7 +171,7 @@ const onClick = async (item: BreadcrumbType) => {
         class="nc-breadcrumb-item capitalize"
         :class="{
           'active': item.active,
-          'cursor-pointer': item.path && !item.active,
+          'cursor-pointer hover:underline': item.path && !item.active,
         }"
         @click="onClick(item)"
       >

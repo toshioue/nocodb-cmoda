@@ -1,10 +1,12 @@
 import { UITypes } from 'nocodb-sdk';
+import { NcError } from '~/helpers/ncError';
 import { DATE_FORMATS, TIME_FORMATS } from '~/db/sql-client/lib/pg/constants';
 
 /*
  * Generate query to extract number from a string. The number is extracted by
  * removing all non-numeric characters from the string. Decimal point is allowed.
  * If there are more than one decimal points, only the first one is considered, the rest are ignored.
+ * Negatives are preserved. If statement starts with '-', number will be negated.
  *
  * @param {String} source - source column name
  * @returns {String} - query to extract number from a string
@@ -15,13 +17,22 @@ function extractNumberQuery(source: string) {
       NULLIF(
         REPLACE(
           REPLACE(
-            REGEXP_REPLACE(
-              REGEXP_REPLACE(${source}, '[^0-9.]', '', 'g'), 
-              '(\\d)\\.', '\\1-'
+            REPLACE(
+              REGEXP_REPLACE(
+                REPLACE(
+                  REGEXP_REPLACE(
+                    REGEXP_REPLACE(${source}, '[^0-9.-]', '', 'g'),
+                    '^-', '~'
+                  ),
+                  '-', ''
+                ),
+                '(\\d)\\.(\\d)', '\\1-\\2'
+              ), 
+              '.', ''
             ), 
-            '.', ''
-          ), 
-          '-', '.'
+            '-', '.'
+          ),
+          '~', '-'
         ), ''
       ) AS DECIMAL
     )
@@ -55,7 +66,7 @@ function generateBooleanCastQuery(columnName: string): string {
  */
 function generateDateTimeCastQuery(source: string, dateFormat: string) {
   if (!(dateFormat in DATE_FORMATS)) {
-    throw new Error(`Invalid date format: ${dateFormat}`);
+    NcError.badRequest(`Invalid date format: ${dateFormat}`);
   }
 
   const timeFormats =
@@ -63,12 +74,17 @@ function generateDateTimeCastQuery(source: string, dateFormat: string) {
 
   const cases = DATE_FORMATS[dateFormat].map(([format, regex]) =>
     timeFormats
-      .map(
-        ([timeFormat, timeRegex]) =>
-          `WHEN ${source} ~ '${regex.slice(0, -1)}\\s*${timeRegex.slice(
-            1,
-          )}' THEN to_date_time_safe(${source}, '${format} ${timeFormat}')`,
-      )
+      .map(([timeFormat, timeRegex]) => {
+        // For empty time format (date only), don't add space in format string
+        const formatString = timeFormat ? `${format} ${timeFormat}` : format;
+
+        // Combine regex patterns: remove $ from date regex and ^ from time regex
+        const combinedRegex = timeFormat
+          ? `${regex.slice(0, -1)}\\s+${timeRegex.slice(1)}`
+          : regex;
+
+        return `WHEN ${source} ~ '${combinedRegex}' THEN to_date_time_safe(${source}, '${formatString}')`;
+      })
       .join('\n'),
   );
 

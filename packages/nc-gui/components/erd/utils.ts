@@ -54,13 +54,16 @@ interface Relation {
 export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ERDConfig>) {
   const elements = ref<Elements<NodeData | EdgeData>>([])
 
-  const { theme } = useTheme()
-
-  const colorScale = d3ScaleLinear<string>().domain([0, 2]).range([theme.value.primaryColor, theme.value.accentColor])
+  const colorScale = d3ScaleLinear<string>().domain([0, 2]).range([themeV3Colors.brand['500'], themeV3Colors.pink['500']])
 
   const dagreGraph = new dagre.graphlib.Graph()
   dagreGraph.setDefaultEdgeLabel(() => ({}))
-  dagreGraph.setGraph({ rankdir: 'LR' })
+  dagreGraph.setGraph({
+    rankdir: 'LR',
+    align: 'UL',
+    nodesep: 50,
+    ranksep: 100,
+  })
 
   const { metasWithIdAsKey } = useMetas()
 
@@ -73,7 +76,7 @@ export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ER
   const relations = computed(() =>
     erdTables.value.reduce((acc, table) => {
       const meta = metasWithIdAsKey.value[table.id!]
-      const columns = meta.columns?.filter((column: ColumnType) => isLinksOrLTAR(column) && column.system !== 1) || []
+      const columns = meta?.columns?.filter((column: ColumnType) => isLinksOrLTAR(column) && column.system !== 1) || []
 
       for (const column of columns) {
         const colOptions = column.colOptions as LinkToAnotherRecordType
@@ -137,9 +140,12 @@ export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ER
 
     if (type === RelationTypes.HAS_MANY) typeLabel = 'has many'
     else if (type === RelationTypes.MANY_TO_MANY) typeLabel = 'many to many'
-    else if (type === 'oo') typeLabel = 'one to one'
+    else if (type === RelationTypes.ONE_TO_ONE) typeLabel = 'one to one'
+    else if (type === RelationTypes.ONE_TO_MANY) typeLabel = 'one to many'
+    else if (type === RelationTypes.MANY_TO_ONE) typeLabel = 'many to one'
+    else if (type === RelationTypes.BELONGS_TO) typeLabel = 'belongs to'
 
-    const parentCol = metasWithIdAsKey.value[source].columns?.find((col) => {
+    const parentCol = metasWithIdAsKey.value[source]?.columns?.find((col) => {
       const colOptions = col.colOptions as LinkToAnotherRecordType
       if (!colOptions) return false
 
@@ -150,22 +156,22 @@ export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ER
       )
     })
 
-    const childCol = metasWithIdAsKey.value[target].columns?.find((col) => {
+    const childCol = metasWithIdAsKey.value[target]?.columns?.find((col) => {
       const colOptions = col.colOptions as LinkToAnotherRecordType
       if (!colOptions) return false
 
       return colOptions.fk_parent_column_id === (type === RelationTypes.MANY_TO_MANY ? childColId : parentColId)
     })
 
-    if (!parentCol || !childCol) return ''
+    if (!parentCol || !childCol) return ['', '']
 
     if (type === RelationTypes.MANY_TO_MANY) {
       if (config.value.showJunctionTableNames) {
-        if (!modelId) return ''
+        if (!modelId) return ['', '']
 
         const mmModel = metasWithIdAsKey.value[modelId]
 
-        if (!mmModel) return ''
+        if (!mmModel) return ['', '']
 
         if (mmModel.title !== mmModel.table_name) {
           return [`${mmModel.title} (${mmModel.table_name})`]
@@ -175,11 +181,16 @@ export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ER
       }
     }
 
+    const sourceMeta = metasWithIdAsKey.value[source]
+    const targetMeta = metasWithIdAsKey.value[target]
+
+    if (!sourceMeta || !targetMeta) return ['', '']
+
     return [
       // detailed edge label
-      `[${metasWithIdAsKey.value[source].title}] ${parentCol.title} - ${typeLabel} - ${childCol.title} [${metasWithIdAsKey.value[target].title}]`,
+      `[${sourceMeta.title}] ${parentCol.title} - ${typeLabel} - ${childCol.title} [${targetMeta.title}]`,
       // simple edge label (for skeleton)
-      `${metasWithIdAsKey.value[source].title} - ${typeLabel} - ${metasWithIdAsKey.value[target].title}`,
+      `${sourceMeta.title} - ${typeLabel} - ${targetMeta.title}`,
     ]
   }
 
@@ -188,7 +199,7 @@ export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ER
       if (!table.id) return acc
 
       const columns =
-        metasWithIdAsKey.value[table.id].columns?.filter((col) => {
+        metasWithIdAsKey.value[table.id]?.columns?.filter((col) => {
           if ([UITypes.CreatedBy, UITypes.LastModifiedBy].includes(col.uidt as UITypes) && col.system) return false
           return config.value.showAllColumns || (!config.value.showAllColumns && isLinksOrLTAR(col))
         }) || []
@@ -290,6 +301,35 @@ export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ER
 
       dagre.layout(dagreGraph)
 
+      // Calculate bounds to center the layout
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+
+      for (const el of elements.value) {
+        if (isNode(el)) {
+          const nodeWithPosition = dagreGraph.node(el.id)
+          const width = skeleton ? nodeWidth * 3 : nodeWidth
+          const height =
+            nodeHeight.value +
+            (skeleton
+              ? 250
+              : (el as Node<NodeData>).data!.columnLength > 0
+              ? nodeHeight.value * (el as Node<NodeData>).data!.columnLength
+              : nodeHeight.value)
+
+          minX = Math.min(minX, nodeWithPosition.x - width / 2)
+          minY = Math.min(minY, nodeWithPosition.y - height / 2)
+          maxX = Math.max(maxX, nodeWithPosition.x + width / 2)
+          maxY = Math.max(maxY, nodeWithPosition.y + height / 2)
+        }
+      }
+
+      // Calculate center offset to position the layout at origin
+      const centerOffsetX = -(minX + maxX) / 2
+      const centerOffsetY = -(minY + maxY) / 2
+
       for (const el of elements.value) {
         if (isNode(el)) {
           const color = colorScale(dagreGraph.predecessors(el.id)!.length)
@@ -298,8 +338,12 @@ export function useErdElements(tables: MaybeRef<TableType[]>, props: MaybeRef<ER
 
           el.targetPosition = Position.Left
           el.sourcePosition = Position.Right
-          el.position = { x: nodeWithPosition.x, y: nodeWithPosition.y }
-          el.class = ['rounded-lg border-1 border-gray-200 shadow-lg'].join(' ')
+          // Apply center offset to position nodes around the origin
+          el.position = {
+            x: nodeWithPosition.x + centerOffsetX,
+            y: nodeWithPosition.y + centerOffsetY,
+          }
+          el.class = [erdNodeClassNames.node].join(' ')
           el.data.color = color
 
           el.style = (n) => {

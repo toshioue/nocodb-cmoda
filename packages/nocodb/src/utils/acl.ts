@@ -1,7 +1,20 @@
-import { OrgUserRoles, ProjectRoles, SourceRestriction } from 'nocodb-sdk';
+import {
+  OrgUserRoles,
+  ProjectRoles,
+  SourceRestriction,
+  WorkspaceUserRoles,
+} from 'nocodb-sdk';
 
 const roleScopes = {
   org: [OrgUserRoles.VIEWER, OrgUserRoles.CREATOR],
+  workspace: [
+    WorkspaceUserRoles.NO_ACCESS,
+    WorkspaceUserRoles.VIEWER,
+    WorkspaceUserRoles.COMMENTER,
+    WorkspaceUserRoles.EDITOR,
+    WorkspaceUserRoles.CREATOR,
+    WorkspaceUserRoles.OWNER,
+  ],
   base: [
     ProjectRoles.VIEWER,
     ProjectRoles.COMMENTER,
@@ -17,13 +30,14 @@ const permissionScopes = {
     // API Tokens
     'apiTokenList',
     'apiTokenCreate',
+    'apiTokenUpdate',
     'apiTokenDelete',
 
-    // Base
-    'baseList',
-    'baseCreate',
+    'oAuthAuthorizationList',
+    'oAuthAuthorizationRevoke',
+    'oAuthClientRegenerateSecret',
 
-    // User
+    // User (SUPER_ADMIN only via '*')
     'userList',
     'userAdd',
     'userUpdate',
@@ -41,19 +55,38 @@ const permissionScopes = {
 
     // Misc
     'commandPalette',
-    'testConnection',
-    'genericGPT',
-    'duplicateSharedBase',
+    'baseListAll',
+    'instanceAdminStats',
+    'instanceAdminWorkspaces',
+    'instanceAdminBases',
 
     // Cache
     'cacheGet',
     'cacheDelete',
 
-    // TODO: add ACL with base scope
+    'notification',
+
+    // oAuth
+    'oAuthClientList',
+    'oAuthClientCreate',
+    'oAuthClientUpdate',
+    'oAuthClientDelete',
+    'oAuthClientGet',
+
+    'mcpRootList',
+
+    'getUserProfile',
+
+    // Connection + upload (matches EE org scope)
+    'testConnection',
     'upload',
     'uploadViaURL',
-
-    'notification',
+    'genericGPT',
+  ],
+  workspace: [
+    // Base operations (workspace scope — unified CE/EE model)
+    'baseList',
+    'baseCreate',
 
     // Integration
     'integrationGet',
@@ -61,16 +94,40 @@ const permissionScopes = {
     'integrationDelete',
     'integrationUpdate',
     'integrationList',
+    'integrationStore',
+    'integrationEndpointGet',
+
+    // Integration link management (workspace scope)
+    'integrationLinkedBaseList',
+    'integrationUpdateLinkedBases',
+
+    // Misc
+    'duplicateSharedBase',
+    'webhookPluginList',
+
+    // AI
+    'aiSchema',
+
+    // Workspace user ops (internal, not exposed as CE API)
+    'workspaceUserList',
+    'workspaceInvite',
+    'workspaceUserUpdate',
+    'workspaceUserDelete',
   ],
   base: [
+    'nestedDataListCopyPasteOrDeleteAll',
+    'nestedDataBulkCopyPasteOrDeleteAll',
     'formViewGet',
     'baseGet',
     'tableGet',
     'dataList',
+    'linkDataList',
+    'bulkDataList',
     'dataRead',
     'dataExist',
     'dataFindOne',
     'dataGroupBy',
+    'dataExport',
     'exportCsv',
     'exportExcel',
     'sortList',
@@ -81,7 +138,13 @@ const permissionScopes = {
     'kanbanViewGet',
     'gridViewUpdate',
     'formViewUpdate',
+    'formColumnUpdate',
+    'galleryViewUpdate',
+    'kanbanViewUpdate',
+    'mapViewUpdate',
     'calendarViewGet',
+    'mapViewGet',
+    'calendarViewUpdate',
     'groupedDataList',
     'mmList',
     'hmList',
@@ -93,6 +156,7 @@ const permissionScopes = {
     'sequenceList',
     'procedureList',
     'columnList',
+    'viewColumnList',
     'triggerList',
     'relationList',
     'relationListAll',
@@ -100,18 +164,20 @@ const permissionScopes = {
     'list',
     'dataCount',
     'dataAggregate',
+    'bulkAggregate',
     'swaggerJson',
     'commentList',
-    'commentsCount',
+    'commentCount',
     'commentDelete',
     'commentUpdate',
     'hideAllColumns',
     'showAllColumns',
-    'auditListRow',
-    'auditRowUpdate',
+    'recordAuditList',
     'dataUpdate',
     'dataDelete',
     'dataInsert',
+    'dataUpsert',
+    'bulkDataUpsert',
     'viewColumnUpdate',
     'sortCreate',
     'sortUpdate',
@@ -120,12 +186,15 @@ const permissionScopes = {
     'filterUpdate',
     'filterDelete',
     'filterGet',
-    'filterChildrenRead',
+    'filterChildrenList',
+    'buttonFilterList',
+    'buttonFilterCreate',
     'mmExcludedList',
     'hmExcludedList',
     'btExcludedList',
     'ooExcludedList',
     'gridColumnUpdate',
+    'listColumnUpdate',
     'bulkDataInsert',
     'bulkDataUpdate',
     'bulkDataUpdateAll',
@@ -140,6 +209,7 @@ const permissionScopes = {
     'nestedListCopyPasteOrDeleteAll',
     'baseUserList',
     'sourceCreate',
+    'columnAdd',
 
     // Base API Tokens
     'baseApiTokenList',
@@ -163,18 +233,125 @@ const permissionScopes = {
     'hookTrigger',
 
     'userInvite',
+
+    // AI
+    'aiUtils',
+    'aiData',
+    'aiBaseSchema',
+    'aiDataGenerateRows',
+    'aiDataFillRows',
+    'aiDataExtractRows',
+
+    // MCP
+    'mcpList',
+    'mcpCreate',
+    'mcpUpdate',
+    'mcpDelete',
+
+    // etc
+    'fetchViaUrl',
+
+    // Base-scoped integrations
+    'baseIntegrationList',
+    'baseIntegrationRead',
+    'baseIntegrationFetchOptions',
+    'baseIntegrationCreate',
+    'baseIntegrationUpdate',
+    'baseIntegrationLink',
+    'baseIntegrationUnlink',
   ],
 };
 
 const rolePermissions:
   | Record<
-      Exclude<OrgUserRoles, OrgUserRoles.SUPER_ADMIN> | ProjectRoles | 'guest',
+      | Exclude<OrgUserRoles, OrgUserRoles.SUPER_ADMIN>
+      | ProjectRoles
+      | WorkspaceUserRoles
+      | 'guest',
       { include?: Record<string, boolean>; exclude?: Record<string, boolean> }
     >
   | Record<OrgUserRoles.SUPER_ADMIN, string> = {
   guest: {},
   [OrgUserRoles.SUPER_ADMIN]: '*',
 
+  // ── Org roles — common user permissions (noop, collapsed below) ──
+  [OrgUserRoles.VIEWER]: {
+    include: {
+      apiTokenList: true,
+      apiTokenCreate: true,
+      apiTokenUpdate: true,
+      apiTokenDelete: true,
+      passwordChange: true,
+      commandPalette: true,
+      baseListAll: true,
+      testConnection: true,
+      notification: true,
+
+      // oAuth
+      oAuthClientList: true,
+      oAuthClientCreate: true,
+      oAuthClientUpdate: true,
+      oAuthClientDelete: true,
+      oAuthClientGet: true,
+      oAuthAuthorizationList: true,
+      oAuthAuthorizationRevoke: true,
+      oAuthClientRegenerateSecret: true,
+
+      mcpRootList: true,
+      getUserProfile: true,
+    },
+  },
+  [OrgUserRoles.CREATOR]: {
+    include: {
+      upload: true,
+      uploadViaURL: true,
+      isPluginActive: true,
+      genericGPT: true,
+    },
+  },
+
+  // ── Workspace roles ──
+  [WorkspaceUserRoles.NO_ACCESS]: {
+    include: {
+      baseList: true,
+    },
+  },
+  [WorkspaceUserRoles.VIEWER]: {
+    include: {
+      workspaceUserList: true,
+      workspaceInvite: true,
+    },
+  },
+  [WorkspaceUserRoles.COMMENTER]: {
+    include: {},
+  },
+  [WorkspaceUserRoles.EDITOR]: {
+    include: {},
+  },
+  [WorkspaceUserRoles.CREATOR]: {
+    include: {
+      baseCreate: true,
+      duplicateSharedBase: true,
+      webhookPluginList: true,
+      integrationGet: true,
+      integrationCreate: true,
+      integrationDelete: true,
+      integrationUpdate: true,
+      integrationList: true,
+      integrationStore: true,
+      integrationEndpointGet: true,
+      integrationLinkedBaseList: true,
+      integrationUpdateLinkedBases: true,
+      aiSchema: true,
+      workspaceUserUpdate: true,
+      workspaceUserDelete: true,
+    },
+  },
+  [WorkspaceUserRoles.OWNER]: {
+    exclude: {},
+  },
+
+  // ── Base roles (unchanged) ──
   [ProjectRoles.VIEWER]: {
     include: {
       formViewGet: true,
@@ -184,11 +361,14 @@ const rolePermissions:
       tableGet: true,
       // data
       dataList: true,
+      linkDataList: true,
+      bulkDataList: true,
       dataRead: true,
       dataExist: true,
       dataFindOne: true,
       dataGroupBy: true,
 
+      dataExport: true,
       exportCsv: true,
       exportExcel: true,
 
@@ -202,6 +382,7 @@ const rolePermissions:
       kanbanViewGet: true,
       groupedDataList: true,
       calendarViewGet: true,
+      mapViewGet: true,
 
       mmList: true,
       hmList: true,
@@ -214,6 +395,7 @@ const rolePermissions:
       sequenceList: true,
       procedureList: true,
       columnList: true,
+      viewColumnList: true,
       triggerList: true,
       relationList: true,
       relationListAll: true,
@@ -221,20 +403,28 @@ const rolePermissions:
       list: true,
       dataCount: true,
       dataAggregate: true,
+      bulkAggregate: true,
       swaggerJson: true,
 
       nestedDataList: true,
       baseUserList: true,
 
+      // Extensions
       extensionList: true,
       extensionRead: true,
 
       jobList: true,
       commentList: true,
-      commentsCount: true,
-      auditListRow: true,
+      commentCount: true,
+      recordAuditList: true,
 
       userInvite: true,
+
+      // MCP CRUD
+      mcpList: true,
+      mcpCreate: true,
+      mcpUpdate: true,
+      mcpDelete: true,
     },
   },
   [ProjectRoles.COMMENTER]: {
@@ -246,28 +436,19 @@ const rolePermissions:
   },
   [ProjectRoles.EDITOR]: {
     include: {
-      hideAllColumns: true,
-      showAllColumns: true,
-      auditRowUpdate: true,
       dataUpdate: true,
       dataDelete: true,
       dataInsert: true,
-      viewColumnUpdate: true,
-      gridViewUpdate: true,
-      formViewUpdate: true,
-      sortCreate: true,
-      sortUpdate: true,
-      sortDelete: true,
-      filterCreate: true,
-      filterUpdate: true,
-      filterDelete: true,
+      dataUpsert: true,
+      bulkDataUpsert: true,
+      nestedDataListCopyPasteOrDeleteAll: true,
+      nestedDataBulkCopyPasteOrDeleteAll: true,
       filterGet: true,
-      filterChildrenRead: true,
+      filterChildrenList: true,
       mmExcludedList: true,
       hmExcludedList: true,
       btExcludedList: true,
       ooExcludedList: true,
-      gridColumnUpdate: true,
       bulkDataInsert: true,
       bulkDataUpdate: true,
       bulkDataUpdateAll: true,
@@ -283,6 +464,42 @@ const rolePermissions:
       // upload: true,
       // uploadViaURL: true,
       hookTrigger: true,
+
+      // AI
+      aiUtils: true,
+      aiData: true,
+      aiDataGenerateRows: true,
+      aiDataFillRows: true,
+      aiDataExtractRows: true,
+
+      // Base integrations (read only)
+      baseIntegrationList: true,
+
+      // Extensions
+      extensionUpdate: true,
+
+      // etc
+      fetchViaUrl: true,
+
+      // Sort/Filter/ViewColumn/View operations for personal views (middleware handles ownership check)
+      sortCreate: true,
+      sortUpdate: true,
+      sortDelete: true,
+      filterCreate: true,
+      filterUpdate: true,
+      filterDelete: true,
+      buttonFilterList: true,
+      buttonFilterCreate: true,
+      viewColumnUpdate: true,
+      hideAllColumns: true,
+      showAllColumns: true,
+      gridColumnUpdate: true,
+      listColumnUpdate: true,
+      gridViewUpdate: true,
+      galleryViewUpdate: true,
+      kanbanViewUpdate: true,
+      mapViewUpdate: true,
+      calendarViewUpdate: true,
     },
   },
   [ProjectRoles.CREATOR]: {
@@ -298,38 +515,6 @@ const rolePermissions:
       pluginUpdate: true,
       isPluginActive: true,
       createBase: true,
-    },
-  },
-  [OrgUserRoles.VIEWER]: {
-    include: {
-      apiTokenList: true,
-      apiTokenCreate: true,
-      apiTokenDelete: true,
-      passwordChange: true,
-      baseList: true,
-      testConnection: true,
-      isPluginActive: true,
-      commandPalette: true,
-      notification: true,
-    },
-  },
-  [OrgUserRoles.CREATOR]: {
-    include: {
-      userList: true,
-      userAdd: true,
-      userUpdate: true,
-      userDelete: true,
-      generateResetUrl: true,
-      userInviteResend: true,
-      upload: true,
-      uploadViaURL: true,
-      baseCreate: true,
-      duplicateSharedBase: true,
-      integrationGet: true,
-      integrationCreate: true,
-      integrationDelete: true,
-      integrationUpdate: true,
-      integrationList: true,
     },
   },
 };
@@ -484,6 +669,9 @@ Object.values(rolePermissions).forEach((role) => {
   }
 });
 
+// Collapse org roles — VIEWER gets same as CREATOR (EE pattern)
+rolePermissions[OrgUserRoles.VIEWER] = rolePermissions[OrgUserRoles.CREATOR];
+
 // Excluded permissions for source restrictions
 // `true` means permission is restricted and `false`/missing means permission is allowed
 export const sourceRestrictions = {
@@ -495,6 +683,7 @@ export const sourceRestrictions = {
     dataUpdate: true,
     dataDelete: true,
     dataInsert: true,
+    dataUpsert: true,
     bulkDataInsert: true,
     bulkDataUpdate: true,
     bulkDataUpdateAll: true,
@@ -503,6 +692,7 @@ export const sourceRestrictions = {
     relationDataRemove: true,
     relationDataAdd: true,
     nestedDataListCopyPasteOrDeleteAll: true,
+    nestedDataBulkCopyPasteOrDeleteAll: true,
     nestedDataUnlink: true,
     nestedDataLink: true,
   },
@@ -542,6 +732,7 @@ const permissionDescriptions: Record<string, string> = {
 
   apiTokenList: 'view list of API tokens',
   apiTokenCreate: 'create a new API token',
+  apiTokenUpdate: 'update an API token',
   apiTokenDelete: 'delete an API token',
 
   passwordChange: 'change your password',
@@ -556,6 +747,10 @@ const permissionDescriptions: Record<string, string> = {
   pluginUpdate: 'update plugin configuration',
 
   commandPalette: 'access the command palette',
+  baseListAll: 'list all workspaces and bases',
+  instanceAdminStats: 'view instance admin statistics',
+  instanceAdminWorkspaces: 'list all workspaces in instance admin',
+  instanceAdminBases: 'list all bases in instance admin',
   testConnection: 'test connection to a service',
   genericGPT: 'use generic GPT functionality',
 
@@ -565,16 +760,37 @@ const permissionDescriptions: Record<string, string> = {
   notification: 'send notifications',
 
   // workspace permissions
+  workspaceUserList: 'view list of users in the workspace',
+  workspaceInvite: 'invite users to the workspace',
+  workspaceUserUpdate: 'update workspace user details',
+  workspaceUserDelete: 'remove a user from the workspace',
+
   integrationCreate: 'create a new integration',
   integrationDelete: 'delete an integration',
   integrationUpdate: 'update integration details',
   integrationList: 'view list of integrations',
+  integrationStore: "get data from an integration's store",
+  integrationEndpointGet: 'call get request to an exposed integration endpoint',
+  integrationLinkedBaseList: 'view bases linked to an integration',
+  integrationUpdateLinkedBases: 'update base assignments for an integration',
+
+  // base-scoped integration permissions
+  baseIntegrationList: 'view integrations linked to a base',
+  baseIntegrationRead: 'view a single integration from a base',
+  baseIntegrationFetchOptions: 'fetch options for a base-scoped integration',
+
+  baseIntegrationCreate: 'create an integration from a base',
+  baseIntegrationUpdate: 'update an integration from a base',
+  baseIntegrationLink: 'link an integration to a base',
+  baseIntegrationUnlink: 'unlink an integration from a base',
 
   // base permissions
   formViewGet: 'view forms',
   baseGet: 'view base details',
   tableGet: 'view table details',
   dataList: 'view data',
+  linkDataList: 'view data',
+  bulkDataList: 'view data',
   dataRead: 'read data',
   dataExist: 'check if data exists',
   dataFindOne: 'find a single data record',
@@ -588,8 +804,10 @@ const permissionDescriptions: Record<string, string> = {
   galleryViewGet: 'view gallery',
   kanbanViewGet: 'view Kanban board',
   calendarViewGet: 'view calendar',
+  mapViewGet: 'view map',
   gridViewUpdate: 'update grid view',
   formViewUpdate: 'update form view',
+  formColumnUpdate: 'update form columns',
   groupedDataList: 'view grouped data',
   mmList: 'view many-to-many relationships',
   hmList: 'view hierarchical relationships',
@@ -602,6 +820,7 @@ const permissionDescriptions: Record<string, string> = {
   sequenceList: 'view list of sequences',
   procedureList: 'view list of procedures',
   columnList: 'view list of columns',
+  viewColumnList: 'view list of view columns',
   triggerList: 'view list of triggers',
   relationList: 'view list of relations',
   relationListAll: 'view all relations',
@@ -609,6 +828,7 @@ const permissionDescriptions: Record<string, string> = {
   list: 'view list of items',
   dataCount: 'view data count',
   dataAggregate: 'view data aggregates',
+  bulkAggregate: 'view data aggregates',
   swaggerJson: 'view Swagger JSON',
   commentList: 'view list of comments',
   commentsCount: 'view comment count',
@@ -616,11 +836,11 @@ const permissionDescriptions: Record<string, string> = {
   commentUpdate: 'update comments',
   hideAllColumns: 'hide all columns',
   showAllColumns: 'show all columns',
-  auditListRow: 'view audit log for a row',
-  auditRowUpdate: 'update audit log for a row',
+  recordAuditList: 'view audit log for a row',
   dataUpdate: 'update data',
   dataDelete: 'delete data',
   dataInsert: 'insert new data',
+  dataUpsert: 'upsert data (insert or update)',
   viewColumnUpdate: 'update view columns',
   sortCreate: 'create a new sort',
   sortUpdate: 'update an existing sort',
@@ -629,12 +849,15 @@ const permissionDescriptions: Record<string, string> = {
   filterUpdate: 'update an existing filter',
   filterDelete: 'delete a filter',
   filterGet: 'view filter details',
-  filterChildrenRead: 'view child filters',
+  filterChildrenList: 'view child filters',
+  buttonFilterList: 'list button visibility filters',
+  buttonFilterCreate: 'create a button visibility filter',
   mmExcludedList: 'view excluded many-to-many relationships',
   hmExcludedList: 'view excluded hierarchical relationships',
   btExcludedList: 'view excluded relationships',
   ooExcludedList: 'view excluded one-to-one relationships',
   gridColumnUpdate: 'update grid columns',
+  listColumnUpdate: 'update list columns',
   bulkDataInsert: 'bulk insert data',
   bulkDataUpdate: 'bulk update data',
   bulkDataUpdateAll: 'bulk update all data',
@@ -652,37 +875,27 @@ const permissionDescriptions: Record<string, string> = {
   baseDelete: 'delete a base',
   sourceCreate: 'create a new source',
 
-  pageGet: 'view page details',
-  pageList: 'view list of pages',
-  pageSearch: 'search pages',
-  pageParents: 'view parent pages',
-  pageCreate: 'create a new page',
-  pageUpdate: 'update a page',
-  pageDelete: 'delete a page',
-  pageGpt: 'use GPT to assist with pages',
-  docsMagicCreatePages: 'use Docs Magic to create pages',
-  pagePaginate: 'paginate pages',
-  pageDirectoryImport: 'import a page directory',
-  layoutGet: 'view layout details',
-  layoutList: 'view list of layouts',
-  layoutCreate: 'create a new layout',
-  widgetsList: 'view list of widgets',
-  widgetGet: 'view widget details',
-  widgetCreate: 'create a new widget',
-  widgetUpdate: 'update a widget',
-  widgetDelete: 'delete a widget',
-  widgetFilterList: 'view list of widget filters',
-  widgetFilterCreate: 'create a new widget filter',
-
   userInvite: 'invite a user',
 
   jobList: 'view list of jobs',
 
   hookTrigger: 'trigger a webhook',
+
+  mcpList: 'view list of MCP tokens',
+  mcpCreate: 'create a new MCP token',
+  mcpUpdate: 'update an MCP token',
+  mcpDelete: 'delete an MCP token',
 };
 
 // Human-readable descriptions for roles
 const roleDescriptions: Record<string, string> = {
+  // Workspace roles
+  [WorkspaceUserRoles.NO_ACCESS]: 'No Access',
+  [WorkspaceUserRoles.VIEWER]: 'Viewer',
+  [WorkspaceUserRoles.COMMENTER]: 'Commenter',
+  [WorkspaceUserRoles.EDITOR]: 'Editor',
+  [WorkspaceUserRoles.CREATOR]: 'Creator',
+  [WorkspaceUserRoles.OWNER]: 'Owner',
   // Base roles
   [ProjectRoles.VIEWER]: 'Viewer',
   [ProjectRoles.COMMENTER]: 'Commenter',

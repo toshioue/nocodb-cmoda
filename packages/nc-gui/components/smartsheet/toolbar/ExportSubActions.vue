@@ -1,113 +1,181 @@
 <script setup lang="ts">
-import type { RequestParams } from 'nocodb-sdk'
 import { ExportTypes } from 'nocodb-sdk'
-import { saveAs } from 'file-saver'
-import * as XLSX from 'xlsx'
+
+const { $api, $poller } = useNuxtApp()
+
+const { appInfo } = useGlobal()
+
+const meta = inject(MetaInj)!
 
 const isPublicView = inject(IsPublicInj, ref(false))
 
-const fields = inject(FieldsInj, ref([]))
+const selectedView = inject(ActiveViewInj)!
 
-const baseStore = useBase()
-const { base } = storeToRefs(baseStore)
+// Get the shared view password from the injected value
+const sharedViewPassword = inject(SharedViewPasswordInj, ref<string | null>(null))
 
-const { $api } = useNuxtApp()
+const urlHelper = (url: string) => {
+  if (url.startsWith('http')) {
+    return url
+  } else {
+    return `${appInfo.value.ncSiteUrl || BASE_FALLBACK_URL}/${url}`
+  }
+}
 
-const meta = inject(MetaInj, ref())
+const handleDownload = async (url: string) => {
+  url = urlHelper(url)
 
-const selectedView = inject(ActiveViewInj)
+  const isExpired = await isLinkExpired(url)
 
-const { activeNestedFilters: nestedFilters, activeSorts: sorts } = storeToRefs(useViewsStore())
+  if (isExpired) {
+    navigateTo(url, {
+      open: navigateToBlankTargetOpenOption,
+    })
+    return
+  }
 
-const isExportingType = ref<ExportTypes | undefined>(undefined)
+  const link = document.createElement('a')
+  link.href = url
+  link.style.display = 'none' // Hide the link
+
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+const activeExportType = ref<ExportTypes | null>(null)
+
+/**
+ * This component is lazy loaded and might be initialized after the view is effectively unmounted.
+ * In that case, the store is not available anymore, so we need to provide a fallback to avoid a crash.
+ */
+const { sorts, nestedFilters, isLocked } = useSmartsheetStore() || {
+  sorts: ref([]),
+  nestedFilters: ref([]),
+  isLocked: ref(false),
+}
+const { isUIAllowed } = useRoles()
 
 const exportFile = async (exportType: ExportTypes) => {
-  let offset = 0
-  let c = 1
-  const responseType = exportType === ExportTypes.EXCEL ? 'base64' : 'blob'
-
-  isExportingType.value = exportType
-
   try {
-    while (!isNaN(offset) && offset > -1) {
-      let res
-      if (isPublicView.value) {
-        const { exportFile: sharedViewExportFile } = useSharedView()
-        res = await sharedViewExportFile(fields.value, offset, exportType, responseType, {
-          sortsArr: sorts.value,
-          filtersArr: nestedFilters.value,
-        })
-      } else {
-        res = await $api.dbViewRow.export(
-          'noco',
-          base.value?.id as string,
-          meta.value?.id as string,
-          selectedView?.value.id as string,
-          exportType,
-          {
-            responseType,
-            query: {
-              fields: fields.value.map((field) => field.title),
-              offset,
-              sortArrJson: JSON.stringify(sorts.value),
-              filterArrJson: JSON.stringify(nestedFilters.value),
-            },
-          } as RequestParams,
-        )
-      }
+    if (activeExportType.value || !selectedView.value.id) return
 
-      const { data, headers } = res
+    activeExportType.value = exportType
 
-      if (exportType === ExportTypes.EXCEL) {
-        const workbook = XLSX.read(data, { type: 'base64' })
+    const filenameTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
 
-        XLSX.writeFile(workbook, `${meta.value?.title}_exported_${c++}.xlsx`)
-      } else if (exportType === ExportTypes.CSV) {
-        const blob = new Blob([data], { type: 'text/plain;charset=utf-8' })
-
-        saveAs(blob, `${meta.value?.title}_exported_${c++}.csv`)
-      }
-
-      offset = +headers['nc-export-offset']
-
-      setTimeout(() => {
-        isExportingType.value = undefined
-      }, 200)
+    // Construct extra params for sort and filter
+    // Construct extra params for sort and filter
+    const extraParams = {
+      ...(!isUIAllowed('sortSync') || isLocked.value
+        ? {
+            sortArrJson: stringifyFilterOrSortArr(sorts.value.filter((s: any) => !s.id)),
+          }
+        : {}),
+      ...(!isUIAllowed('filterSync') || isLocked.value
+        ? {
+            filterArrJson: stringifyFilterOrSortArr(nestedFilters.value.filter((f: any) => !f.id)),
+          }
+        : {}),
     }
+
+    const options = { filenameTimeZone, ...extraParams }
+
+    let jobData: { id: string }
+
+    if (isPublicView.value) {
+      if (!selectedView.value.uuid) return
+
+      // Pass the password in the params object
+      const params = {
+        headers: {
+          'xc-password': sharedViewPassword.value || '',
+        },
+      }
+
+      jobData = await $api.public.exportData(selectedView.value.uuid, exportType, options, params)
+    } else {
+      jobData = await $api.internal.postOperation(
+        meta.value!.fk_workspace_id!,
+        meta.value!.base_id!,
+        {
+          operation: 'dataExport',
+          viewId: selectedView.value.id as string,
+        },
+        {
+          options,
+          exportAs: exportType,
+        },
+      )
+    }
+
+    message.toast(`Preparing ${exportType.toUpperCase()} for download...`)
+
+    $poller.subscribe(
+      { id: jobData.id },
+      async (data: {
+        id: string
+        status?: string
+        data?: {
+          error?: {
+            message: string
+          }
+          message?: string
+          result?: any
+        }
+      }) => {
+        if (data.status !== 'close') {
+          if (data.status === JobStatus.COMPLETED) {
+            // Export completed successfully
+            message.toast('Successfully exported data!')
+
+            handleDownload(data.data?.result?.url)
+
+            activeExportType.value = null
+          } else if (data.status === JobStatus.FAILED) {
+            message.error('Failed to export data!')
+
+            activeExportType.value = null
+          }
+        }
+      },
+    )
   } catch (e: any) {
-    isExportingType.value = undefined
     message.error(await extractSdkResponseErrorMsg(e))
+    activeExportType.value = null
   }
 }
 </script>
 
 <template>
-  <div class="flex py-3 px-4 font-bold uppercase text-xs text-gray-500">{{ $t('labels.downloadData') }}</div>
+  <NcMenuItemLabel>
+    {{ $t('labels.downloadData') }}
+  </NcMenuItemLabel>
 
-  <a-menu-item class="!mx-1 !py-2 !rounded-md">
-    <div
-      v-e="['a:download:csv']"
-      class="flex flex-row items-center nc-base-menu-item !py-0"
-      @click.stop="exportFile(ExportTypes.CSV)"
-    >
-      <GeneralLoader v-if="isExportingType === ExportTypes.CSV" class="!max-h-4.5 !-mt-1 !mr-0.7" />
-      <component :is="iconMap.csv" v-else />
+  <NcMenuItem v-e="['a:download:csv']" @click.stop="exportFile(ExportTypes.CSV)">
+    <div class="flex flex-row items-center nc-base-menu-item !py-0 children:flex-none">
+      <GeneralLoader v-if="activeExportType === ExportTypes.CSV" size="regular" />
+      <GeneralIcon v-else icon="ncFileTypeCsvSmall" class="w-4" />
       <!-- Download as CSV -->
-      {{ $t('activity.downloadCSV') }}
+      CSV
     </div>
-  </a-menu-item>
+  </NcMenuItem>
 
-  <a-menu-item class="!mx-1 !py-2 !rounded-md">
-    <div
-      v-e="['a:download:excel']"
-      class="flex flex-row items-center nc-base-menu-item !py-0"
-      @click="exportFile(ExportTypes.EXCEL)"
-    >
-      <GeneralLoader v-if="isExportingType === ExportTypes.EXCEL" class="!max-h-4.5 !-mt-1 !mr-0.7" />
-      <component :is="iconMap.excel" v-else />
-
-      <!-- Download as XLSX -->
-      {{ $t('activity.downloadExcel') }}
+  <NcMenuItem v-e="['a:download:json']" @click.stop="exportFile(ExportTypes.JSON)">
+    <div class="flex flex-row items-center nc-base-menu-item !py-0 children:flex-none">
+      <GeneralLoader v-if="activeExportType === ExportTypes.JSON" size="regular" />
+      <GeneralIcon v-else icon="ncFileTypeJson" class="w-4" />
+      <!-- Download as JSON -->
+      JSON
     </div>
-  </a-menu-item>
+  </NcMenuItem>
+
+  <NcMenuItem v-e="['a:download:excel']" @click.stop="exportFile(ExportTypes.EXCEL)">
+    <div class="flex flex-row items-center nc-base-menu-item !py-0 children:flex-none">
+      <GeneralLoader v-if="activeExportType === ExportTypes.EXCEL" size="regular" />
+      <GeneralIcon v-else icon="ncFileTypeExcel" class="w-4" />
+      <!-- Download as Excel -->
+      Excel
+    </div>
+  </NcMenuItem>
 </template>

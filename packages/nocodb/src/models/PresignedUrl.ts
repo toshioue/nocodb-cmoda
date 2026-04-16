@@ -1,16 +1,22 @@
 import { nanoid } from 'nanoid';
 import contentDisposition from 'content-disposition';
 import slash from 'slash';
+import { IconType, ncIsObject } from 'nocodb-sdk';
+import { Logger } from '@nestjs/common';
+import type { MetaType } from 'nocodb-sdk';
 import NcPluginMgrv2 from '~/helpers/NcPluginMgrv2';
 import Noco from '~/Noco';
 import NocoCache from '~/cache/NocoCache';
 import { CacheGetType, CacheScope } from '~/utils/globals';
 import { getPathFromUrl, isPreviewAllowed } from '~/helpers/attachmentHelpers';
+import { parseMetaProp } from '~/utils/modelUtils';
+import { processConcurrently } from '~/utils/dataUtils';
 
 function roundExpiry(date) {
-  const msInHour = 10 * 60 * 1000;
-  return new Date(Math.ceil(date.getTime() / msInHour) * msInHour);
+  const msInTenMinutes = 10 * 60 * 1000;
+  return new Date(Math.ceil(date.getTime() / msInTenMinutes) * msInTenMinutes);
 }
+const logger = new Logger('Presigned URL');
 
 const DEFAULT_EXPIRE_SECONDS = isNaN(
   parseInt(process.env.NC_ATTACHMENT_EXPIRE_SECONDS),
@@ -40,6 +46,7 @@ export default class PresignedUrl {
       expiresInSeconds = DEFAULT_EXPIRE_SECONDS,
     } = param;
     await NocoCache.setExpiring(
+      'root',
       `${CacheScope.PRESIGNED_URL}:path:${slash(path)}`,
       {
         path,
@@ -49,6 +56,7 @@ export default class PresignedUrl {
       expiresInSeconds,
     );
     await NocoCache.setExpiring(
+      'root',
       `${CacheScope.PRESIGNED_URL}:url:${slash(decodeURIComponent(url))}`,
       {
         path,
@@ -61,14 +69,21 @@ export default class PresignedUrl {
 
   private static async delete(param: { path: string; url: string }) {
     const { path, url } = param;
-    await NocoCache.del(`${CacheScope.PRESIGNED_URL}:path:${slash(path)}`);
-    await NocoCache.del(`${CacheScope.PRESIGNED_URL}:url:${slash(url)}`);
+    await NocoCache.del(
+      'root',
+      `${CacheScope.PRESIGNED_URL}:path:${slash(path)}`,
+    );
+    await NocoCache.del(
+      'root',
+      `${CacheScope.PRESIGNED_URL}:url:${slash(url)}`,
+    );
   }
 
   public static async getPath(url: string, _ncMeta = Noco.ncMeta) {
     const urlData =
       url &&
       (await NocoCache.get(
+        'root',
         `${CacheScope.PRESIGNED_URL}:url:${slash(url)}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -96,6 +111,7 @@ export default class PresignedUrl {
       filename?: string;
       preview?: boolean;
       mimetype?: string;
+      encoding?: string;
     },
     ncMeta = Noco.ncMeta,
   ) {
@@ -109,6 +125,7 @@ export default class PresignedUrl {
       expireSeconds = DEFAULT_EXPIRE_SECONDS,
       filename,
       mimetype,
+      encoding,
     } = param;
 
     const preview = param.preview
@@ -128,7 +145,9 @@ export default class PresignedUrl {
 
     const pathParameters: {
       [key: string]: string;
-    } = {};
+    } = {
+      expireAt: expireAt.toISOString(),
+    };
 
     if (preview) {
       pathParameters.ResponseContentDisposition = `inline;`;
@@ -152,6 +171,14 @@ export default class PresignedUrl {
 
     if (mimetype) {
       pathParameters.ResponseContentType = mimetype;
+
+      if (encoding) {
+        pathParameters.ResponseContentType = `${mimetype}; charset=${encoding}`;
+      }
+    }
+
+    if (encoding) {
+      pathParameters.ResponseContentEncoding = encoding;
     }
 
     // append query params to the cache path
@@ -160,6 +187,7 @@ export default class PresignedUrl {
     ).toString()}`;
 
     const url = await NocoCache.get(
+      'root',
       `${CacheScope.PRESIGNED_URL}:path:${slash(cachePath)}`,
       CacheGetType.TYPE_OBJECT,
     );
@@ -217,6 +245,7 @@ export default class PresignedUrl {
         mimetype: string;
         signedPath?: string;
         signedUrl?: string;
+        status?: string;
       };
       preview?: boolean;
       mimetype?: string;
@@ -254,7 +283,7 @@ export default class PresignedUrl {
         },
         ncMeta,
       );
-    } else if (attachment?.url) {
+    } else if (attachment?.url && attachment.status !== 'uploading') {
       nestedObj.signedUrl = await PresignedUrl.getSignedUrl(
         {
           pathOrUrl: attachment.url,
@@ -264,6 +293,54 @@ export default class PresignedUrl {
         },
         ncMeta,
       );
+    }
+  }
+
+  public static async signMetaIconImage(
+    data:
+      | Partial<{
+          meta?: MetaType;
+          [key: string]: any;
+        }>
+      | Partial<{
+          meta?: MetaType;
+          [key: string]: any;
+        }>[],
+  ) {
+    if (!data) return;
+
+    const allItems = [];
+
+    try {
+      for (const d of Array.isArray(data) ? data : [data]) {
+        if (!ncIsObject(d) || !d.meta) {
+          continue;
+        }
+
+        d.meta = parseMetaProp(d);
+
+        if (
+          d.meta &&
+          (d.meta as Record<string, any>).icon &&
+          (d.meta as Record<string, any>).iconType === IconType.IMAGE
+        ) {
+          allItems.push({
+            attachment: (d.meta as Record<string, any>).icon,
+          });
+        }
+      }
+
+      await processConcurrently(
+        allItems,
+        async (item) => {
+          try {
+            await PresignedUrl.signAttachment(item);
+          } catch (e) {}
+        },
+        15,
+      );
+    } catch (e) {
+      logger.error('Error signing meta icon image', e);
     }
   }
 }

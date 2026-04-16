@@ -1,36 +1,53 @@
 <script setup lang="ts">
-const { appInfo } = useGlobal()
+const props = defineProps<{
+  showFieldsTab?: boolean
+}>()
 
-const tab = ref<'comments' | 'audits'>('comments')
+const { isSqlView } = useSmartsheetStoreOrThrow()
+
+const expandedFormStore = useExpandedFormStoreOrThrow()
+
+const { isExpandedFormCommentMode } = storeToRefs(useConfigStore())
+
+const tab = ref<'fields' | 'comments' | 'audits'>(
+  props.showFieldsTab && (!isExpandedFormCommentMode.value || isSqlView.value) ? 'fields' : 'comments',
+)
+
+watch(tab, (newValue) => {
+  if (newValue === 'audits') {
+    expandedFormStore.loadAudits()
+  }
+})
 </script>
 
 <template>
-  <div class="flex flex-col bg-white !h-full w-full rounded-br-2xl overflow-hidden">
-    <NcTabs v-model:activeKey="tab" class="h-full">
-      <a-tab-pane key="comments" class="w-full h-full">
+  <div class="flex flex-col bg-nc-bg-default !h-full w-full rounded-br-2xl overflow-hidden">
+    <NcTabs v-model:active-key="tab" class="h-full">
+      <a-tab-pane v-if="props.showFieldsTab" key="fields" class="w-full h-full">
+        <template #tab>
+          <div v-e="['c:row-expand:fields']" class="flex items-center gap-2">
+            <GeneralIcon icon="fields" class="w-4 h-4" />
+            <span class="<lg:hidden"> {{ $t('objects.fields') }} </span>
+          </div>
+        </template>
+        <SmartsheetExpandedFormPresentorsFieldsMiniColumnsWrapper />
+      </a-tab-pane>
+
+      <a-tab-pane v-if="!isSqlView" key="comments" class="w-full h-full">
         <template #tab>
           <div v-e="['c:row-expand:comment']" class="flex items-center gap-2">
             <GeneralIcon icon="messageCircle" class="w-4 h-4" />
-            <span class="<lg:hidden"> Comments </span>
+            <span class="<lg:hidden"> {{ $t('general.comments') }} </span>
           </div>
         </template>
         <SmartsheetExpandedFormSidebarComments />
       </a-tab-pane>
 
-      <a-tab-pane key="audits" class="w-full" :disabled="appInfo.ee">
+      <a-tab-pane v-if="!isSqlView" key="audits" class="w-full">
         <template #tab>
-          <NcTooltip v-if="appInfo.ee" class="tab flex-1">
-            <template #title>{{ $t('title.comingSoon') }}</template>
-
-            <div v-e="['c:row-expand:audit']" class="flex items-center gap-2 text-gray-400">
-              <GeneralIcon icon="audit" class="w-4 h-4" />
-              <span class="<lg:hidden"> Audits </span>
-            </div>
-          </NcTooltip>
-
-          <div v-else v-e="['c:row-expand:audit']" class="flex items-center gap-2">
+          <div v-e="['c:row-expand:audit']" class="flex items-center gap-2">
             <GeneralIcon icon="audit" class="w-4 h-4" />
-            <span class="<lg:hidden"> Audits </span>
+            <span class="<lg:hidden"> {{ $t('labels.revisionHistory') }} </span>
           </div>
         </template>
         <SmartsheetExpandedFormSidebarAudits />
@@ -58,7 +75,7 @@ const tab = ref<'comments' | 'audits'>('comments')
 :deep(.ant-tabs) {
   @apply !overflow-visible;
   .ant-tabs-nav {
-    @apply px-3 bg-white;
+    @apply px-3 bg-nc-bg-default;
     .ant-tabs-nav-list {
       @apply w-[99%] mx-auto gap-6;
 
@@ -75,6 +92,15 @@ const tab = ref<'comments' | 'audits'>('comments')
     .ant-tabs-content {
       @apply h-full;
     }
+  }
+}
+</style>
+
+<style lang="scss">
+.ant-tabs-dropdown {
+  @apply overflow-hidden;
+  .ant-tabs-dropdown-content {
+    @apply !rounded-lg overflow-hidden border-1 border-nc-border-gray-medium;
   }
 }
 </style>

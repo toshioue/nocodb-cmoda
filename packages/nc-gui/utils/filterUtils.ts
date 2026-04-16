@@ -1,487 +1,265 @@
-import { UITypes, isDateMonthFormat, isNumericCol, numericUITypes } from 'nocodb-sdk'
+import {
+  ClientType,
+  SqlUiFactory,
+  UITypes,
+  comparisonOpList,
+  comparisonSubOpList,
+  deleteFilterWithSub,
+  getEquivalentUIType,
+  getFilterCount,
+  getPlaceholderNewRow,
+  isBtLikeV2Junction,
+  isComparisonOpAllowed,
+  isDateType,
+  isSystemColumn,
+  isVirtualCol,
+  parseProp,
+} from 'nocodb-sdk'
+import type {
+  ColumnType,
+  ColumnTypeForFilter,
+  ComparisonOpUiType,
+  FilterGroupChangeEvent,
+  FilterRowChangeEvent,
+  LinkToAnotherRecordType,
+  LookupType,
+  TableType,
+} from 'nocodb-sdk'
 
-const getEqText = (fieldUiType: UITypes) => {
-  if (isNumericCol(fieldUiType) || fieldUiType === UITypes.Time) {
-    return '='
-  } else if (
-    [
-      UITypes.SingleSelect,
-      UITypes.Collaborator,
-      UITypes.LinkToAnotherRecord,
-      UITypes.Date,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.DateTime,
-    ].includes(fieldUiType)
+export const MAX_NESTED_LEVEL = 5
+export const excludedFilterColUidt = [UITypes.QrCode, UITypes.Barcode, UITypes.Button]
+
+// Re-export types from nocodb-sdk for backward compatibility
+export type { ComparisonOpUiType, FilterGroupChangeEvent, FilterRowChangeEvent, ColumnTypeForFilter }
+
+// Re-export functions from nocodb-sdk for backward compatibility
+export {
+  isDateType,
+  comparisonOpList,
+  comparisonSubOpList,
+  getPlaceholderNewRow,
+  isComparisonOpAllowed,
+  getFilterCount,
+  deleteFilterWithSub,
+}
+
+export const isComparisonSubOpAllowed = (
+  filter: ColumnFilterType,
+  compOp: {
+    text: string
+    value: string
+    ignoreVal?: boolean
+    includedTypes?: UITypes[]
+    excludedTypes?: UITypes[]
+  },
+  uidt?: UITypes,
+) => {
+  if (compOp.includedTypes) {
+    // include allowed values only if selected column type matches
+    return filter.fk_column_id && compOp.includedTypes.includes(uidt!)
+  } else if (compOp.excludedTypes) {
+    // include not allowed values only if selected column type not matches
+    return filter.fk_column_id && !compOp.excludedTypes.includes(uidt!)
+  }
+}
+
+// filter is draft if it's not saved to db yet
+export const isFilterDraft = (filter: Filter, col: ColumnTypeForFilter) => {
+  if (filter.id) return false
+
+  if (
+    filter.comparison_op &&
+    comparisonSubOpList(filter.comparison_op, parseProp(col?.meta)?.date_format).find(
+      (compOp) => compOp.value === filter.comparison_sub_op,
+    )?.ignoreVal
   ) {
-    return 'is'
+    return false
   }
-  return 'is equal'
-}
 
-const getNeqText = (fieldUiType: UITypes) => {
-  if (isNumericCol(fieldUiType) || fieldUiType === UITypes.Time) {
-    return '!='
-  } else if (
-    [
-      UITypes.SingleSelect,
-      UITypes.Collaborator,
-      UITypes.LinkToAnotherRecord,
-      UITypes.Date,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.DateTime,
-    ].includes(fieldUiType)
+  if (
+    comparisonOpList((col.filterUidt ?? col.uidt) as UITypes, parseProp(col?.meta)?.date_format).find(
+      (compOp) => compOp.value === filter.comparison_op,
+    )?.ignoreVal
   ) {
-    return 'is not'
+    return false
   }
-  return 'is not equal'
+
+  if (filter.value) {
+    return false
+  }
+
+  return true
 }
 
-const getLikeText = (fieldUiType: UITypes) => {
-  if (fieldUiType === UITypes.Attachment) {
-    return 'filenames contain'
+export const isDynamicFilterAllowed = (filter: ColumnFilterType, column?: ColumnType, dbClientType?: ClientType) => {
+  if (!column) {
+    return false
   }
-  return 'is like'
-}
+  // if virtual column, don't allow dynamic filter
+  if (isVirtualCol(column)) return false
+  const sqlUi = SqlUiFactory.create({ client: dbClientType ?? ClientType.PG })
 
-const getNotLikeText = (fieldUiType: UITypes) => {
-  if (fieldUiType === UITypes.Attachment) {
-    return "filenames don't contain"
-  }
-  return 'is not like'
-}
-
-const getGtText = (fieldUiType: UITypes) => {
-  if ([UITypes.Date, UITypes.DateTime, UITypes.CreatedTime, UITypes.LastModifiedTime].includes(fieldUiType)) {
-    return 'is after'
-  }
-  return '>'
-}
-
-const getLtText = (fieldUiType: UITypes) => {
-  if ([UITypes.Date, UITypes.DateTime, UITypes.CreatedTime, UITypes.LastModifiedTime].includes(fieldUiType)) {
-    return 'is before'
-  }
-  return '<'
-}
-
-const getGteText = (fieldUiType: UITypes) => {
-  if ([UITypes.Date, UITypes.DateTime, UITypes.CreatedTime, UITypes.LastModifiedTime].includes(fieldUiType)) {
-    return 'is on or after'
-  }
-  return '>='
-}
-
-const getLteText = (fieldUiType: UITypes) => {
-  if ([UITypes.Date, UITypes.DateTime, UITypes.CreatedTime, UITypes.LastModifiedTime].includes(fieldUiType)) {
-    return 'is on or before'
-  }
-  return '<='
-}
-
-export const comparisonOpList = (
-  fieldUiType: UITypes,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  dateFormat?: string,
-): {
-  text: string
-  value: string
-  ignoreVal: boolean
-  includedTypes?: UITypes[]
-  excludedTypes?: UITypes[]
-}[] => [
-  {
-    text: 'is checked',
-    value: 'checked',
-    ignoreVal: true,
-    includedTypes: [UITypes.Checkbox],
-  },
-  {
-    text: 'is not checked',
-    value: 'notchecked',
-    ignoreVal: true,
-    includedTypes: [UITypes.Checkbox],
-  },
-  {
-    text: getEqText(fieldUiType),
-    value: 'eq',
-    ignoreVal: false,
-    excludedTypes: [
-      UITypes.Checkbox,
-      UITypes.MultiSelect,
+  // disable dynamic filter for certain fields like rating, attachment, etc
+  if (
+    [
       UITypes.Attachment,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
-    ],
-  },
-  {
-    text: getNeqText(fieldUiType),
-    value: 'neq',
-    ignoreVal: false,
-    excludedTypes: [
+      UITypes.Rating,
       UITypes.Checkbox,
-      UITypes.MultiSelect,
-      UITypes.Attachment,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
-    ],
-  },
-  {
-    text: getLikeText(fieldUiType),
-    value: 'like',
-    ignoreVal: false,
-    excludedTypes: [
-      UITypes.Checkbox,
-      UITypes.SingleSelect,
-      UITypes.MultiSelect,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
+      UITypes.QrCode,
+      UITypes.Barcode,
       UITypes.Collaborator,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.Time,
-      ...numericUITypes,
-    ],
-  },
-  {
-    text: getNotLikeText(fieldUiType),
-    value: 'nlike',
-    ignoreVal: false,
-    excludedTypes: [
-      UITypes.Checkbox,
-      UITypes.SingleSelect,
-      UITypes.MultiSelect,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
-      UITypes.Collaborator,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.Time,
-      ...numericUITypes,
-    ],
-  },
-  {
-    text: 'is empty',
-    value: 'empty',
-    ignoreVal: true,
-    excludedTypes: [
-      UITypes.Checkbox,
-      UITypes.SingleSelect,
-      UITypes.MultiSelect,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
-      UITypes.Collaborator,
-      UITypes.Attachment,
-      UITypes.LinkToAnotherRecord,
-      UITypes.Lookup,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.Time,
-      ...numericUITypes,
-    ],
-  },
-  {
-    text: 'is not empty',
-    value: 'notempty',
-    ignoreVal: true,
-    excludedTypes: [
-      UITypes.Checkbox,
-      UITypes.SingleSelect,
-      UITypes.MultiSelect,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
-      UITypes.Collaborator,
-      UITypes.Attachment,
-      UITypes.LinkToAnotherRecord,
-      UITypes.Lookup,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.Time,
-      ...numericUITypes,
-    ],
-  },
-  {
-    text: 'is null',
-    value: 'null',
-    ignoreVal: true,
-    excludedTypes: [
-      ...numericUITypes,
-      UITypes.Checkbox,
-      UITypes.SingleSelect,
-      UITypes.MultiSelect,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
-      UITypes.Collaborator,
-      UITypes.Attachment,
-      UITypes.LinkToAnotherRecord,
-      UITypes.Lookup,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.Time,
-    ],
-  },
-  {
-    text: 'is not null',
-    value: 'notnull',
-    ignoreVal: true,
-    excludedTypes: [
-      ...numericUITypes,
-      UITypes.Checkbox,
-      UITypes.SingleSelect,
-      UITypes.MultiSelect,
-      UITypes.User,
-      UITypes.CreatedBy,
-      UITypes.LastModifiedBy,
-      UITypes.Collaborator,
-      UITypes.Attachment,
-      UITypes.LinkToAnotherRecord,
-      UITypes.Lookup,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-      UITypes.Time,
-    ],
-  },
-  {
-    text: 'contains all of',
-    value: 'allof',
-    ignoreVal: false,
-    includedTypes: [UITypes.MultiSelect, UITypes.User, UITypes.CreatedBy, UITypes.LastModifiedBy],
-  },
-  {
-    text: 'contains any of',
-    value: 'anyof',
-    ignoreVal: false,
-    includedTypes: [UITypes.MultiSelect, UITypes.SingleSelect, UITypes.User, UITypes.CreatedBy, UITypes.LastModifiedBy],
-  },
-  {
-    text: 'does not contain all of',
-    value: 'nallof',
-    ignoreVal: false,
-    includedTypes: [UITypes.MultiSelect, UITypes.User, UITypes.CreatedBy, UITypes.LastModifiedBy],
-  },
-  {
-    text: 'does not contain any of',
-    value: 'nanyof',
-    ignoreVal: false,
-    includedTypes: [UITypes.MultiSelect, UITypes.SingleSelect, UITypes.User, UITypes.CreatedBy, UITypes.LastModifiedBy],
-  },
-  {
-    text: getGtText(fieldUiType),
-    value: 'gt',
-    ignoreVal: false,
-    includedTypes: [
-      ...numericUITypes,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.LastModifiedTime,
-      UITypes.CreatedTime,
-      UITypes.Time,
-    ],
-  },
-  {
-    text: getLtText(fieldUiType),
-    value: 'lt',
-    ignoreVal: false,
-    includedTypes: [
-      ...numericUITypes,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.LastModifiedTime,
-      UITypes.CreatedTime,
-      UITypes.Time,
-    ],
-  },
-  {
-    text: getGteText(fieldUiType),
-    value: 'gte',
-    ignoreVal: false,
-    includedTypes: [
-      ...numericUITypes,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.LastModifiedTime,
-      UITypes.CreatedTime,
-      UITypes.Time,
-    ],
-  },
-  {
-    text: getLteText(fieldUiType),
-    value: 'lte',
-    ignoreVal: false,
-    includedTypes: [
-      ...numericUITypes,
-      UITypes.Date,
-      UITypes.DateTime,
-      UITypes.Time,
-      UITypes.CreatedTime,
-      UITypes.LastModifiedTime,
-    ],
-  },
-  {
-    text: 'is within',
-    value: 'isWithin',
-    ignoreVal: true,
-    includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-  },
-  {
-    text: 'is blank',
-    value: 'blank',
-    ignoreVal: true,
-    excludedTypes: [UITypes.Checkbox, UITypes.Links, UITypes.Rollup],
-  },
-  {
-    text: 'is not blank',
-    value: 'notblank',
-    ignoreVal: true,
-    excludedTypes: [UITypes.Checkbox, UITypes.Links, UITypes.Rollup],
-  },
-]
+      UITypes.GeoData,
+      UITypes.SpecificDBType,
+    ].includes(column.uidt as UITypes)
+  )
+    return false
 
-export const comparisonSubOpList = (
-  // TODO: type
-  comparison_op: string,
-  dateFormat?: string,
-): {
-  text: string
-  value: string
-  ignoreVal: boolean
-  includedTypes?: UITypes[]
-  excludedTypes?: UITypes[]
-}[] => {
-  const isDateMonth = dateFormat && isDateMonthFormat(dateFormat)
+  const abstractType = sqlUi.getAbstractType(column)
 
-  if (comparison_op === 'isWithin') {
-    return [
-      {
-        text: 'the past week',
-        value: 'pastWeek',
-        ignoreVal: true,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-      {
-        text: 'the past month',
-        value: 'pastMonth',
-        ignoreVal: true,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-      {
-        text: 'the past year',
-        value: 'pastYear',
-        ignoreVal: true,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-      {
-        text: 'the next week',
-        value: 'nextWeek',
-        ignoreVal: true,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-      {
-        text: 'the next month',
-        value: 'nextMonth',
-        ignoreVal: true,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-      {
-        text: 'the next year',
-        value: 'nextYear',
-        ignoreVal: true,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-      {
-        text: 'the next number of days',
-        value: 'nextNumberOfDays',
-        ignoreVal: false,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-      {
-        text: 'the past number of days',
-        value: 'pastNumberOfDays',
-        ignoreVal: false,
-        includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-      },
-    ]
+  if (!['integer', 'float', 'text', 'string'].includes(abstractType)) return false
+
+  return !filter.comparison_op || ['eq', 'lt', 'gt', 'lte', 'gte', 'like', 'nlike', 'neq'].includes(filter.comparison_op)
+}
+
+export const getDynamicColumns = (metaColumns: ColumnType[], column?: ColumnType, dbClientType?: ClientType) => {
+  if (!column) return []
+  const sqlUi = SqlUiFactory.create({ client: dbClientType ?? ClientType.PG })
+
+  return metaColumns.filter((c: ColumnType) => {
+    if (excludedFilterColUidt.includes(c.uidt as UITypes) || isVirtualCol(c) || (isSystemColumn(c) && !c.pk)) {
+      return false
+    }
+
+    const dynamicColAbstractType = sqlUi.getAbstractType(c)
+
+    const filterColAbstractType = sqlUi.getAbstractType(column)
+
+    // treat float and integer as number
+    if ([dynamicColAbstractType, filterColAbstractType].every((type) => ['float', 'integer'].includes(type))) {
+      return true
+    }
+
+    // treat text and string as string
+    if ([dynamicColAbstractType, filterColAbstractType].every((type) => ['text', 'string'].includes(type))) {
+      return true
+    }
+
+    return filterColAbstractType === dynamicColAbstractType
+  })
+}
+
+export const getFilterUidt = (col: ColumnTypeForFilter): UITypes => {
+  // V2 MO/OO Links → filter by display value like LTAR
+  if (col.uidt === UITypes.Links && isBtLikeV2Junction(col)) {
+    return UITypes.LinkToAnotherRecord
   }
-  return [
-    {
-      text: 'today',
-      value: 'today',
-      ignoreVal: true,
-      includedTypes: [...(isDateMonth ? [] : [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime])],
-    },
-    {
-      text: 'tomorrow',
-      value: 'tomorrow',
-      ignoreVal: true,
-      includedTypes: [...(isDateMonth ? [] : [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime])],
-    },
-    {
-      text: 'yesterday',
-      value: 'yesterday',
-      ignoreVal: true,
-      includedTypes: [...(isDateMonth ? [] : [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime])],
-    },
-    {
-      text: 'one week ago',
-      value: 'oneWeekAgo',
-      ignoreVal: true,
-      includedTypes: [...(isDateMonth ? [] : [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime])],
-    },
-    {
-      text: 'one week from now',
-      value: 'oneWeekFromNow',
-      ignoreVal: true,
-      includedTypes: [...(isDateMonth ? [] : [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime])],
-    },
-    {
-      text: 'one month ago',
-      value: 'oneMonthAgo',
-      ignoreVal: true,
-      includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-    },
-    {
-      text: 'one month from now',
-      value: 'oneMonthFromNow',
-      ignoreVal: true,
-      includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-    },
-    {
-      text: 'number of days ago',
-      value: 'daysAgo',
-      ignoreVal: false,
-      includedTypes: [...(isDateMonth ? [] : [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime])],
-    },
-    {
-      text: 'number of days from now',
-      value: 'daysFromNow',
-      ignoreVal: false,
-      includedTypes: [...(isDateMonth ? [] : [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime])],
-    },
-    {
-      text: isDateMonth ? 'exact month' : 'exact date',
-      value: 'exactDate',
-      ignoreVal: false,
-      includedTypes: [UITypes.Date, UITypes.DateTime, UITypes.LastModifiedTime, UITypes.CreatedTime],
-    },
-  ]
+  if (col.uidt === UITypes.Formula) {
+    const formulaUIType = getEquivalentUIType({
+      formulaColumn: col,
+    })
+
+    return (formulaUIType || col.uidt) as UITypes
+  }
+  // if column is a lookup column, then use the lookup type extracted from the column
+  else if (col.btLookupColumn) {
+    return col.btLookupColumn.uidt as UITypes
+  } else {
+    return col.uidt as UITypes
+  }
+}
+
+export const composeColumnsForFilter = async ({
+  rootMeta,
+  getMeta,
+}: {
+  rootMeta: TableType
+  getMeta: (baseId: string, metaIdOrTitle: string) => Promise<TableType | null>
+}) => {
+  const result: ColumnTypeForFilter[] = []
+  for (const column of rootMeta.columns!) {
+    if (column.uidt !== UITypes.Lookup) {
+      result.push({ ...column, filterUidt: getFilterUidt(column) })
+      continue
+    }
+
+    let nextCol: ColumnType | undefined = column
+    // check all the relation of nested lookup columns is bt or not
+    // include the column only if all only if all relations are bt
+    while (nextCol && nextCol.uidt === UITypes.Lookup) {
+      // extract the relation column meta
+      const lookupRelation: ColumnType | undefined = (await getMeta(rootMeta.base_id!, nextCol.fk_model_id!))?.columns?.find(
+        (c) => c.id === (nextCol!.colOptions as LookupType).fk_relation_column_id,
+      )
+      // this is less likely to happen but if relation column is not found then break the loop
+      if (!lookupRelation) {
+        break
+      }
+
+      const relatedTableMeta: TableType | null = await getMeta(
+        rootMeta.base_id!,
+        (lookupRelation?.colOptions as LinkToAnotherRecordType).fk_related_model_id!,
+      )
+      nextCol = relatedTableMeta?.columns?.find((c) => c.id === (nextCol!.colOptions as LookupType).fk_lookup_column_id)
+
+      // if next column is same as root lookup column then break the loop
+      // since it's going to be a circular loop
+      if (nextCol?.id === column.id) {
+        break
+      }
+    }
+    const columnTypeForFilter: ColumnTypeForFilter = {
+      ...column,
+      btLookupColumn: nextCol,
+    }
+    columnTypeForFilter.filterUidt = getFilterUidt(columnTypeForFilter)
+    result.push(columnTypeForFilter)
+  }
+  return result
+}
+
+export const adjustFilterWhenColumnChange = ({
+  filter,
+  column,
+  showNullAndEmptyInFilter,
+}: {
+  filter: ColumnFilterType
+  column: ColumnTypeForFilter
+  showNullAndEmptyInFilter?: boolean
+}) => {
+  if (!column) return
+
+  const evalUidt: UITypes = column.filterUidt ?? column.uidt
+  if (isVirtualCol(column)) {
+    filter.dynamic = false
+    filter.fk_value_col_id = null
+  } else {
+    filter.fk_value_col_id = null
+  }
+  filter.comparison_op = comparisonOpList(evalUidt, parseProp(column.meta)?.date_format).find((compOp) =>
+    isComparisonOpAllowed(filter, compOp, evalUidt as UITypes, showNullAndEmptyInFilter),
+  )?.value
+
+  if (isDateType(evalUidt) && !['blank', 'notblank'].includes(filter.comparison_op!)) {
+    if (filter.comparison_op === 'isWithin') {
+      filter.comparison_sub_op = 'pastNumberOfDays'
+    } else {
+      filter.comparison_sub_op = 'exactDate'
+    }
+
+    // Initialize filter.meta if it doesn't exist
+    if (!filter.meta) {
+      filter.meta = {}
+    }
+    if (!filter.meta.timezone) {
+      filter.meta.timezone = getTimezoneFromColumn(column)
+    }
+  } else {
+    // reset
+    filter.comparison_sub_op = null
+  }
+}
+
+export function getTimezoneFromColumn(col: ColumnType, defaultValue = Intl.DateTimeFormat().resolvedOptions().timeZone) {
+  const columnMeta = parseProp(col.meta)
+  return columnMeta.timezone || defaultValue
 }

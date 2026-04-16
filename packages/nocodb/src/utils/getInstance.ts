@@ -1,3 +1,4 @@
+import { ModelTypes } from 'nocodb-sdk';
 import { CacheGetType, CacheScope, MetaTable } from './globals';
 import Noco from '~/Noco';
 import NocoCache from '~/cache/NocoCache';
@@ -5,6 +6,7 @@ import NocoCache from '~/cache/NocoCache';
 export default async function (force = false, ncMeta = Noco.ncMeta) {
   try {
     let res = await NocoCache.get(
+      'root',
       CacheScope.INSTANCE_META,
       CacheGetType.TYPE_OBJECT,
     );
@@ -25,6 +27,9 @@ export default async function (force = false, ncMeta = Noco.ncMeta) {
         .then((c) => c.count);
       const impacted = await ncMeta
         .knex(MetaTable.USERS)
+        .where(function () {
+          this.where('is_deleted', false).orWhereNull('is_deleted');
+        })
         .count('id as count')
         .first()
         .then((c) => c.count);
@@ -41,6 +46,7 @@ export default async function (force = false, ncMeta = Noco.ncMeta) {
         .then((c) => c.count);
       const tables = await ncMeta
         .knex(MetaTable.MODELS)
+        .whereIn('type', [ModelTypes.TABLE, ModelTypes.VIEW])
         .count('id as count')
         .first()
         .then((c) => c.count);
@@ -62,7 +68,7 @@ export default async function (force = false, ncMeta = Noco.ncMeta) {
         tables,
         views,
       };
-      await NocoCache.set(CacheScope.INSTANCE_META, res);
+      await NocoCache.set('root', CacheScope.INSTANCE_META, res);
     }
     return res;
   } catch {

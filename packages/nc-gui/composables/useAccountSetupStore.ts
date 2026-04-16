@@ -12,6 +12,8 @@ const [useProvideAccountSetupStore, useAccountSetupStore] = createInjectionState
 
   const { t } = useI18n()
 
+  const { appInfo } = useGlobal()
+
   const activePlugin = ref<PluginType | null>(null)
   const activePluginFormData = ref({})
   const isLoading = ref(false)
@@ -64,8 +66,8 @@ const [useProvideAccountSetupStore, useAccountSetupStore] = createInjectionState
       // Plugin settings saved successfully
       message.success(activePlugin.value?.formDetails.msgOnInstall || t('msg.success.pluginSettingsSaved'))
       // load all apps again to update the pending status
-      loadSetupApps().catch(console.error)
-      navigateTo('/account/setup')
+      await loadSetupApps()
+      navigateTo(appInfo.value.isCloud ? '/account/setup' : '/admin?tab=setup')
     } catch (e: any) {
       message.error(await extractSdkResponseErrorMsg(e))
     } finally {
@@ -168,7 +170,14 @@ export { useProvideAccountSetupStore }
 export function useAccountSetupStoreOrThrow() {
   const columnCreateStore = useAccountSetupStore()
 
-  if (columnCreateStore == null) throw new Error('Please call `useProvideAccountSetupStore` on the appropriate parent component')
+  /**
+   * Instead of throwing error we are returning the provide function,
+   * as `[[nestedPage]]` is also getting rendered in `pages/index` which is dashboard layout. and there we don't have account setup store
+   * Todo: Figure out a better way to handle this.
+   *
+   * This is a temporary fix to avoid UI Error issue.
+   */
+  if (columnCreateStore == null) return useProvideAccountSetupStore()
 
   return columnCreateStore
 }

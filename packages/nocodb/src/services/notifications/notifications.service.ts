@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { AppEvents } from 'nocodb-sdk';
+import { AppEvents, getCircularReplacer } from 'nocodb-sdk';
 import type {
   ProjectInviteEvent,
   WelcomeEvent,
@@ -12,8 +12,6 @@ import { AppHooksService } from '~/services/app-hooks/app-hooks.service';
 import { NcError } from '~/helpers/catchError';
 import { PagedResponseImpl } from '~/helpers/PagedResponse';
 import { Notification } from '~/models';
-
-import { getCircularReplacer } from '~/utils';
 import { PubSubRedis } from '~/redis/pubsub-redis';
 @Injectable()
 export class NotificationsService implements OnModuleInit, OnModuleDestroy {
@@ -150,7 +148,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     body;
     user: UserType;
   }) {
-    const notification = Notification.get({
+    const notification = await Notification.get({
       id: param.notificationId,
       fk_user_id: param.user.id,
     });
@@ -164,7 +162,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async notificationDelete(param: { notificationId: string; user: UserType }) {
-    const notification = Notification.get({
+    const notification = await Notification.get({
       id: param.notificationId,
       fk_user_id: param.user.id,
     });
@@ -213,6 +211,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
                   id: invitedBy.id,
                   email: invitedBy.email,
                   displayName: invitedBy.display_name,
+                  meta: invitedBy.meta,
                 },
               },
             },
@@ -237,16 +236,25 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  protected listenerUnsubs: (() => void)[] = [];
+
   onModuleDestroy() {
-    this.appHooks.removeAllListener(this.hookHandler);
+    for (const unsub of this.listenerUnsubs) {
+      unsub();
+    }
+    this.listenerUnsubs = [];
   }
 
   onModuleInit() {
-    this.appHooks.on(AppEvents.PROJECT_INVITE, (data) =>
-      this.hookHandler({ event: AppEvents.PROJECT_INVITE, data }),
+    this.listenerUnsubs.push(
+      this.appHooks.on(AppEvents.PROJECT_INVITE, (data) =>
+        this.hookHandler({ event: AppEvents.PROJECT_INVITE, data }),
+      ),
     );
-    this.appHooks.on(AppEvents.WELCOME, (data) =>
-      this.hookHandler({ event: AppEvents.WELCOME, data }),
+    this.listenerUnsubs.push(
+      this.appHooks.on(AppEvents.WELCOME, (data) =>
+        this.hookHandler({ event: AppEvents.WELCOME, data }),
+      ),
     );
   }
 }

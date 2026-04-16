@@ -8,8 +8,8 @@ interface Props {
   minGranularity?: number
   isOpen?: boolean
   showCurrentDateOption?: boolean | 'disabled'
+  timezone?: string
 }
-
 const props = withDefaults(defineProps<Props>(), {
   selectedDate: null,
   is12hrFormat: false,
@@ -17,9 +17,25 @@ const props = withDefaults(defineProps<Props>(), {
   minGranularity: 30,
   isOpen: false,
 })
+
 const emit = defineEmits(['update:selectedDate', 'currentDate'])
 
-const pageDate = ref<dayjs.Dayjs>(dayjs())
+const dayjsTz = (value?: string | null | dayjs.Dayjs, format?: string) => {
+  if (typeof value === 'object') {
+    return value
+  }
+  if (props?.timezone) {
+    if (!format) {
+      return dayjs.tz(value, props.timezone)
+    } else {
+      return dayjs.tz(value, format, props.timezone)
+    }
+  } else {
+    return dayjs(value, format)
+  }
+}
+
+const pageDate = ref<dayjs.Dayjs>(dayjsTz())
 
 const selectedDate = useVModel(props, 'selectedDate', emit)
 
@@ -34,7 +50,8 @@ const compareTime = (date1: dayjs.Dayjs, date2: dayjs.Dayjs) => {
 }
 
 const handleSelectTime = (time: dayjs.Dayjs) => {
-  pageDate.value = dayjs().set('hour', time.get('hour')).set('minute', time.get('minute'))
+  const baseDate = selectedDate.value ? selectedDate.value : dayjsTz()
+  pageDate.value = baseDate.set('hour', time.get('hour')).set('minute', time.get('minute'))
 
   selectedDate.value = pageDate.value
 
@@ -45,7 +62,7 @@ const handleSelectTime = (time: dayjs.Dayjs) => {
 const timeOptions = computed(() => {
   return Array.from({ length: 24 }).flatMap((_, h) => {
     return (isMinGranularityPicker.value ? [0, minGranularity.value] : Array.from({ length: 60 })).map((_m, m) => {
-      const time = dayjs()
+      const time = dayjsTz()
         .set('hour', h)
         .set('minute', isMinGranularityPicker.value ? (_m as number) : m)
 
@@ -83,9 +100,9 @@ onMounted(() => {
       <div
         v-for="time of timeOptions"
         :key="time.format('HH:mm')"
-        class="hover:bg-gray-100 py-1 px-3 text-sm text-gray-600 font-weight-500 text-center cursor-pointer"
+        class="hover:bg-nc-bg-gray-light py-1 px-3 text-sm text-nc-content-gray-subtle2 font-weight-500 text-center cursor-pointer"
         :class="{
-          'nc-selected bg-gray-100': selectedDate && compareTime(time, selectedDate),
+          'nc-selected bg-nc-bg-gray-light': selectedDate && compareTime(time, selectedDate),
         }"
         :data-testid="`time-option-${time.format('HH:mm')}`"
         @click="handleSelectTime(time)"
@@ -95,7 +112,7 @@ onMounted(() => {
     </div>
     <div v-else></div>
     <div class="px-2 py-1 box-border flex items-center justify-center gap-2">
-      <NcButton :tabindex="-1" class="!h-7" size="small" type="secondary" @click="handleSelectTime(dayjs())">
+      <NcButton :tabindex="-1" class="!h-7" size="small" type="secondary" @click="handleSelectTime(dayjsTz())">
         <span class="text-small"> {{ $t('general.now') }} </span>
       </NcButton>
       <NcTooltip v-if="showCurrentDateOption" :disabled="showCurrentDateOption !== 'disabled'">
@@ -115,5 +132,3 @@ onMounted(() => {
     </div>
   </div>
 </template>
-
-<style lang="scss" scoped></style>

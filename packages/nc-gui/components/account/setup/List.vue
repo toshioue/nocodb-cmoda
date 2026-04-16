@@ -5,6 +5,8 @@ const props = defineProps<{
 
 const { categorizeApps, resetPlugin: _resetPlugin, showPluginUninstallModal, activePlugin } = useAccountSetupStoreOrThrow()
 
+const isAdminPanel = inject(IsAdminPanelInj, ref(false))
+
 const apps = computed(() => categorizeApps.value?.[props.category?.toLowerCase()] || [])
 const configuredApp = computed(() => apps.value.find((app: any) => app.active))
 
@@ -17,6 +19,14 @@ const showResetPluginModal = async (app: any, resetActiveAppMsg = false) => {
   activePlugin.value = app
 }
 
+const navigateToApp = (app: any) => {
+  if (isAdminPanel.value) {
+    navigateTo({ path: '/admin', query: { tab: `setup-${props.category.toLowerCase()}`, app: app.title } })
+  } else {
+    navigateTo(`/account/setup/${props.category}/${app.title}`)
+  }
+}
+
 const selectApp = (app: any) => {
   const activeApp = app !== configuredApp.value && configuredApp.value
   if (activeApp) {
@@ -24,7 +34,7 @@ const selectApp = (app: any) => {
     return showResetPluginModal(activeApp, true)
   }
 
-  navigateTo(`/account/setup/${props.category}/${app.title}`)
+  navigateToApp(app)
 }
 
 const resetPlugin = async () => {
@@ -71,23 +81,19 @@ const closeResetModal = () => {
             <GeneralIcon
               v-if="app.active"
               icon="delete"
-              class="text-error min-w-6 h-6 bg-white-500 !hidden !group-hover:!inline cursor-pointer"
+              class="text-error min-w-6 h-6 !hidden !group-hover:!inline cursor-pointer"
             />
-            <GeneralIcon
-              v-if="app === configuredApp"
-              icon="circleCheckSolid"
-              class="text-success min-w-5 h-5 bg-white-500 nc-configured"
-            />
+            <GeneralIcon v-if="app === configuredApp" icon="circleCheckSolid" class="text-success min-w-5 h-5 nc-configured" />
 
             <NcDropdown :trigger="['click']" overlay-class-name="!rounded-md" @click.stop>
               <GeneralIcon
                 v-if="app.active"
                 icon="threeDotVertical"
-                class="min-w-5 h-5 bg-white-500 text-gray-500 hover:text-current nc-setup-plugin-menu"
+                class="min-w-5 h-5 text-nc-content-gray-muted hover:text-current nc-setup-plugin-menu"
               />
 
               <template #overlay>
-                <NcMenu class="min-w-20">
+                <NcMenu class="min-w-20" variant="small">
                   <NcMenuItem data-testid="nc-config-reset" @click.stop="showResetPluginModal(app)">
                     <span> {{ $t('general.reset') }} </span>
                   </NcMenuItem>
@@ -135,7 +141,7 @@ const closeResetModal = () => {
   @apply p-4 w-950px gap-5 mx-auto my-2 grid grid-cols-3;
 
   .item {
-    @apply text-base w-296px max-w-296px flex gap-3 border-1 border-gray-200 py-4 px-5 rounded-xl items-center cursor-pointer hover:(shadow bg-gray-50);
+    @apply text-base w-296px max-w-296px flex gap-3 border-1 border-nc-border-gray-medium py-4 px-5 rounded-xl items-center cursor-pointer hover:(shadow bg-nc-bg-gray-extralight);
 
     .icon {
       @apply !w-8 !h-8 object-contain;

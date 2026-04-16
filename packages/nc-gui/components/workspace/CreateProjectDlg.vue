@@ -2,20 +2,17 @@
 import type { RuleObject } from 'ant-design-vue/es/form'
 import type { Form, Input } from 'ant-design-vue'
 import type { VNodeRef } from '@vue/runtime-core'
-import { computed } from '@vue/reactivity'
 
 const props = defineProps<{
   modelValue: boolean
-  type?: NcProjectType
+  isCreateNewActionMenu?: boolean
 }>()
 
 const emit = defineEmits(['update:modelValue'])
 
-const { t } = useI18n()
-
 const dialogShow = useVModel(props, 'modelValue', emit)
 
-const baseType = computed(() => props.type ?? NcProjectType.DB)
+const { t } = useI18n()
 
 const basesStore = useBases()
 
@@ -24,6 +21,8 @@ const { createProject: _createProject } = basesStore
 const { navigateToProject } = useGlobal()
 
 const { refreshCommandPalette } = useCommandPalette()
+
+const wsBaseListActions = useWsBaseListActions()
 
 const nameValidationRules = [
   {
@@ -44,6 +43,8 @@ const formState = ref({
 
 const creating = ref(false)
 
+const input: VNodeRef = ref<typeof Input>()
+
 const createProject = async () => {
   if (formState.value.title) {
     formState.value.title = formState.value.title.trim()
@@ -52,16 +53,19 @@ const createProject = async () => {
   creating.value = true
   try {
     const base = await _createProject({
-      type: baseType.value,
       title: formState.value.title,
       meta: formState.value.meta,
     })
 
     navigateToProject({
       baseId: base.id!,
-      type: baseType.value,
       workspaceId: 'nc',
     })
+
+    if (wsBaseListActions) {
+      wsBaseListActions.closeModal()
+    }
+
     dialogShow.value = false
   } catch (e: any) {
     message.error(await extractSdkResponseErrorMsg(e))
@@ -73,11 +77,7 @@ const createProject = async () => {
   }
 }
 
-const input: VNodeRef = ref<typeof Input>()
-
-watch(dialogShow, async (n, o) => {
-  if (n === o && !n) return
-
+const onInit = () => {
   // Clear errors
   setTimeout(async () => {
     form.value?.resetFields()
@@ -94,30 +94,29 @@ watch(dialogShow, async (n, o) => {
     input.value?.$el?.focus()
     input.value?.$el?.select()
   }, 5)
-})
+}
 
-const typeLabel = computed(() => {
-  switch (baseType.value) {
-    case NcProjectType.DB:
-    default:
-      return 'Base'
+watch(dialogShow, (n) => {
+  if (n) {
+    onInit()
   }
 })
 </script>
 
 <template>
-  <NcModal v-model:visible="dialogShow" size="small" :show-separator="false">
+  <NcModal v-model:visible="dialogShow" size="small" :show-separator="false" wrap-class-name="nc-modal-wrapper">
     <template #header>
-      <!-- Create A New Table -->
-      <div class="flex flex-row items-center text-base text-gray-800">
-        <GeneralProjectIcon :color="formState.meta.iconColor" :type="baseType" class="mr-2.5 !text-lg !h-4" />
+      <!-- Create A New Base -->
+      <div class="flex flex-row items-center text-base text-nc-content-gray">
+        <GeneralProjectIcon :color="formState.meta.iconColor" class="mr-2.5" />
         {{
           $t('general.createEntity', {
-            entity: typeLabel,
+            entity: 'Base',
           })
         }}
       </div>
     </template>
+
     <div class="mt-1">
       <a-form
         ref="form"
@@ -141,26 +140,29 @@ const typeLabel = computed(() => {
       </a-form>
 
       <div class="flex flex-row justify-end mt-5 gap-x-2">
-        <NcButton type="secondary" size="small" @click="dialogShow = false">{{ $t('general.cancel') }}</NcButton>
+        <NcButton type="secondary" size="small" :disabled="creating" @click="dialogShow = false">{{
+          $t('general.cancel')
+        }}</NcButton>
         <NcButton
           v-e="['a:base:create']"
           data-testid="docs-create-proj-dlg-create-btn"
           :loading="creating"
           type="primary"
           size="small"
-          :label="`${$t('general.create')} ${typeLabel}`"
-          :loading-label="`${$t('general.creating')} ${typeLabel}`"
+          :disabled="creating"
+          :label="`${$t('general.create')} Base`"
+          :loading-label="`${$t('general.creating')} Base`"
           @click="createProject"
         >
           {{
             $t('general.createEntity', {
-              entity: typeLabel,
+              entity: 'Base',
             })
           }}
           <template #loading>
             {{
               $t('general.creatingEntity', {
-                entity: typeLabel,
+                entity: 'Base',
               })
             }}
           </template>
@@ -169,9 +171,3 @@ const typeLabel = computed(() => {
     </div>
   </NcModal>
 </template>
-
-<style scoped lang="scss">
-:deep(.ant-modal-content) {
-  @apply !p-0;
-}
-</style>

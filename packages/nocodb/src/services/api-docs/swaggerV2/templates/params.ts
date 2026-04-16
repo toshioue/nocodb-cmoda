@@ -1,7 +1,12 @@
-import { isLinksOrLTAR, RelationTypes, UITypes } from 'nocodb-sdk';
+import {
+  isLinksOrLTAR,
+  isLTARType,
+  isSelfLinkCol,
+  RelationTypes,
+} from 'nocodb-sdk';
 import type { LinkToAnotherRecordColumn } from '~/models';
 import type { SwaggerColumn } from '../getSwaggerColumnMetas';
-import type { SwaggerView } from '~/services/api-docs/swaggerV2/getSwaggerJSONV2';
+import type { SwaggerView } from '~/services/api-docs/shared/swaggerUtils';
 import type { NcContext } from '~/interface/config';
 
 export const recordIdParam = {
@@ -50,7 +55,7 @@ export const limitParam = {
   in: 'query',
   name: 'limit',
   description:
-    'The `limit` parameter used for pagination, the response collection size depends on limit value with default value `25` and maximum value `1000`, which can be overridden by environment variables `DB_QUERY_LIMIT_DEFAULT` and `DB_QUERY_LIMIT_MAX` respectively.',
+    'The `limit` parameter used for pagination, the response collection size depends on limit value with default value `25` and maximum value `1000`, which can be overridden by environment variables `NC_DB_QUERY_LIMIT_DEFAULT` and `NC_DB_QUERY_LIMIT_MAX` respectively.',
   example: 25,
 };
 export const offsetParam = {
@@ -94,7 +99,10 @@ export const linkFieldNameParam = (columns: SwaggerColumn[]) => {
     '**Links Field Identifier** corresponding to the relation field `Links` established between tables.\n\nLink Columns:',
   ];
   for (const { column } of columns) {
-    if (!isLinksOrLTAR(column) || column.system) continue;
+    // Skip non-link columns and non-self-link system columns
+    if (!isLinksOrLTAR(column) || (column.system && !isSelfLinkCol(column)))
+      continue;
+
     linkColumnIds.push(column.id);
 
     description.push(`* ${column.id} - ${column.title}`);
@@ -119,9 +127,7 @@ export const viewIdParams = (views: SwaggerView[]) => {
 
   for (const { view } of views) {
     viewIds.push(view.id);
-    description.push(
-      `* ${view.id} - ${view.is_default ? 'Default view' : view.title}`,
-    );
+    description.push(`* ${view.id} - ${view.title}`);
   }
 
   return {
@@ -218,7 +224,7 @@ export const getNestedParams = async (
   columns: SwaggerColumn[],
 ): Promise<any[]> => {
   return await columns.reduce(async (paramsArr, { column }) => {
-    if (column.uidt === UITypes.LinkToAnotherRecord && !column.system) {
+    if (isLTARType(column) && !column.system) {
       const colOpt = await column.getColOptions<LinkToAnotherRecordColumn>(
         context,
       );

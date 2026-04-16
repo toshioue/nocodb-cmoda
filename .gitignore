@@ -3,8 +3,6 @@
 .DS_Store
 ehthumbs.db
 Thumbs.db
-Icon
-
 
 
 # Node and related ecosystem
@@ -43,8 +41,8 @@ _site/
 *.tmp.md
 *.bak
 *.swp
-logs/
 build/
+*.tsbuildinfo
 uploads/
 
 # Visual Studio Code
@@ -73,7 +71,6 @@ local.properties
 # Cloud9 IDE
 # =========
 .c9/
-data/
 mongod
 
 # Visual Studio
@@ -98,3 +95,24 @@ httpbin
 
 /packages/nc-secret-mgr/dist/index.js
 /packages/nc-secret-mgr/dist/index.js.map
+
+# nix
+result
+
+.cursorignore
+
+
+
+# Temp
+migrate-colors.js
+antd.variable.css
+
+# Claude - per-branch working memory (ephemeral, local only)
+.claude/branches/
+
+# nocodb-api skill runtime state
+.claude/skills/nocodb-dev-api/.state.json
+/.claude/worktrees/
+.playwright-mcp
+.playwright-cli
+.claude/skills/nocodb-dev-api/.credentials.json

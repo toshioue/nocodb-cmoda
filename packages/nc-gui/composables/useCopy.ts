@@ -1,13 +1,14 @@
 import { Modal } from 'ant-design-vue'
+import { getI18n } from '../plugins/a.i18n'
 
 export const useCopy = (showDialogIfFailed = false) => {
-  const { t } = useI18n()
+  const { t } = getI18n().global
 
   /** fallback for copy if clipboard api is not supported */
   const copyFallback = async (text: string, retryCount = 0): Promise<boolean> => {
     try {
       const textAreaEl = document.createElement('textarea')
-      textAreaEl.innerHTML = text
+      textAreaEl.value = text
       document.body.appendChild(textAreaEl)
       textAreaEl.select()
       const result = document.execCommand('copy')

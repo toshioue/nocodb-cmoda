@@ -1,7 +1,7 @@
-import { UITypes } from 'nocodb-sdk';
-import type { BaseModelSqlv2 } from '~/db/BaseModelSqlv2';
+import { isAIPromptCol, isBtLikeV2Junction, UITypes } from 'nocodb-sdk';
 import type { Knex } from 'knex';
 import type { ButtonColumn, FormulaColumn, RollupColumn } from '~/models';
+import type { IBaseModelSqlV2 } from '~/db/IBaseModelSqlV2';
 import { Base, BaseUser, Sort } from '~/models';
 import { NcError } from '~/helpers/catchError';
 import formulaQueryBuilderv2 from '~/db/formulav2/formulaQueryBuilderv2';
@@ -11,7 +11,7 @@ import generateLookupSelectQuery from '~/db/generateLookupSelectQuery';
 import { getRefColumnIfAlias } from '~/helpers';
 
 export default async function sortV2(
-  baseModelSqlv2: BaseModelSqlv2,
+  baseModelSqlv2: IBaseModelSqlV2,
   sortList: Sort[],
   qb: Knex.QueryBuilder,
   alias?: string,
@@ -38,7 +38,7 @@ export default async function sortV2(
     );
     if (!column) {
       if (throwErrorIfInvalid) {
-        NcError.fieldNotFound(sort.fk_column_id);
+        NcError.get(context).fieldNotFound(sort.fk_column_id);
       }
       continue;
     }
@@ -50,18 +50,29 @@ export default async function sortV2(
       case UITypes.Rollup:
       case UITypes.Links:
         {
-          const builder = (
-            await genRollupSelectv2({
+          // V2 MO/OO: single-record — sort by display value (like BT/Lookup)
+          if (column.uidt === UITypes.Links && isBtLikeV2Junction(column)) {
+            const selectQb = await generateLookupSelectQuery({
               baseModelSqlv2,
-              knex,
-              columnOptions: (await column.getColOptions(
-                context,
-              )) as RollupColumn,
+              column,
               alias,
-            })
-          ).builder;
+              model,
+            });
+            qb.orderBy(selectQb?.builder, sort.direction || 'asc', nulls);
+          } else {
+            const builder = (
+              await genRollupSelectv2({
+                baseModelSqlv2,
+                knex,
+                columnOptions: (await column.getColOptions(
+                  context,
+                )) as RollupColumn,
+                alias,
+              })
+            ).builder;
 
-          qb.orderBy(builder, sort.direction || 'asc', nulls);
+            qb.orderBy(builder, sort.direction || 'asc', nulls);
+          }
         }
         break;
       case UITypes.Formula:
@@ -87,15 +98,13 @@ export default async function sortV2(
               break;
             }
             const builder = (
-              await formulaQueryBuilderv2(
-                baseModelSqlv2,
-                formulaOptions.formula,
-                null,
+              await formulaQueryBuilderv2({
+                baseModel: baseModelSqlv2,
+                tree: formulaOptions.formula,
                 model,
                 column,
-                {},
-                alias,
-              )
+                tableAlias: alias,
+              })
             ).builder;
             qb.orderBy(builder, sort.direction || 'asc', nulls);
           } else {
@@ -132,14 +141,6 @@ export default async function sortV2(
             sort.direction || 'asc',
             nulls,
           );
-        } else if (clientType === 'mssql') {
-          qb.orderBy(
-            sanitize(
-              knex.raw('CAST(?? AS VARCHAR(MAX))', [column.column_name]),
-            ),
-            sort.direction || 'asc',
-            nulls,
-          );
         } else {
           qb.orderBy(
             sanitize(column.column_name),
@@ -154,14 +155,6 @@ export default async function sortV2(
         if (clientType === 'mysql' || clientType === 'mysql2') {
           qb.orderBy(
             sanitize(knex.raw('CONCAT(??)', [column.column_name])),
-            sort.direction || 'asc',
-            nulls,
-          );
-        } else if (clientType === 'mssql') {
-          qb.orderBy(
-            sanitize(
-              knex.raw('CAST(?? AS VARCHAR(MAX))', [column.column_name]),
-            ),
             sort.direction || 'asc',
             nulls,
           );
@@ -180,6 +173,7 @@ export default async function sortV2(
         const base = await Base.get(context, model.base_id);
         const baseUsers = await BaseUser.getUsersList(context, {
           base_id: base.id,
+          include_internal_user: true,
         });
 
         // create nested replace statement for each user
@@ -197,6 +191,31 @@ export default async function sortV2(
           nulls,
         );
 
+        break;
+      }
+      case UITypes.LongText: {
+        if (isAIPromptCol(column)) {
+          let col;
+          if (knex.clientType() === 'pg') {
+            col = knex.raw(`TRIM('"' FROM (??::jsonb->>'value'))`, [
+              column.column_name,
+            ]);
+          } else if (knex.clientType().startsWith('mysql')) {
+            col = knex.raw(`JSON_UNQUOTE(JSON_EXTRACT(??, '$.value'))`, [
+              column.column_name,
+            ]);
+          } else if (knex.clientType() === 'sqlite3') {
+            col = knex.raw(`json_extract(??, '$.value')`, [column.column_name]);
+          }
+
+          qb.orderBy(col, sort.direction || 'asc', nulls);
+        } else {
+          qb.orderBy(
+            sanitize(column.column_name),
+            sort.direction || 'asc',
+            nulls,
+          );
+        }
         break;
       }
       default:

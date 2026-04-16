@@ -37,6 +37,7 @@ export default class Plugin implements PluginType {
     let plugin =
       pluginId &&
       (await NocoCache.get(
+        'root',
         `${CacheScope.PLUGIN}:${pluginId}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -47,13 +48,13 @@ export default class Plugin implements PluginType {
         MetaTable.PLUGIN,
         pluginId,
       );
-      await NocoCache.set(`${CacheScope.PLUGIN}:${pluginId}`, plugin);
+      await NocoCache.set('root', `${CacheScope.PLUGIN}:${pluginId}`, plugin);
     }
     return plugin && new Plugin(plugin);
   }
 
   static async list(ncMeta = Noco.ncMeta) {
-    const cachedList = await NocoCache.getList(CacheScope.PLUGIN, []);
+    const cachedList = await NocoCache.getList('root', CacheScope.PLUGIN, []);
     let { list: pluginList } = cachedList;
     const { isNoneList } = cachedList;
     if (!isNoneList && !pluginList.length) {
@@ -62,7 +63,7 @@ export default class Plugin implements PluginType {
         RootScopes.ROOT,
         MetaTable.PLUGIN,
       );
-      await NocoCache.setList(CacheScope.PLUGIN, [], pluginList);
+      await NocoCache.setList('root', CacheScope.PLUGIN, [], pluginList);
     }
     return pluginList;
   }
@@ -88,24 +89,31 @@ export default class Plugin implements PluginType {
       pluginId,
     );
 
-    await NocoCache.update(`${CacheScope.PLUGIN}:${pluginId}`, updateObj);
-    await NocoCache.update(`${CacheScope.PLUGIN}:${plugin.title}`, updateObj);
+    await NocoCache.update(
+      'root',
+      `${CacheScope.PLUGIN}:${pluginId}`,
+      updateObj,
+    );
 
     return this.get(pluginId);
   }
 
-  public static async isPluginActive(title: string) {
-    return !!(await this.getPluginByTitle(title))?.active;
+  public static async isPluginActive(id: string, ncMeta = Noco.ncMeta) {
+    return !!(
+      (await this.getPlugin(id, ncMeta)) ||
+      (await this.getPluginByTitle(id, ncMeta))
+    )?.active;
   }
 
   /**
-   * get plugin by title
+   * get plugin by id
    */
-  public static async getPluginByTitle(title: string, ncMeta = Noco.ncMeta) {
+  public static async getPlugin(id: string, ncMeta = Noco.ncMeta) {
     let plugin =
-      title &&
+      id &&
       (await NocoCache.get(
-        `${CacheScope.PLUGIN}:${title}`,
+        'root',
+        `${CacheScope.PLUGIN}:${id}`,
         CacheGetType.TYPE_OBJECT,
       ));
     if (!plugin) {
@@ -113,12 +121,20 @@ export default class Plugin implements PluginType {
         RootScopes.ROOT,
         RootScopes.ROOT,
         MetaTable.PLUGIN,
-        {
-          title,
-        },
+        id,
       );
-      await NocoCache.set(`${CacheScope.PLUGIN}:${title}`, plugin);
+      await NocoCache.set('root', `${CacheScope.PLUGIN}:${id}`, plugin);
     }
     return plugin;
+  }
+
+  // keeping it for backward compatibility, if someone configured google auth via plugin it still relies on this
+  static async getPluginByTitle(title: string, ncMeta = Noco.ncMeta) {
+    return await ncMeta.metaGet2(
+      RootScopes.ROOT,
+      RootScopes.ROOT,
+      MetaTable.PLUGIN,
+      { title },
+    );
   }
 }

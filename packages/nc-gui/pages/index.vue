@@ -4,17 +4,17 @@ definePageMeta({
   hasSidebar: true,
 })
 
-const dialogOpen = ref(false)
+const { showOnboardingFlow } = useOnboardingFlow()
 
-const openDialogKey = ref<string>('')
-
-const dataSourcesState = ref<string>('')
-
-const baseId = ref<string>()
+const { isSharedBase, isSharedErd } = storeToRefs(useBase())
 
 const basesStore = useBases()
 
-const { populateWorkspace } = useWorkspace()
+const workspaceStore = useWorkspace()
+
+const { populateWorkspace } = workspaceStore
+
+const { activeWorkspaceId } = storeToRefs(workspaceStore)
 
 const { signedIn } = useGlobal()
 
@@ -26,29 +26,63 @@ const route = router.currentRoute
 
 const { basesList } = storeToRefs(basesStore)
 
-const autoNavigateToProject = async () => {
+const isHomeSidebarRoute = computed(() => {
+  return isWsHomeRoute(route.value)
+})
+
+const { hideMiniSidebar } = storeToRefs(useSidebarStore())
+
+const wsHomeSearchQuery = useState<string>('ws-home-search', () => '')
+
+watch(
+  isHomeSidebarRoute,
+  (val) => {
+    hideMiniSidebar.value = val
+    if (val) {
+      wsHomeSearchQuery.value = ''
+    }
+  },
+  { immediate: true },
+)
+
+const autoNavigateToWorkspace = async () => {
   const routeName = route.value.name as string
-  if (routeName !== 'index-typeOrId' && routeName !== 'index') {
+
+  // Don't auto-navigate when already on a workspace page
+  if (routeName.startsWith('index-typeOrId')) {
     return
   }
 
-  await basesStore.navigateToProject({ baseId: basesList.value[0].id! })
+  if (routeName !== 'index') {
+    return
+  }
+
+  const wsId = activeWorkspaceId.value
+
+  // Try to navigate into last visited base (backward compat)
+  if (wsId && basesList.value?.length) {
+    const lastVisitedBase = ncLastVisitedBase().get()
+
+    const firstBase = lastVisitedBase ? basesList.value.find((b) => b.id === lastVisitedBase) : undefined
+
+    if (firstBase?.id) {
+      await basesStore.navigateToProject({ baseId: firstBase.id! })
+      return
+    }
+  }
+
+  // No bases — navigate to workspace home
+  if (wsId) {
+    await navigateTo(`/${wsId}`)
+  }
 }
 
 const isSharedView = computed(() => {
-  const routeName = (route.value.name as string) || ''
-
-  // check route is not base page by route name
-  return (
-    !routeName.startsWith('index-typeOrId-baseId-') &&
-    !['index', 'index-typeOrId', 'index-typeOrId-feed', 'index-typeOrId-integrations'].includes(routeName)
-  )
+  return isSharedViewRoute(route.value)
 })
 
 const isSharedFormView = computed(() => {
-  const routeName = (route.value.name as string) || ''
-  // check route is shared form view route
-  return routeName.startsWith('index-typeOrId-form-viewId')
+  return isSharedFormViewRoute(route.value)
 })
 
 const { sharedBaseId } = useCopySharedBase()
@@ -56,36 +90,42 @@ const { sharedBaseId } = useCopySharedBase()
 const isDuplicateDlgOpen = ref(false)
 
 async function handleRouteTypeIdChange() {
+  // Avoid loading bases if onboarding flow is shown
+  if (showOnboardingFlow.value) {
+    return
+  }
+
   // avoid loading bases for shared views
   if (isSharedView.value) {
     return
   }
 
-  // avoid loading bases for shared base
-  if (route.value.params.typeOrId === 'base') {
+  try {
+    // avoid loading bases for shared base
+    if (route.value.params.typeOrId === 'base') {
+      await populateWorkspace()
+      return
+    }
+
+    if (!signedIn.value) {
+      navigateTo('/signIn')
+      return
+    }
+
+    // Load bases
     await populateWorkspace()
-    return
-  }
 
-  if (!signedIn.value) {
-    navigateTo('/signIn')
-    return
-  }
-
-  // Load bases
-  await populateWorkspace()
-
-  if (!route.value.params.baseId && basesList.value.length > 0) {
-    await autoNavigateToProject()
+    if (!route.value.params.baseId) {
+      await autoNavigateToWorkspace()
+    }
+  } catch (e: any) {
+    console.error(e)
   }
 }
 
-watch(
-  () => route.value.params.typeOrId,
-  () => {
-    handleRouteTypeIdChange()
-  },
-)
+watch([() => route.value.params.typeOrId, () => showOnboardingFlow.value], () => {
+  handleRouteTypeIdChange()
+})
 
 // onMounted is needed instead having this function called through
 // immediate watch, because if route is changed during page transition
@@ -102,19 +142,23 @@ onMounted(() => {
   })
 })
 
-function toggleDialog(value?: boolean, key?: string, dsState?: string, pId?: string) {
-  dialogOpen.value = value ?? !dialogOpen.value
-  openDialogKey.value = key || ''
-  dataSourcesState.value = dsState || ''
-  baseId.value = pId || ''
-}
-
-provide(ToggleDialogInj, toggleDialog)
+watch(
+  [() => isSharedFormView.value, () => isSharedView.value, () => isSharedBase.value, () => isSharedErd.value],
+  (arr) => {
+    addConfirmPageLeavingRedirectToWindow(!arr.some(Boolean))
+  },
+  {
+    immediate: true,
+  },
+)
 </script>
 
 <template>
   <div>
-    <NuxtLayout v-if="isSharedFormView">
+    <NuxtLayout v-if="showOnboardingFlow" name="empty">
+      <AuthOnboarding />
+    </NuxtLayout>
+    <NuxtLayout v-else-if="isSharedFormView">
       <NuxtPage />
     </NuxtLayout>
     <NuxtLayout v-else-if="isSharedView" name="shared-view">
@@ -122,18 +166,22 @@ provide(ToggleDialogInj, toggleDialog)
     </NuxtLayout>
     <NuxtLayout v-else name="dashboard">
       <template #sidebar>
-        <DashboardSidebar />
+        <DashboardHomeSidebar v-if="isHomeSidebarRoute" />
+        <DashboardSidebar v-else />
       </template>
       <template #content>
-        <NuxtPage />
+        <!-- Workspace home: stable header + tabs + dynamic page content -->
+        <div v-if="isHomeSidebarRoute" class="flex flex-col h-full w-full">
+          <WorkspaceViewTopbar />
+          <WorkspaceViewTabs />
+          <div class="flex-1 overflow-auto">
+            <NuxtPage :transition="false" />
+          </div>
+        </div>
+        <!-- Non-workspace routes: render page directly -->
+        <NuxtPage v-else :transition="false" />
       </template>
     </NuxtLayout>
-    <LazyDashboardSettingsModal
-      v-model:model-value="dialogOpen"
-      v-model:open-key="openDialogKey"
-      v-model:data-sources-state="dataSourcesState"
-      :base-id="baseId"
-    />
     <DlgSharedBaseDuplicate v-if="isUIAllowed('baseDuplicate')" v-model="isDuplicateDlgOpen" />
   </div>
 </template>

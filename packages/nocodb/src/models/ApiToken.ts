@@ -9,11 +9,14 @@ import {
 } from '~/utils/globals';
 import Noco from '~/Noco';
 import NocoCache from '~/cache/NocoCache';
+import { NcError } from '~/helpers/catchError';
 
 export default class ApiToken implements ApiTokenType {
+  id?: string;
   fk_workspace_id?: string;
   base_id?: string;
   fk_user_id?: string;
+  fk_sso_client_id?: string;
   description?: string;
   permissions?: string;
   token?: string;
@@ -37,11 +40,13 @@ export default class ApiToken implements ApiTokenType {
         description: apiToken.description,
         token,
         fk_user_id: apiToken.fk_user_id,
+        fk_sso_client_id: apiToken.fk_sso_client_id ?? null,
       },
       true,
     );
     return this.getByToken(token).then(async (apiToken) => {
       await NocoCache.appendToList(
+        'root',
         CacheScope.API_TOKEN,
         [],
         `${CacheScope.API_TOKEN}:${token}`,
@@ -63,12 +68,28 @@ export default class ApiToken implements ApiTokenType {
     );
     // await NocoCache.setList(CacheScope.API_TOKEN, [], tokens);
     // }
-    return tokens?.map((t) => new ApiToken(t));
+    return tokens?.map((t) => this.castType(t));
+  }
+
+  static async listForNonSsoUser(userId: string, ncMeta = Noco.ncMeta) {
+    const tokens = await ncMeta.metaList2(
+      RootScopes.ROOT,
+      RootScopes.ROOT,
+      MetaTable.API_TOKENS,
+      {
+        condition: {
+          fk_user_id: userId,
+          fk_sso_client_id: null,
+        },
+      },
+    );
+    return tokens?.map((t) => this.castType(t));
   }
 
   static async delete(tokenId: string, ncMeta = Noco.ncMeta) {
     const tokenData = await this.get(tokenId, ncMeta);
     await NocoCache.deepDel(
+      'root',
       `${CacheScope.API_TOKEN}:${tokenData.id}`,
       CacheDelDirection.CHILD_TO_PARENT,
     );
@@ -80,10 +101,18 @@ export default class ApiToken implements ApiTokenType {
     );
   }
 
+  static async deleteByUser(userId: string, ncMeta = Noco.ncMeta) {
+    const tokens = await this.list(userId, ncMeta);
+    for (const token of tokens) {
+      await this.delete(token.id, ncMeta);
+    }
+  }
+
   static async getByToken(token, ncMeta = Noco.ncMeta) {
     let data =
       token &&
       (await NocoCache.get(
+        'root',
         `${CacheScope.API_TOKEN}:${token}`,
         CacheGetType.TYPE_OBJECT,
       ));
@@ -94,16 +123,21 @@ export default class ApiToken implements ApiTokenType {
         MetaTable.API_TOKENS,
         { token },
       );
-      await NocoCache.set(`${CacheScope.API_TOKEN}:${token}`, data);
+      await NocoCache.set('root', `${CacheScope.API_TOKEN}:${token}`, data);
     }
-    return data && new ApiToken(data);
+    return data && this.castType(data);
   }
 
   public static async count(
     {
       fk_user_id,
       includeUnmappedToken = false,
-    }: { fk_user_id?: string; includeUnmappedToken?: boolean } = {},
+      ssoClientId,
+    }: {
+      fk_user_id?: string;
+      includeUnmappedToken?: boolean;
+      ssoClientId?: string;
+    } = {},
     ncMeta = Noco.ncMeta,
   ): Promise<number> {
     const qb = ncMeta.knex(MetaTable.API_TOKENS);
@@ -111,6 +145,12 @@ export default class ApiToken implements ApiTokenType {
     if (fk_user_id) {
       qb.where(`${MetaTable.API_TOKENS}.fk_user_id`, fk_user_id);
     }
+
+    // SSO filtering logic - if no ssoClientId, user is non-SSO and should only see non-SSO tokens
+    if (!ssoClientId) {
+      qb.whereNull(`${MetaTable.API_TOKENS}.fk_sso_client_id`);
+    }
+    // If ssoClientId exists, user logged via SSO and sees all tokens (no additional filtering)
 
     if (includeUnmappedToken) {
       qb.orWhereNull(`${MetaTable.API_TOKENS}.fk_user_id`);
@@ -125,11 +165,13 @@ export default class ApiToken implements ApiTokenType {
       offset = 0,
       fk_user_id,
       includeUnmappedToken = false,
+      ssoClientId,
     }: {
       limit: number;
       offset: number;
       fk_user_id?: string;
       includeUnmappedToken: boolean;
+      ssoClientId?: string;
     },
     ncMeta = Noco.ncMeta,
   ) {
@@ -142,9 +184,14 @@ export default class ApiToken implements ApiTokenType {
         `${MetaTable.API_TOKENS}.token`,
         `${MetaTable.API_TOKENS}.description`,
         `${MetaTable.API_TOKENS}.fk_user_id`,
+        `${MetaTable.API_TOKENS}.fk_sso_client_id`,
         `${MetaTable.API_TOKENS}.base_id`,
         `${MetaTable.API_TOKENS}.created_at`,
         `${MetaTable.API_TOKENS}.updated_at`,
+        `${MetaTable.API_TOKENS}.token_prefix`,
+        `${MetaTable.API_TOKENS}.expiry`,
+        `${MetaTable.API_TOKENS}.enabled`,
+        `${MetaTable.API_TOKENS}.last_used_at`,
       )
       .select(
         ncMeta
@@ -160,9 +207,17 @@ export default class ApiToken implements ApiTokenType {
       queryBuilder.where(`${MetaTable.API_TOKENS}.fk_user_id`, fk_user_id);
     }
 
+    // SSO filtering logic - if no ssoClientId, user is non-SSO and should only see non-SSO tokens
+    if (!ssoClientId) {
+      queryBuilder.whereNull(`${MetaTable.API_TOKENS}.fk_sso_client_id`);
+    }
+    // If ssoClientId exists, user logged via SSO and sees all tokens (no additional filtering)
+
     if (includeUnmappedToken) {
       queryBuilder.orWhereNull(`${MetaTable.API_TOKENS}.fk_user_id`);
     }
+
+    queryBuilder.orderBy(`${MetaTable.API_TOKENS}.created_at`, 'desc');
 
     return queryBuilder;
   }
@@ -174,5 +229,54 @@ export default class ApiToken implements ApiTokenType {
       MetaTable.API_TOKENS,
       tokenId,
     );
+  }
+
+  public static async clearSsoAssociation(
+    ssoClientId: string,
+    ncMeta = Noco.ncMeta,
+  ) {
+    if (!ssoClientId) {
+      NcError.badRequest('SSO client ID is required');
+    }
+
+    const tokens = await ncMeta.metaList2(
+      RootScopes.ROOT,
+      RootScopes.ROOT,
+      MetaTable.API_TOKENS,
+      {
+        condition: { fk_sso_client_id: ssoClientId },
+      },
+    );
+
+    for (const token of tokens) {
+      // Update database to remove SSO association
+      await ncMeta.metaUpdate(
+        RootScopes.ROOT,
+        RootScopes.ROOT,
+        MetaTable.API_TOKENS,
+        { fk_sso_client_id: null },
+        token.id,
+      );
+
+      // Clear cache
+      await NocoCache.deepDel(
+        'root',
+        `${CacheScope.API_TOKEN}:${token.id}`,
+        CacheDelDirection.CHILD_TO_PARENT,
+      );
+      await NocoCache.del('root', `${CacheScope.API_TOKEN}:${token.token}`);
+    }
+
+    return tokens?.length || 0;
+  }
+
+  async getExtraForUserPayload(
+    _ncMeta = Noco.ncMeta,
+  ): Promise<void | Record<string, any>> {
+    return; // Placeholder for future implementation
+  }
+
+  public static castType(apiToken: ApiToken): ApiToken {
+    return apiToken && new ApiToken(apiToken);
   }
 }

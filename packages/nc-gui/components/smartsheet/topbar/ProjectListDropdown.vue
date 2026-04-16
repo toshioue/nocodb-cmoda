@@ -43,7 +43,7 @@ const handleNavigateToProject = async (base: NcProject) => {
 </script>
 
 <template>
-  <NcDropdown v-model:visible="isOpen">
+  <NcDropdown v-model:visible="isOpen" overlay-class-name="max-w-64">
     <slot name="default" :is-open="isOpen"></slot>
     <template #overlay>
       <LazyNcList
@@ -54,10 +54,21 @@ const handleNavigateToProject = async (base: NcProject) => {
         option-value-key="id"
         option-label-key="title"
         search-input-placeholder="Search bases"
+        class="min-w-64 !w-auto"
+        variant="medium"
         @change="handleNavigateToProject"
       >
         <template #listItem="{ option }">
-          <GeneralBaseIconColorPicker :type="option?.type" :model-value="parseProp(option.meta).iconColor" size="xsmall" readonly>
+          <GeneralBaseIconColorPicker
+            :type="option?.type"
+            :model-value="parseProp(option.meta).iconColor"
+            :managed-app="{
+              managed_app_master: option?.managed_app_master,
+              managed_app_id: option?.managed_app_id,
+            }"
+            size="xsmall"
+            readonly
+          >
           </GeneralBaseIconColorPicker>
           <NcTooltip class="truncate flex-1" show-on-truncate-only>
             <template #title>
@@ -76,5 +87,3 @@ const handleNavigateToProject = async (base: NcProject) => {
     </template>
   </NcDropdown>
 </template>
-
-<style lang="scss" scoped></style>

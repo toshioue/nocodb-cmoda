@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { ColumnType, KanbanType } from 'nocodb-sdk'
-import { UITypes, isVirtualCol } from 'nocodb-sdk'
+import type { KanbanType } from 'nocodb-sdk'
+import { UITypes } from 'nocodb-sdk'
 import type { SelectProps } from 'ant-design-vue'
 
 provide(IsKanbanInj, ref(true))
@@ -20,7 +20,7 @@ const isToolbarIconMode = inject(
 
 const { fields, loadViewColumns, metaColumnById } = useViewColumnsOrThrow(activeView, meta)
 
-const { kanbanMetaData, loadKanbanMeta, loadKanbanData, updateKanbanMeta, groupingField } = useKanbanViewStoreOrThrow()
+const { kanbanMetaData, updateKanbanMeta, groupingField } = useKanbanViewStoreOrThrow()
 
 const { addUndo, defineViewScope } = useUndoRedo()
 
@@ -42,9 +42,6 @@ const updateGroupingField = async (v: string) => {
   await updateKanbanMeta({
     fk_grp_col_id: v,
   })
-  await loadKanbanMeta()
-  await loadKanbanData()
-  ;(activeView.value?.view as KanbanType).fk_grp_col_id = v
 }
 
 const groupingFieldColumnId = computed({
@@ -76,7 +73,6 @@ const updateHideEmptyStack = async (v: boolean) => {
   await updateKanbanMeta({
     meta: payload,
   })
-  await loadKanbanMeta()
   ;(activeView.value?.view as KanbanType).meta = payload
 }
 
@@ -121,11 +117,6 @@ const singleSelectFieldOptions = computed<SelectProps['options']>(() => {
 const handleChange = () => {
   open.value = false
 }
-
-const getIcon = (c: ColumnType) =>
-  h(isVirtualCol(c) ? resolveComponent('SmartsheetHeaderVirtualCellIcon') : resolveComponent('SmartsheetHeaderCellIcon'), {
-    columnMeta: c,
-  })
 </script>
 
 <template>
@@ -133,34 +124,41 @@ const getIcon = (c: ColumnType) =>
     v-if="!IsPublic"
     v-model:visible="open"
     :trigger="['click']"
-    overlay-class-name="nc-dropdown-kanban-stacked-by-menu"
-    class="!xs:hidden"
+    overlay-class-name="nc-dropdown-kanban-stacked-by-menu overflow-hidden"
   >
-    <div class="nc-kanban-btn">
+    <NcTooltip :disabled="!isToolbarIconMode" class="nc-kanban-btn">
+      <template #title>
+        {{ $t('activity.kanban.stackedBy') }}
+      </template>
+
       <NcButton
         v-e="['c:kanban:change-grouping-field']"
         class="nc-kanban-stacked-by-menu-btn nc-toolbar-btn !border-0 !h-7 group"
         size="small"
         type="secondary"
-        :disabled="isLocked"
+        :show-as-disabled="isLocked"
       >
         <div class="flex items-center gap-2">
           <GeneralIcon icon="settings" class="h-4 w-4" />
           <div v-if="!isToolbarIconMode" class="flex items-center gap-0.5">
-            <span class="text-capitalize !text-sm flex items-center gap-1 text-gray-700">
+            <span class="text-capitalize !text-[13px] font-medium flex items-center gap-1">
               {{ $t('activity.kanban.stackedBy') }}
             </span>
             <div
-              class="flex items-center rounded-md transition-colors duration-0.3s bg-gray-100 group-hover:bg-gray-200 px-1 min-h-5 text-gray-600 max-w-[108px]"
+              class="flex items-center rounded-md transition-colors duration-0.3s bg-nc-bg-gray-light px-1 min-h-5 max-w-[108px]"
+              :class="{
+                'group-hover:bg-nc-bg-gray-medium': !isLocked,
+              }"
             >
-              <span class="font-weight-500 text-sm truncate !leading-5">{{ groupingField }}</span>
+              <span class="!text-[13px] font-medium truncate !leading-5">{{ groupingField }}</span>
             </div>
           </div>
         </div>
       </NcButton>
-    </div>
+    </NcTooltip>
+
     <template #overlay>
-      <div v-if="open" class="p-4 w-90 bg-white nc-table-toolbar-menu rounded-lg flex flex-col gap-5" @click.stop>
+      <div v-if="open" class="p-4 w-90 bg-nc-bg-default nc-table-toolbar-menu rounded-lg flex flex-col gap-5" @click.stop>
         <div class="flex flex-col gap-2">
           <div>
             {{ $t('general.groupingField') }}
@@ -172,17 +170,19 @@ const getIcon = (c: ColumnType) =>
                 class="nc-select-shadow w-full nc-kanban-grouping-field-select !rounded-lg"
                 dropdown-class-name="!rounded-lg"
                 placeholder="Select a Grouping Field"
+                :disabled="isLocked"
                 @change="handleChange"
                 @click.stop
               >
-                <template #suffixIcon><GeneralIcon icon="arrowDown" class="text-gray-700" /></template>
+                <template #suffixIcon><GeneralIcon icon="arrowDown" class="text-nc-content-gray-subtle" /></template>
                 <a-select-option v-for="option of singleSelectFieldOptions" :key="option.value" :value="option.value">
-                  <div class="w-full flex gap-2 items-center justify-between" :title="option.label">
+                  <div class="w-full h-full flex gap-2 items-center justify-between" :title="option.label">
                     <div class="flex items-center gap-1 max-w-[calc(100%_-_20px)]">
-                      <component
-                        :is="getIcon(metaColumnById[option.value])"
-                        v-if="option.value"
-                        class="!w-3.5 !h-3.5 !text-gray-700 !ml-0"
+                      <SmartsheetHeaderIcon
+                        v-if="option.value && metaColumnById[option.value]"
+                        :column="metaColumnById[option.value]"
+                        class="!w-3.5 !h-3.5 opacity-80 !ml-0"
+                        color="text-current"
                       />
 
                       <NcTooltip class="flex-1 max-w-[calc(100%_-_20px)] truncate" show-on-truncate-only>
@@ -204,14 +204,21 @@ const getIcon = (c: ColumnType) =>
           </div>
         </div>
         <div class="flex items-center gap-1">
-          <NcSwitch v-model:checked="hideEmptyStack" size="small" class="nc-switch" :loading="isLoading === 'hideEmptyStack'">
-            <div class="text-sm text-gray-800">
+          <NcSwitch
+            v-model:checked="hideEmptyStack"
+            size="small"
+            class="nc-switch"
+            :loading="isLoading === 'hideEmptyStack'"
+            :disabled="isLocked"
+          >
+            <div class="text-sm text-nc-content-gray">
               {{ $t('general.hide') }}
               {{ $t('general.empty').toLowerCase() }}
               {{ $t('general.stack').toLowerCase() }}
             </div>
           </NcSwitch>
         </div>
+        <GeneralLockedViewFooter v-if="isLocked" class="-mb-4 -mx-4" @on-open="open = false" />
       </div>
     </template>
   </NcDropdown>

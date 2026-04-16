@@ -21,22 +21,46 @@ const relationColumnOptions = computed<LinkToAnotherRecordType | null>(() => {
   return null
 })
 
-const relatedTableMeta = computed(
-  () =>
-    relationColumnOptions.value?.fk_related_model_id && metas.value?.[relationColumnOptions.value?.fk_related_model_id as string],
-)
+const relatedTableMeta = computed(() => {
+  if (!relationColumnOptions.value?.fk_related_model_id) return null
+  // Use fk_related_base_id for cross-base relationships
+  const relatedBaseId = relationColumnOptions.value.fk_related_base_id || meta.value?.base_id
+  const metaKey = relatedBaseId
+    ? `${relatedBaseId}:${relationColumnOptions.value.fk_related_model_id}`
+    : relationColumnOptions.value.fk_related_model_id
+  return metas.value?.[metaKey] || metas.value?.[relationColumnOptions.value.fk_related_model_id as string]
+})
 
 const colOptions = computed(() => column.value?.colOptions)
 
 const childColumn = computed(() => {
-  if (relatedTableMeta.value?.columns) {
-    if (isRollup(column.value)) {
-      return relatedTableMeta.value?.columns.find(
-        (c: ColumnType) => c.id === (colOptions.value as RollupType).fk_rollup_column_id,
-      )
+  if (!relatedTableMeta.value?.columns || !isRollup(column.value)) return ''
+
+  const col = relatedTableMeta.value?.columns.find(
+    (c: ColumnType) => c.id === (colOptions.value as RollupType).fk_rollup_column_id,
+  )
+
+  if (!col) return ''
+
+  // Resolve Formula fields with display_type (e.g., Currency, Percent) to their effective type
+  if (col.uidt === UITypes.Formula) {
+    const colMeta = parseProp(col.meta)
+    if (colMeta?.display_type) {
+      const displayColumnMeta = parseProp(colMeta.display_column_meta)
+
+      return {
+        ...col,
+        uidt: colMeta.display_type,
+        ...displayColumnMeta,
+        meta: {
+          ...parseProp(column.value?.meta),
+          ...parseProp(displayColumnMeta?.meta),
+        },
+      }
     }
   }
-  return ''
+
+  return col
 })
 
 const renderAsTextFun = computed(() => {
@@ -45,18 +69,14 @@ const renderAsTextFun = computed(() => {
 </script>
 
 <template>
-  <div class="nc-cell-field" @dblclick="activateShowEditNonEditableFieldWarning">
-    <div v-if="renderAsTextFun.includes(colOptions.rollup_function)">
-      {{ value }}
-    </div>
+  <div @dblclick="activateShowEditNonEditableFieldWarning">
+    <CellDecimal v-if="renderAsTextFun.includes((colOptions as RollupType).rollup_function!)" :model-value="value" />
     <LazySmartsheetCell v-else v-model="value" :column="childColumn" :edit-enabled="false" :read-only="true" />
-    <div>
-      <div v-if="showEditNonEditableFieldWarning" class="text-left text-wrap mt-2 text-[#e65100] text-xs">
-        {{ $t('msg.info.computedFieldEditWarning') }}
-      </div>
-      <div v-if="showClearNonEditableFieldWarning" class="text-left text-wrap mt-2 text-[#e65100] text-xs">
-        {{ $t('msg.info.computedFieldDeleteWarning') }}
-      </div>
+    <div v-if="showEditNonEditableFieldWarning" class="text-left text-wrap mt-2 text-[#e65100] text-xs">
+      {{ $t('msg.info.computedFieldEditWarning') }}
+    </div>
+    <div v-if="showClearNonEditableFieldWarning" class="text-left text-wrap mt-2 text-[#e65100] text-xs">
+      {{ $t('msg.info.computedFieldDeleteWarning') }}
     </div>
   </div>
 </template>

@@ -6,11 +6,14 @@ import mkdirp from 'mkdirp';
 import axios from 'axios';
 import { useAgent } from 'request-filtering-agent';
 import { globStream } from 'glob';
+import { Logger } from '@nestjs/common';
 import type { IStorageAdapterV2, XcFile } from '~/types/nc-plugin';
 import { validateAndNormaliseLocalPath } from '~/helpers/attachmentHelpers';
+import { NcError } from '~/helpers/ncError';
 
 export default class Local implements IStorageAdapterV2 {
   name = 'Local';
+  protected logger = new Logger(Local.name);
 
   public async fileCreate(key: string, file: XcFile): Promise<any> {
     const destPath = validateAndNormaliseLocalPath(key);
@@ -21,7 +24,7 @@ export default class Local implements IStorageAdapterV2 {
       await promisify(fs.unlink)(file.path);
       // await fs.promises.rename(file.path, destPath);
     } catch (e) {
-      throw e;
+      NcError._.storageFileCreateError(e.message);
     }
   }
 
@@ -30,74 +33,108 @@ export default class Local implements IStorageAdapterV2 {
     url: string,
     { fetchOptions: { buffer } = { buffer: false } },
   ): Promise<any> {
-    const destPath = validateAndNormaliseLocalPath(key);
-    return new Promise((resolve, reject) => {
-      axios
-        .get(url, {
-          responseType: buffer ? 'arraybuffer' : 'stream',
-          headers: {
-            accept:
-              'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-            'accept-language': 'en-US,en;q=0.9',
-            'cache-control': 'no-cache',
-            pragma: 'no-cache',
-            'user-agent':
-              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
-            origin: 'https://www.airtable.com/',
-          },
-          httpAgent: useAgent(url, { stopPortScanningByUrlRedirection: true }),
-          httpsAgent: useAgent(url, { stopPortScanningByUrlRedirection: true }),
-        })
-        .then(async (response) => {
-          await mkdirp(path.dirname(destPath));
+    try {
+      const destPath = validateAndNormaliseLocalPath(key);
+      const response = await axios.get(url, {
+        responseType: buffer ? 'arraybuffer' : 'stream',
+        headers: {
+          accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+          'accept-language': 'en-US,en;q=0.9',
+          'cache-control': 'no-cache',
+          pragma: 'no-cache',
+          'user-agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/107.0.0.0 Safari/537.36',
+          origin: 'https://www.airtable.com/',
+        },
+        httpAgent: useAgent(url),
+        httpsAgent: useAgent(url),
+      });
 
-          fs.writeFile(destPath, response.data, (err) => {
-            if (err) {
-              return reject(err);
-            }
-            resolve({
-              url: null,
-              data: response.data,
-            });
-          });
-        })
-        .catch((err) => {
-          reject(err.message);
-        });
-    });
+      await mkdirp(path.dirname(destPath));
+      if (buffer) {
+        await fs.promises.writeFile(destPath, Buffer.from(response.data));
+        return {
+          url: null,
+          data: response.data,
+        };
+      } else {
+        await this.fileCreateByStream(key, response.data);
+        return {
+          url: null,
+          data: null,
+        };
+      }
+    } catch (err) {
+      NcError._.storageFileCreateError(
+        `Failed to create file from URL: ${err.message}`,
+      );
+    }
   }
 
   public async fileCreateByStream(
     key: string,
     stream: Readable,
-  ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const destPath = validateAndNormaliseLocalPath(key);
-      try {
-        mkdirp(path.dirname(destPath)).then(() => {
-          const writableStream = fs.createWriteStream(destPath);
-          writableStream.on('finish', () => resolve());
-          writableStream.on('error', (err) => reject(err));
-          stream.pipe(writableStream);
-        });
-      } catch (e) {
-        throw e;
-      }
-    });
+  ): Promise<string | null> {
+    const destPath = validateAndNormaliseLocalPath(key);
+
+    try {
+      await mkdirp(path.dirname(destPath));
+
+      await new Promise<void>((resolve, reject) => {
+        const writableStream = fs.createWriteStream(destPath);
+
+        writableStream.on('finish', () => resolve());
+        writableStream.on('error', reject);
+
+        stream.on('error', reject);
+        stream.pipe(writableStream);
+      });
+
+      // Verify file was written successfully
+      await this.fileRead(destPath);
+
+      return null;
+    } catch (e) {
+      NcError._.storageFileStreamError(e.message);
+    }
   }
 
-  public async fileReadByStream(key: string): Promise<Readable> {
-    const srcPath = validateAndNormaliseLocalPath(key);
-    return fs.createReadStream(srcPath, { encoding: 'utf8' });
+  public async fileReadByStream(
+    key: string,
+    options: { encoding?: string },
+  ): Promise<Readable> {
+    try {
+      const srcPath = validateAndNormaliseLocalPath(key);
+
+      // Check if file exists before creating stream
+      await fs.promises.access(srcPath, fs.constants.R_OK);
+
+      return fs.createReadStream(srcPath, {
+        ...(options?.encoding && {
+          encoding: options.encoding as BufferEncoding,
+        }),
+      });
+    } catch (e) {
+      NcError._.storageFileStreamError(e.message);
+    }
   }
 
   public async getDirectoryList(key: string): Promise<string[]> {
-    const destDir = validateAndNormaliseLocalPath(key);
-    return fs.promises.readdir(destDir);
+    try {
+      const destDir = validateAndNormaliseLocalPath(key);
+      return await fs.promises.readdir(destDir);
+    } catch (e) {
+      NcError._.storageFileReadError(`Failed to list directory: ${e.message}`);
+    }
   }
 
-  fileDelete(path: string): Promise<any> {
-    return fs.promises.unlink(validateAndNormaliseLocalPath(path));
+  async fileDelete(path: string): Promise<any> {
+    try {
+      return await fs.promises.unlink(validateAndNormaliseLocalPath(path));
+    } catch (e) {
+      NcError._.storageFileDeleteError(e.message);
+    }
   }
 
   public async fileRead(filePath: string): Promise<any> {
@@ -107,30 +144,41 @@ export default class Local implements IStorageAdapterV2 {
       );
       return fileData;
     } catch (e) {
-      throw e;
+      NcError._.storageFileReadError(e.message);
     }
   }
 
   public async scanFiles(globPattern: string) {
-    // Normalize the path separator
-    globPattern = globPattern.replace(/\//g, path.sep);
+    try {
+      // Normalize the path separator
+      globPattern = globPattern.replace(/\//g, path.sep);
 
-    // remove all dots from the glob pattern
-    globPattern = globPattern.replace(/\./g, '');
+      // remove all dots from the glob pattern
+      globPattern = globPattern.replace(/\./g, '');
 
-    // remove the leading slash
-    globPattern = globPattern.replace(/^\//, '');
+      // remove the leading slash
+      globPattern = globPattern.replace(/^\//, '');
 
-    // Ensure the pattern starts with 'nc/uploads/'
-    if (!globPattern.startsWith(path.join('nc', 'uploads'))) {
-      globPattern = path.join('nc', 'uploads', globPattern);
+      // Ensure the pattern starts with 'nc/uploads/'
+      if (!globPattern.startsWith(path.join('nc', 'uploads'))) {
+        globPattern = path.join('nc', 'uploads', globPattern);
+      }
+
+      const globStreamInstance = globStream(globPattern, {
+        nodir: true,
+      });
+
+      const stream = Readable.from(globStreamInstance);
+
+      // Forward errors from glob stream
+      globStreamInstance.on('error', (error) => {
+        stream.destroy(error as any);
+      });
+
+      return stream;
+    } catch (e) {
+      NcError._.storageFileReadError(`Failed to scan files: ${e.message}`);
     }
-
-    const stream = globStream(globPattern, {
-      nodir: true,
-    });
-
-    return Readable.from(stream);
   }
 
   init(): Promise<any> {
@@ -139,5 +187,15 @@ export default class Local implements IStorageAdapterV2 {
 
   test(): Promise<boolean> {
     return Promise.resolve(false);
+  }
+
+  getUploadedPath(filePath: string): { path?: string; url?: string } {
+    const usePath = filePath.startsWith('/')
+      ? filePath.replace(/^\/+/, '')
+      : filePath;
+
+    return {
+      path: path.join('download', usePath),
+    };
   }
 }

@@ -14,7 +14,7 @@ import { PublicDatasService } from '~/services/public-datas.service';
 import { PublicApiLimiterGuard } from '~/guards/public-api-limiter.guard';
 import { TenantContext } from '~/decorators/tenant-context.decorator';
 import { NcContext, NcRequest } from '~/interface/config';
-import { Column } from '~/models';
+import { Column, View } from '~/models';
 import { AttachmentsService } from '~/services/attachments.service';
 import { NcError } from '~/helpers/catchError';
 
@@ -36,6 +36,20 @@ export class PublicDatasController {
     @Param('sharedViewUuid') sharedViewUuid: string,
   ) {
     const pagedResponse = await this.publicDatasService.dataList(context, {
+      query: req.query,
+      password: req.headers?.['xc-password'] as string,
+      sharedViewUuid,
+    });
+    return pagedResponse;
+  }
+
+  @Get(['/api/v2/public/shared-view/:sharedViewUuid/count'])
+  async dataCount(
+    @TenantContext() context: NcContext,
+    @Req() req: NcRequest,
+    @Param('sharedViewUuid') sharedViewUuid: string,
+  ) {
+    const pagedResponse = await this.publicDatasService.dataCount(context, {
       query: req.query,
       password: req.headers?.['xc-password'] as string,
       sharedViewUuid,
@@ -71,6 +85,19 @@ export class PublicDatasController {
     @Param('sharedViewUuid') sharedViewUuid: string,
   ) {
     return await this.publicDatasService.dataGroupBy(context, {
+      query: req.query,
+      password: req.headers?.['xc-password'] as string,
+      sharedViewUuid: sharedViewUuid,
+    });
+  }
+
+  @Get(['/api/v2/public/shared-view/:sharedViewUuid/groupby/count'])
+  async dataGroupByCount(
+    @TenantContext() context: NcContext,
+    @Req() req: NcRequest,
+    @Param('sharedViewUuid') sharedViewUuid: string,
+  ) {
+    return await this.publicDatasService.dataGroupByCount(context, {
       query: req.query,
       password: req.headers?.['xc-password'] as string,
       sharedViewUuid: sharedViewUuid,
@@ -113,6 +140,7 @@ export class PublicDatasController {
       body: req.body?.data,
       siteUrl: (req as any).ncSiteUrl,
       files: req.files as any[],
+      req,
     });
 
     return insertResult;
@@ -152,6 +180,8 @@ export class PublicDatasController {
   @Get([
     '/api/v1/db/public/shared-view/:sharedViewUuid/rows/:rowId/mm/:columnId',
     '/api/v2/public/shared-view/:sharedViewUuid/rows/:rowId/mm/:columnId',
+    '/api/v1/db/public/shared-view/:sharedViewUuid/rows/:rowId/ln/:columnId',
+    '/api/v2/public/shared-view/:sharedViewUuid/rows/:rowId/ln/:columnId',
   ])
   async publicMmList(
     @TenantContext() context: NcContext,
@@ -208,6 +238,20 @@ export class PublicDatasController {
     @Param('rowId') rowId: string,
     @Query('urlOrPath') urlOrPath: string,
   ) {
+    const view = await View.getByUUID(context, sharedViewUuid);
+
+    if (!view) NcError.viewNotFound(sharedViewUuid);
+
+    await view.getColumns(context);
+
+    const isColumnVisible = view.columns.some(
+      (c) => c.fk_column_id === columnId && c.show,
+    );
+
+    if (!isColumnVisible) {
+      NcError.fieldNotFound(columnId);
+    }
+
     const column = await Column.get(context, {
       colId: columnId,
     });
@@ -243,6 +287,25 @@ export class PublicDatasController {
     @Param('sharedViewUuid') sharedViewUuid: string,
   ) {
     const response = await this.publicDatasService.bulkDataList(context, {
+      query: req.query,
+      password: req.headers?.['xc-password'] as string,
+      sharedViewUuid,
+      body: req.body,
+    });
+
+    return response;
+  }
+
+  @Post([
+    '/api/v1/db/public/shared-view/:sharedViewUuid/bulk/aggregate',
+    '/api/v2/public/shared-view/:sharedViewUuid/bulk/aggregate',
+  ])
+  async bulkDataAggregate(
+    @TenantContext() context: NcContext,
+    @Req() req: NcRequest,
+    @Param('sharedViewUuid') sharedViewUuid: string,
+  ) {
+    const response = await this.publicDatasService.bulkAggregate(context, {
       query: req.query,
       password: req.headers?.['xc-password'] as string,
       sharedViewUuid,

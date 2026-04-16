@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { VNodeRef } from '@vue/runtime-core'
 import type { InputPassword } from 'ant-design-vue'
+import { setI18nLanguage } from '~/plugins/a.i18n'
 
 definePageMeta({
   public: true,
@@ -11,7 +12,7 @@ useSidebar('nc-left-sidebar', { hasSidebar: false })
 
 const route = useRoute()
 
-const { t } = useI18n()
+const { isDark } = useTheme()
 
 const { loadSharedView, sharedView, sharedViewMeta, meta, notFound, password, passwordDlg, passwordError } =
   useProvideSharedFormStore(route.params.viewId as string)
@@ -26,10 +27,13 @@ if (!notFound.value) {
 
   useProvideSmartsheetStore(sharedView, meta, true)
 
+  useViewRowColorProvider({ shared: true })
+
   applyLanguageDirection(sharedViewMeta.value.rtl ? 'rtl' : 'ltr')
-} else {
-  navigateTo('/error/404')
-  throw createError({ statusCode: 404, statusMessage: t('msg.pageNotFound') })
+
+  if (sharedViewMeta.value.language) {
+    setI18nLanguage(sharedViewMeta.value.language)
+  }
 }
 
 const form = reactive({
@@ -51,7 +55,9 @@ const focus: VNodeRef = (el: typeof InputPassword) => {
 <template>
   <div>
     <NuxtLayout>
-      <NuxtPage v-if="!passwordDlg" />
+      <NuxtPage v-if="!passwordDlg && !notFound" />
+
+      <GeneralPageDoesNotExist v-if="notFound" />
 
       <a-modal
         v-model:visible="passwordDlg"
@@ -63,13 +69,13 @@ const focus: VNodeRef = (el: typeof InputPassword) => {
         :mask-closable="false"
         wrap-class-name="nc-modal-shared-form-password-dlg"
         :mask-style="{
-          backgroundColor: 'rgba(255, 255, 255, 0.64)',
+          backgroundColor: 'rgba(var(--color-base-white), 0.64)',
           backdropFilter: 'blur(8px)',
         }"
         @close="passwordDlg = false"
       >
         <div class="flex flex-col gap-5">
-          <div class="flex flex-row items-center gap-x-2 text-base font-weight-700 text-gray-800">
+          <div class="flex flex-row items-center gap-x-2 text-base font-weight-700 text-nc-content-gray">
             <GeneralIcon icon="ncKey" class="!text-base w-5 h-5" />
             {{ $t('msg.thisSharedViewIsProtected') }}
           </div>
@@ -88,7 +94,7 @@ const focus: VNodeRef = (el: typeof InputPassword) => {
                 :placeholder="$t('msg.enterPassword')"
               />
               <Transition name="layout">
-                <div v-if="passwordError" class="mb-2 text-sm text-red-500">{{ passwordError }}</div>
+                <div v-if="passwordError" class="mb-2 text-sm text-nc-content-red-medium">{{ passwordError }}</div>
               </Transition>
             </a-form-item>
           </a-form>
@@ -108,12 +114,22 @@ const focus: VNodeRef = (el: typeof InputPassword) => {
         </div>
       </a-modal>
 
-      <img v-if="passwordDlg" alt="view image" src="~/assets/img/views/form.png" class="fixed inset-0 w-full h-full" />
+      <img
+        v-if="passwordDlg"
+        alt="view image"
+        src="~/assets/img/views/form.png"
+        class="fixed inset-0 w-full h-full"
+        :class="{ 'bg-view-image--dark': isDark }"
+      />
     </NuxtLayout>
   </div>
 </template>
 
 <style lang="scss" scoped>
+.bg-view-image--dark {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 :deep(.nc-cell-attachment) {
   @apply p-0;
 
@@ -125,7 +141,7 @@ const focus: VNodeRef = (el: typeof InputPassword) => {
     }
 
     .nc-attachment-cell-dropzone {
-      @apply rounded bg-gray-400/75;
+      @apply rounded bg-nc-bg-gray-extradark/75;
     }
   }
 }

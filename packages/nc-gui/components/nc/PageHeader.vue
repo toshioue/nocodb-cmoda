@@ -11,11 +11,11 @@ withDefaults(defineProps<Props>(), {
   <div
     class="nc-page-header"
     :class="{
-      'border-b-1 border-gray-200': bottomBorder,
+      'border-b-1 border-nc-border-gray-medium': bottomBorder,
     }"
   >
     <div class="flex-1 flex items-start gap-3">
-      <div v-if="$slots.icon" class="h-7 flex items-center children:flex-none">
+      <div v-if="$slots.icon" class="h-7 flex items-center children:flex-none text-nc-content-gray-subtle">
         <slot name="icon"></slot>
       </div>
 
@@ -36,13 +36,13 @@ withDefaults(defineProps<Props>(), {
 
 <style lang="scss" scoped>
 .nc-page-header {
-  @apply h-12 flex items-center gap-3 px-3 py-2;
+  @apply h-12 flex items-center gap-3 px-3 py-2 min-h-[var(--topbar-height)];
 
   .nc-page-header-title {
-    @apply text-xl font-semibold text-gray-800 my-0;
+    @apply text-xl font-semibold text-nc-content-gray my-0;
   }
   .nc-page-header-subtitle {
-    @apply text-sm font-weight-500 text-gray-700;
+    @apply text-sm font-weight-500 text-nc-content-gray-subtle;
   }
 }
 </style>

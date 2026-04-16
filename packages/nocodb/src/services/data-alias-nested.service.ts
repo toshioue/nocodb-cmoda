@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { UITypes } from 'nocodb-sdk';
+import { isLinksOrLTAR, isLinkV2 } from 'nocodb-sdk';
 import type { PathParams } from '~/helpers/dataHelpers';
 import type { NcContext } from '~/interface/config';
 import { NcError } from '~/helpers/catchError';
@@ -37,10 +37,7 @@ export class DataAliasNestedService {
 
     const column = await getColumnByIdOrName(context, param.columnName, model);
 
-    if (
-      !column ||
-      ![UITypes.LinkToAnotherRecord, UITypes.Links].includes(column.uidt)
-    )
+    if (!column || !isLinksOrLTAR(column))
       NcError.badRequest('Column is not LTAR');
 
     const data = await baseModel.mmList(
@@ -217,21 +214,42 @@ export class DataAliasNestedService {
 
     const column = await getColumnByIdOrName(context, param.columnName, model);
 
-    const data = await baseModel.getExcludedOneToOneChildrenList(
-      {
-        colId: column.id,
-        cid: param.rowId,
-      },
-      param.query,
-    );
+    let data;
+    let count;
 
-    const count = await baseModel.countExcludedOneToOneChildren(
-      {
-        colId: column.id,
-        cid: param.rowId,
-      },
-      param.query,
-    );
+    if (isLinkV2(column)) {
+      data = await baseModel.getMmChildrenExcludedList(
+        {
+          colId: column.id,
+          pid: param.rowId,
+        },
+        param.query,
+      );
+
+      count = await baseModel.getMmChildrenExcludedListCount(
+        {
+          colId: column.id,
+          pid: param.rowId,
+        },
+        param.query,
+      );
+    } else {
+      data = await baseModel.getExcludedOneToOneChildrenList(
+        {
+          colId: column.id,
+          cid: param.rowId,
+        },
+        param.query,
+      );
+
+      count = await baseModel.countExcludedOneToOneChildren(
+        {
+          colId: column.id,
+          cid: param.rowId,
+        },
+        param.query,
+      );
+    }
 
     return new PagedResponseImpl(data, {
       count,
@@ -263,8 +281,7 @@ export class DataAliasNestedService {
 
     const column = await getColumnByIdOrName(context, param.columnName, model);
 
-    if (![UITypes.LinkToAnotherRecord, UITypes.Links].includes(column.uidt))
-      NcError.badRequest('Column is not LTAR');
+    if (!isLinksOrLTAR(column)) NcError.badRequest('Column is not LTAR');
 
     const data = await baseModel.hmList(
       {

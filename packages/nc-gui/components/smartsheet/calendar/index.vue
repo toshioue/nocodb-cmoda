@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { UITypes } from 'nocodb-sdk'
+import { type ColumnType, PermissionEntity, PermissionKey, UITypes } from 'nocodb-sdk'
 import type { Row as RowType } from '#imports'
 
 const { $e } = useNuxtApp()
@@ -8,9 +8,9 @@ const meta = inject(MetaInj, ref())
 
 const view = inject(ActiveViewInj, ref())
 
-const { isMobileMode } = useGlobal()
+const { isMobileMode, user } = useGlobal()
 
-const reloadViewMetaHook = inject(ReloadViewMetaHookInj)
+const { isAllowed } = usePermissions()
 
 const reloadViewDataHook = inject(ReloadViewDataHookInj)
 
@@ -26,15 +26,14 @@ provide(IsKanbanInj, ref(false))
 
 provide(IsCalendarInj, ref(true))
 
+const { allFilters, validFiltersFromUrlParams } = useSmartsheetStoreOrThrow()
 const {
   activeCalendarView, // The active Calendar View - "week" | "day" | "month" | "year"
   calendarRange, // calendar Ranges
   calDataType, // Calendar Data Type
-  loadCalendarMeta, // Function to load Calendar Meta
   loadCalendarData, // Function to load Calendar Data
   loadSidebarData, // Function to load Sidebar Data
   isCalendarDataLoading, // Boolean ref to check if Calendar Data is Loading
-  isCalendarMetaLoading, // Boolean ref to check if Calendar Meta is Loading
   fetchActiveDates, // Function to fetch Active Dates
   showSideMenu, // Boolean Ref to show Side Menu
 } = useCalendarViewStoreOrThrow()
@@ -42,6 +41,8 @@ const {
 const router = useRouter()
 
 const route = useRoute()
+
+const { withLoading } = useLoadingTrigger()
 
 const expandedFormOnRowIdDlg = computed({
   get() {
@@ -84,11 +85,24 @@ const expandRecord = (row: RowType, state?: Record<string, any>) => {
 }
 
 const newRecord = (row: RowType) => {
-  if (isPublic.value) return
+  if (isPublic.value || (meta.value?.id && !isAllowed(PermissionEntity.TABLE, meta.value?.id, PermissionKey.TABLE_RECORD_ADD))) {
+    return
+  }
+
   $e('c:calendar:new-record', activeCalendarView.value)
+
+  const rowFilters = getPlaceholderNewRow(
+    [...allFilters.value, ...validFiltersFromUrlParams.value],
+    meta.value?.columns as ColumnType[],
+    {
+      currentUser: user.value ?? undefined,
+    },
+  )
+
   expandRecord({
     row: {
       ...rowDefaultData(meta.value?.columns),
+      ...rowFilters,
       ...row.row,
     },
     oldRow: {},
@@ -99,33 +113,43 @@ const newRecord = (row: RowType) => {
 }
 
 onMounted(async () => {
-  await loadCalendarMeta()
-  await loadCalendarData()
+  await Promise.all([loadCalendarData(), loadSidebarData(), fetchActiveDates()])
   if (!activeCalendarView.value) {
     activeCalendarView.value = 'month'
   }
 })
 
-reloadViewMetaHook?.on(async () => {
-  await loadCalendarMeta()
-})
-
-reloadViewDataHook?.on(async (params: void | { shouldShowLoading?: boolean }) => {
+const reloadViewDataListener = withLoading(async (params: void | { shouldShowLoading?: boolean }) => {
   await Promise.all([
     loadCalendarData(params?.shouldShowLoading ?? false),
     loadSidebarData(params?.shouldShowLoading ?? false),
     fetchActiveDates(),
   ])
 })
+
+reloadViewDataHook?.on(reloadViewDataListener)
+
+onBeforeUnmount(() => {
+  reloadViewDataHook?.off(reloadViewDataListener)
+})
+
+// on filter param changes reload the data
+// In calendar view we don't have toolbar search component, so we have to listen to route query changes to reload the data
+watch(
+  () => route?.query?.where,
+  () => {
+    reloadViewDataHook?.trigger()
+  },
+)
 </script>
 
 <template>
   <template v-if="isMobileMode">
-    <div class="pl-6 pr-[120px] py-6 bg-white flex-col justify-start items-start gap-2.5 inline-flex">
-      <div class="text-gray-500 text-5xl font-semibold leading-16">
+    <div class="pl-6 pr-[120px] py-6 bg-nc-bg-default flex-col justify-start items-start gap-2.5 inline-flex">
+      <div class="text-nc-content-gray-muted text-5xl font-semibold leading-16">
         {{ $t('general.available') }}<br />{{ $t('title.inDesktop') }}
       </div>
-      <div class="text-gray-500 text-base font-medium leading-normal">
+      <div class="text-nc-content-gray-muted text-base font-medium leading-normal">
         {{ $t('msg.calendarViewNotSupportedOnMobile') }}
       </div>
     </div>
@@ -133,7 +157,7 @@ reloadViewDataHook?.on(async (params: void | { shouldShowLoading?: boolean }) =>
   <template v-else>
     <div class="flex h-full relative flex-row" data-testid="nc-calendar-wrapper">
       <div class="flex flex-col w-full">
-        <template v-if="calendarRange?.length && !isCalendarMetaLoading">
+        <template v-if="calendarRange?.length">
           <LazySmartsheetCalendarYearView v-if="activeCalendarView === 'year'" />
           <template v-if="!isCalendarDataLoading">
             <LazySmartsheetCalendarMonthView
@@ -141,6 +165,7 @@ reloadViewDataHook?.on(async (params: void | { shouldShowLoading?: boolean }) =>
               @expand-record="expandRecord"
               @new-record="newRecord"
             />
+
             <LazySmartsheetCalendarWeekViewDateField
               v-else-if="activeCalendarView === 'week' && calDataType === UITypes.Date"
               @expand-record="expandRecord"
@@ -176,18 +201,20 @@ reloadViewDataHook?.on(async (params: void | { shouldShowLoading?: boolean }) =>
             <GeneralLoader size="xlarge" />
           </div>
         </template>
-        <template v-else-if="isCalendarMetaLoading">
-          <div class="flex w-full items-center h-full justify-center">
-            <GeneralLoader size="xlarge" />
-          </div>
-        </template>
         <template v-else>
           <div class="flex w-full items-center h-full justify-center">
             {{ $t('activity.noRange') }}
           </div>
         </template>
       </div>
-      <LazySmartsheetCalendarSideMenu :visible="showSideMenu" @expand-record="expandRecord" @new-record="newRecord" />
+      <Transition>
+        <LazySmartsheetCalendarSideMenu
+          v-show="showSideMenu"
+          :visible="showSideMenu"
+          @expand-record="expandRecord"
+          @new-record="newRecord"
+        />
+      </Transition>
     </div>
 
     <Suspense>
@@ -220,3 +247,15 @@ reloadViewDataHook?.on(async (params: void | { shouldShowLoading?: boolean }) =>
     />
   </template>
 </template>
+
+<style scoped lang="scss">
+.v-enter-from,
+.v-leave-to {
+  transform: translateX(200%);
+}
+
+.v-enter-to,
+.v-leave-from {
+  transform: translateX(100%);
+}
+</style>

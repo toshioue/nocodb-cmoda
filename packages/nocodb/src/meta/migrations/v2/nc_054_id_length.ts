@@ -57,15 +57,6 @@ const listBasesWithLongIds = async (knex: Knex) => {
 
       return bases.map((row: any) => row.id);
     }
-    case 'mssql': {
-      const bases = await knex.raw(
-        `SELECT id FROM ?? WHERE LEN(id) > 20`,
-        MetaTable.PROJECT,
-      );
-
-      return bases.map((row: any) => row.id);
-    }
-
     default:
       throw new Error(`Unsupported database: ${sourceType}`);
   }
@@ -107,7 +98,7 @@ export const replaceLongBaseIds = async (knex: Knex) => {
       MetaTable.MAP_VIEW,
       MetaTable.MODELS,
       MetaTable.SORT,
-      MetaTable.SOURCES,
+      MetaTable.SOURCES_OLD,
       MetaTable.SYNC_LOGS,
       MetaTable.SYNC_SOURCE,
       MetaTable.USER_COMMENTS_NOTIFICATIONS_PREFERENCE,
@@ -147,7 +138,7 @@ const tablesToAlterBaseId = [
   MetaTable.MAP_VIEW_COLUMNS,
   MetaTable.MODELS,
   MetaTable.SORT,
-  MetaTable.SOURCES,
+  MetaTable.SOURCES_OLD,
   MetaTable.SYNC_LOGS,
   MetaTable.SYNC_SOURCE,
   MetaTable.USER_COMMENTS_NOTIFICATIONS_PREFERENCE,

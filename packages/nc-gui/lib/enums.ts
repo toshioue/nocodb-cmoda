@@ -1,3 +1,5 @@
+import { ViewLockType } from 'nocodb-sdk'
+
 export { ClientType, IntegrationCategoryType, SyncDataType } from 'nocodb-sdk'
 
 export enum Language {
@@ -12,7 +14,7 @@ export enum Language {
   fa = 'فارسی',
   fi = 'Suomalainen',
   fr = 'Français',
-  he = 'עִברִית',
+  he = 'עברית',
   hi = 'हिन्दी',
   hr = 'Hrvatski',
   hu = 'Magyar',
@@ -50,11 +52,7 @@ export enum NavigateDir {
   PREV,
 }
 
-export enum LockType {
-  Personal = 'personal',
-  Locked = 'locked',
-  Collaborative = 'collaborative',
-}
+export { ViewLockType as LockType }
 
 export enum TabType {
   TABLE = 'table',
@@ -79,6 +77,33 @@ export enum SmartsheetStoreEvents {
   GROUP_BY_ADD = 'group-by-add',
   GROUP_BY_REMOVE = 'group-by-remove',
   FILTER_ADD = 'filter-add',
+  CELL_SELECTED = 'cell-selected',
+  FIELD_UPDATE = 'field-update',
+  ROW_COLOR_UPDATE = 'row-color-update',
+  TRIGGER_RE_RENDER = 'trigger-re-render',
+  ON_ROW_COLOUR_INFO_UPDATE = 'on-row-colour-info-update',
+  COPIED_VIEW_CONFIG = 'copied-view-config',
+}
+
+export enum SmartsheetScriptActions {
+  UPDATE_PROGRESS = 'update-progress',
+  RESET_PROGRESS = 'reset-progress',
+  ACTION = 'action',
+
+  RELOAD_VIEW = 'reload-view',
+  RELOAD_ROW = 'reload-row',
+
+  UPDATE_STEP_TITLE = 'update-step-title',
+  START_CELL_UPDATE = 'start-cell-update',
+  COMPLETE_CELL_UPDATE = 'complete-cell-update',
+  CLEAR_SCRIPT_CELL_UPDATES = 'clear-script-cell-updates',
+
+  BULK_ACTION_START = 'bulk-action-start',
+  BULK_ACTION_END = 'bulk-action-end',
+  BUTTON_ACTION_START = 'button-action-start',
+  BUTTON_ACTION_COMPLETE = 'button-action-complete',
+  BUTTON_ACTION_PROGRESS = 'button-action-progress',
+  BUTTON_ACTION_ERROR = 'button-action-error',
 }
 
 export enum DataSourcesSubTab {
@@ -124,6 +149,10 @@ export enum ImportWorkerResponse {
   ERROR = 'error',
 }
 
+export enum FeatureFlag {
+  MANAGED_APP = 'MANAGED_APP',
+}
+
 export enum ImportType {
   EXCEL = 'excel',
   CSV = 'csv',
@@ -157,6 +186,8 @@ export enum RichTextBubbleMenuOptions {
   numberedList = 'numberedList',
   taskList = 'taskList',
   link = 'link',
+  image = 'image',
+  table = 'table',
 }
 
 export enum CoverImageObjectFit {
@@ -173,9 +204,32 @@ export enum AuditLogsDateRange {
 }
 
 export enum ExtensionsEvents {
+  ADD = 'add',
   DUPLICATE = 'duplicate',
+  CLEARDATA = 'clearData',
 }
 
 export enum IntegrationStoreEvents {
   INTEGRATION_ADD = 'integration-add',
+}
+
+export enum WorkspaceIconType {
+  IMAGE = 'IMAGE',
+  EMOJI = 'EMOJI',
+  ICON = 'ICON',
+}
+
+export const EventBusEnum = {
+  SmartsheetStore: Symbol('SmartsheetStore'),
+  RealtimeBaseUser: Symbol('RealtimeBaseUser'),
+  RealtimeViewMeta: Symbol('RealtimeViewMeta'),
+  SmartsheetActions: Symbol('SmartSheetActions'),
+}
+
+export enum NcBaseCreateMode {
+  FROM_SCRATCH = 'fromScratch',
+  FROM_TEMPLATE = 'fromTemplate',
+  BUILD_WITH_AI = 'buildWithAi',
+  FROM_APP_STORE = 'fromAppStore',
+  MANAGED_APP = 'managedApp',
 }

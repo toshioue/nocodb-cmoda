@@ -1,11 +1,8 @@
+import { getTimeZones } from '@vvo/tzdb'
 import dayjs from 'dayjs'
-import { dateFormats, timeFormats } from 'nocodb-sdk'
+import { dateFormats, timeFormats, workerWithTimezone } from 'nocodb-sdk'
 
-export function parseStringDateTime(
-  v: string,
-  dateTimeFormat: string = `${dateFormats[0]} ${timeFormats[0]}`,
-  toLocal: boolean = true,
-) {
+export function parseStringDateTime(v: string, dateTimeFormat = `${dateFormats[0]} ${timeFormats[0]}`, toLocal = true) {
   const dayjsObj = toLocal ? dayjs(v).local() : dayjs(v)
 
   if (dayjsObj.isValid()) {
@@ -54,4 +51,52 @@ export const timeAgo = (date: string) => {
   }
 
   return `${years}y ago`
+}
+
+export const hookLogFormatter = (date: string) => {
+  return date && dayjs(date).format('HH:mm:ss • DD MMMM YYYY')
+}
+
+export function parseFlexibleDate(dateString: string) {
+  const formats = [
+    'YYYY-MM-DD',
+    'YYYY/MM/DD',
+    'YYYY MM DD',
+
+    'DD-MM-YYYY',
+    'DD/MM/YYYY',
+    'DD MM YYYY',
+    'DD.MM.YYYY',
+    'DD.MM.YY',
+
+    'MM-DD-YYYY',
+    'MM/DD/YYYY',
+    'MM DD YYYY',
+  ]
+
+  for (const format of formats) {
+    const date = dayjs(dateString, format, true)
+    if (date.isValid()) {
+      return date
+    }
+  }
+}
+
+const timezones = getTimeZones({ includeUtc: true })
+export function getTimeZoneFromName(name: string = Intl.DateTimeFormat().resolvedOptions().timeZone) {
+  let timezone = timezones.find((k) => isSameTimezone(k.name, name))
+
+  if (!timezone) {
+    timezone = timezones.find((k) => k.group.includes(name))
+  }
+
+  if (!timezone) {
+    console.log('Timezone not found', name)
+  }
+
+  return timezone
+}
+
+export function withTimezone(timezone?: string) {
+  return workerWithTimezone(isEeUI, timezone)
 }

@@ -1,6 +1,6 @@
 <script lang="ts" setup>
-import tinycolor from 'tinycolor2'
-import { CommonAggregations, UITypes, dateFormats, parseStringDateTime, timeFormats } from 'nocodb-sdk'
+import { CommonAggregations } from 'nocodb-sdk'
+import { shouldRenderCell } from '../../../utils/groupbyUtils'
 import Table from './Table.vue'
 import GroupBy from './GroupBy.vue'
 import GroupByTable from './GroupByTable.vue'
@@ -9,7 +9,8 @@ import type { Group } from '~/lib/types'
 
 const props = defineProps<{
   group: Group
-
+  callAddEmptyRow?: (addAfter?: number) => Row | undefined
+  expandForm?: (row: Row, state?: Record<string, any>, fromToolbar?: boolean, groupKey?: string) => void
   loadGroups: (
     params?: any,
     group?: Group,
@@ -37,24 +38,27 @@ const props = defineProps<{
   maxDepth?: number
 
   rowHeight?: number
-  expandForm?: (row: Row, state?: Record<string, any>, fromToolbar?: boolean) => void
 }>()
 
 const emits = defineEmits(['update:paginationData'])
 
 const vGroup = useVModel(props, 'group', emits)
 
+const { appInfo } = useGlobal()
+
+const { isDark, getColor } = useTheme()
+
 const meta = inject(MetaInj, ref())
 
 const fields = inject(FieldsInj, ref())
-
-const { gridViewPageSize } = useGlobal()
 
 const scrollLeft = toRef(props, 'scrollLeft')
 
 const { isViewDataLoading, isPaginationLoading } = storeToRefs(useViewsStore())
 
 const { gridViewCols } = useViewColumnsOrThrow()
+
+const { withLoading } = useLoadingTrigger()
 
 const reloadAggregate = inject(ReloadAggregateHookInj, createEventHook())
 
@@ -72,9 +76,9 @@ const viewDisplayField = computed(() => {
 
 const reloadViewDataHook = inject(ReloadViewDataHookInj, createEventHook())
 
-reloadAggregate?.on(async (_fields) => {
+const reloadAggregateListener = async (_fields: any) => {
   if (!fields.value?.length) return
-  if (!_fields || !_fields?.fields.length) {
+  if (!_fields || !_fields?.fields?.length) {
     await props.loadGroupAggregation(vGroup.value)
   }
   if (_fields?.fields) {
@@ -92,11 +96,13 @@ reloadAggregate?.on(async (_fields) => {
       vGroup.value,
       Object.entries(fieldAggregateMapping).map(([field, type]) => ({
         field,
-        type,
+        type: type as string,
       })),
     )
   }
-})
+}
+
+reloadAggregate?.on(reloadAggregateListener)
 
 const _loadGroupData = async (group: Group, force?: boolean, params?: any) => {
   isViewDataLoading.value = true
@@ -115,6 +121,8 @@ const wrapper = ref<HTMLElement | undefined>()
 const scrollable = ref<HTMLElement | undefined>()
 
 const tableHeader = ref<HTMLElement | undefined>()
+
+const groupByTableRef = ref()
 
 const fullPage = computed<boolean>(() => {
   return props.fullPage ?? (tableHeader.value?.offsetWidth ?? 0) > (props.viewWidth ?? 0)
@@ -147,7 +155,7 @@ const findAndLoadSubGroup = async (key: any) => {
       const grp = vGroup.value.children.find((g) => `${g.key}` === k)
       if (grp) {
         if (grp.nested) {
-          if (!grp.children[0].children?.length) {
+          if (!grp.children?.[0]?.children?.length) {
             props.loadGroups({}, grp, {
               triggerChildOnly: true,
             })
@@ -161,16 +169,18 @@ const findAndLoadSubGroup = async (key: any) => {
   oldActiveGroups.value = key
 }
 
-const reloadViewDataHandler = (params: void | { shouldShowLoading?: boolean | undefined; offset?: number | undefined }) => {
-  if (vGroup.value.nested) {
-    props.loadGroups({ ...(params?.offset !== undefined ? { offset: params.offset } : {}) }, vGroup.value)
-  } else {
-    _loadGroupData(vGroup.value, true, {
-      ...(params?.offset !== undefined ? { offset: params.offset } : {}),
-    })
-    props.loadGroupAggregation(vGroup.value)
-  }
-}
+const reloadViewDataHandler = withLoading(
+  (params: void | { shouldShowLoading?: boolean | undefined; offset?: number | undefined }) => {
+    if (vGroup.value.nested) {
+      props.loadGroups({ ...(params?.offset !== undefined ? { offset: params.offset } : {}) }, vGroup.value)
+    } else {
+      _loadGroupData(vGroup.value, true, {
+        ...(params?.offset !== undefined ? { offset: params.offset } : {}),
+      })
+      props.loadGroupAggregation(vGroup.value)
+    }
+  },
+)
 
 onMounted(async () => {
   reloadViewDataHook?.on(reloadViewDataHandler)
@@ -178,6 +188,7 @@ onMounted(async () => {
 
 onBeforeUnmount(async () => {
   reloadViewDataHook?.off(reloadViewDataHandler)
+  reloadAggregate?.off(reloadAggregateListener)
 })
 
 watch([() => vGroup.value.key], async (n, o) => {
@@ -192,12 +203,7 @@ watch([() => vGroup.value.key], async (n, o) => {
 
 onMounted(async () => {
   if (vGroup.value.root === true && !vGroup.value?.children?.length) {
-    await props.loadGroups(
-      {
-        limit: gridViewPageSize.value,
-      },
-      vGroup.value,
-    )
+    await props.loadGroups({}, vGroup.value)
   }
 })
 
@@ -224,66 +230,6 @@ const onScroll = (e: Event) => {
   _scrollLeft.value = (e.target as HTMLElement).scrollLeft
 }
 
-// a method to parse group key if grouped column type is LTAR or Lookup
-// in these 2 scenario it will return json array or `___` separated value
-const parseKey = (group: Group) => {
-  let key = group.key.toString()
-
-  // parse json array key if it's a lookup or link to another record
-  if ((key && group.column?.uidt === UITypes.Lookup) || group.column?.uidt === UITypes.LinkToAnotherRecord) {
-    try {
-      key = JSON.parse(key)
-    } catch {
-      // if parsing try to split it by `___` (for sqlite)
-      return key.split('___')
-    }
-  }
-
-  // show the groupBy dateTime field title format as like cell format
-  if (key && group.column?.uidt === UITypes.DateTime) {
-    return [
-      parseStringDateTime(
-        key,
-        `${parseProp(group.column?.meta)?.date_format ?? dateFormats[0]} ${
-          parseProp(group.column?.meta)?.time_format ?? timeFormats[0]
-        }`,
-      ),
-    ]
-  }
-
-  // show the groupBy time field title format as like cell format
-  if (key && group.column?.uidt === UITypes.Time) {
-    return [parseStringDateTime(key, timeFormats[0], false)]
-  }
-
-  if (key && [UITypes.User, UITypes.CreatedBy, UITypes.LastModifiedBy].includes(group.column?.uidt as UITypes)) {
-    try {
-      const parsedKey = JSON.parse(key)
-      return [parsedKey]
-    } catch {
-      return null
-    }
-  }
-
-  return [key]
-}
-
-const shouldRenderCell = (column) =>
-  [
-    UITypes.Lookup,
-    UITypes.Attachment,
-    UITypes.Barcode,
-    UITypes.QrCode,
-    UITypes.Links,
-    UITypes.User,
-    UITypes.DateTime,
-    UITypes.CreatedTime,
-    UITypes.LastModifiedTime,
-    UITypes.CreatedBy,
-    UITypes.LongText,
-    UITypes.LastModifiedBy,
-  ].includes(column?.uidt)
-
 const expandGroup = async (key: string) => {
   if (Array.isArray(_activeGroupKeys.value)) {
     _activeGroupKeys.value.push(`group-panel-${key}`)
@@ -301,11 +247,11 @@ const collapseGroup = (key: string) => {
   }
 }
 
-const collapseAllGroup = () => {
+const _collapseAllGroup = () => {
   _activeGroupKeys.value = []
 }
 
-const expandAllGroup = async () => {
+const _expandAllGroup = async () => {
   _activeGroupKeys.value = vGroup.value.children?.map((g) => `group-panel-${g.key}`) ?? []
 
   if (vGroup.value.children) {
@@ -372,29 +318,36 @@ const bgColor = computed(() => {
   if (props.maxDepth === 3) {
     switch (_depth) {
       case 2:
-        return '#F9F9FA'
+        return getColor(themeV4Colors.gray['50'])
       case 1:
-        return '#F4F4F5'
+        return getColor(themeV4Colors.gray['100'])
       default:
-        return '#F1F1F1'
+        return getColor('#F1F1F1', themeV4Colors.gray['200'])
     }
   }
 
   if (props.maxDepth === 2) {
     switch (_depth) {
       case 1:
-        return '#F9F9FA'
+        return getColor(themeV4Colors.gray['50'])
       default:
-        return '#F4F4F5'
+        return getColor(themeV4Colors.gray['100'])
     }
   }
 
   if (props.maxDepth === 1) {
-    return '#F9F9FA'
+    return getColor(themeV4Colors.gray['50'])
   }
 
-  return '#F9F9FA'
+  return getColor(themeV4Colors.gray['50'])
 })
+async function openNewRecordHandler() {
+  if (_depth !== 0) return
+  // Add an empty row
+  const newRow = await props.callAddEmptyRow()
+  // Expand the form
+  if (newRow) props.expandForm?.(newRow, undefined, true)
+}
 </script>
 
 <template>
@@ -408,23 +361,22 @@ const bgColor = computed(() => {
     <div ref="scrollable" :style="`${vGroup.root === true ? 'width: fit-content' : 'width: 100%'}`">
       <div v-if="vGroup.root === true" class="flex sticky top-0 z-5">
         <div
-          class="border-b-1 border-gray-200 mb-2"
-          style="background-color: #f4f4f5"
+          class="border-b-1 border-nc-border-gray-medium mb-2 bg-nc-bg-gray-light"
           :style="{ 'padding-left': `${(maxDepth || 1) * 9}px` }"
         ></div>
         <Table ref="tableHeader" class="mb-2" :data="[]" :hide-checkbox="true" :header-only="true" />
       </div>
       <div :class="{ 'pl-2': vGroup.root === true }">
         <a-collapse
-          v-model:activeKey="_activeGroupKeys"
+          v-model:active-key="_activeGroupKeys"
           class="nc-group-wrapper !rounded-lg"
           :bordered="false"
           @change="findAndLoadSubGroup"
         >
           <a-collapse-panel
-            v-for="[_, grp] of Object.entries(vGroup?.children ?? [])"
+            v-for="grp of vGroup?.children ?? []"
             :key="`group-panel-${grp.key}`"
-            class="!border-1 border-gray-300 nc-group rounded-[8px] mb-2"
+            class="!border-1 border-nc-border-gray-dark nc-group rounded-[8px] mb-2"
             :style="`background: ${bgColor};`"
             :show-arrow="false"
           >
@@ -441,7 +393,7 @@ const bgColor = computed(() => {
                     '!rounded-bl-[8px]': !activeGroups.includes(grp.key.toString()),
                   }"
                   :style="`width:${computedWidth};background: ${bgColor};`"
-                  class="!sticky flex z-10 justify-between !h-9.8 border-r-1 !rounded-tl-[8px] group pr-2 border-gray-300 overflow-clip items-center !left-0"
+                  class="!sticky flex z-10 justify-between !h-9.8 border-r-1 !rounded-tl-[8px] group pr-2 border-nc-border-gray-dark overflow-clip items-center !left-0"
                 >
                   <div class="flex items-center">
                     <NcButton class="!border-0 !shadow-none !bg-transparent !hover:bg-transparent" type="secondary" size="small">
@@ -460,19 +412,24 @@ const bgColor = computed(() => {
                           v-for="[tagIndex, tag] of Object.entries(grp.key.split(','))"
                           :key="`panel-tag-${grp.column.id}-${tag}`"
                           class="!py-0 !px-[12px] !rounded-[12px]"
-                          :color="grp.color.split(',')[+tagIndex]"
+                          :color="
+                            getSelectTypeFieldOptionBgColor({
+                              isDark,
+                              color: grp.color?.split(',')[+tagIndex] || '#ccc',
+                              getColor,
+                              isColorCodeEnabled: parseProp(grp.column?.meta)?.isColorCodeEnabled !== false,
+                            })
+                          "
                         >
                           <span
                             class="nc-group-value"
                             :style="{
-                              'color': tinycolor.isReadable(grp.color.split(',')[+tagIndex] || '#ccc', '#fff', {
-                                level: 'AA',
-                                size: 'large',
-                              })
-                                ? '#fff'
-                                : tinycolor
-                                    .mostReadable(grp.color.split(',')[+tagIndex] || '#ccc', ['#0b1d05', '#fff'])
-                                    .toHex8String(),
+                              'color': getSelectTypeFieldOptionTextColor({
+                                isDark,
+                                color: grp.color?.split(',')[+tagIndex] || '#ccc',
+                                getColor,
+                                isColorCodeEnabled: parseProp(grp.column?.meta)?.isColorCodeEnabled !== false,
+                              }),
                               'font-size': '14px',
                               'font-weight': 500,
                             }"
@@ -487,7 +444,7 @@ const bgColor = computed(() => {
                       >
                         <template v-for="(val, ind) of parseKey(grp)" :key="ind">
                           <GroupByLabel v-if="val" :column="grp.column" :model-value="val" />
-                          <span v-else class="text-gray-400">No mapped value</span>
+                          <span v-else class="text-nc-content-gray-disabled">No mapped value</span>
                         </template>
                       </div>
                       <a-tag
@@ -495,17 +452,24 @@ const bgColor = computed(() => {
                         :key="`panel-tag-${grp.column.id}-${grp.key}`"
                         class="!py-0 !px-[12px]"
                         :class="`${grp.column.uidt === 'SingleSelect' ? '!rounded-[12px]' : '!rounded-[6px]'}`"
-                        :color="grp.color"
+                        :color="
+                          getSelectTypeFieldOptionBgColor({
+                            isDark,
+                            color: grp.color || '#ccc',
+                            getColor,
+                            isColorCodeEnabled: parseProp(grp.column?.meta)?.isColorCodeEnabled !== false,
+                          })
+                        "
                       >
                         <span
                           class="nc-group-value font-semibold text-[13px]"
                           :style="{
-                            color: tinycolor.isReadable(grp.color || '#ccc', '#fff', {
-                              level: 'AA',
-                              size: 'large',
-                            })
-                              ? '#fff'
-                              : tinycolor.mostReadable(grp.color || '#ccc', ['#0b1d05', '#fff']).toHex8String(),
+                            color: getSelectTypeFieldOptionTextColor({
+                              isDark,
+                              color: grp.color || '#ccc',
+                              getColor,
+                              isColorCodeEnabled: parseProp(grp.column?.meta)?.isColorCodeEnabled !== false,
+                            }),
                           }"
                         >
                           <template v-if="grp.key in GROUP_BY_VARS.VAR_TITLES">{{ GROUP_BY_VARS.VAR_TITLES[grp.key] }}</template>
@@ -520,11 +484,11 @@ const bgColor = computed(() => {
                     :style="`background: linear-gradient(to right, hsla(0, 0%, 97%, 0), ${bgColor} 18%);`"
                     class="flex !h-10 absolute right-0 pl-8 pr-2 items-center"
                   >
-                    <div class="text-xs group-hover:hidden text-gray-500 nc-group-row-count">
+                    <div class="text-xs group-hover:hidden text-nc-content-gray-muted nc-group-row-count">
                       <span>
                         {{ $t('datatype.Count') }}
                       </span>
-                      <span class="text-[#374151] ml-2"> {{ grp.count }} </span>
+                      <span class="text-nc-content-gray-subtle ml-2"> {{ grp.count }} </span>
                     </div>
 
                     <NcDropdown class="!hidden !group-hover:block">
@@ -533,7 +497,7 @@ const bgColor = computed(() => {
                       </NcButton>
 
                       <template #overlay>
-                        <NcMenu>
+                        <NcMenu variant="small">
                           <NcMenuItem v-if="activeGroups.includes(grp.key.toString())" @click="collapseGroup(grp.key)">
                             <GeneralIcon icon="minimize" />
                             Collapse group
@@ -542,6 +506,7 @@ const bgColor = computed(() => {
                             <GeneralIcon icon="maximize" />
                             Expand group
                           </NcMenuItem>
+                          <!--
                           <NcMenuItem @click="expandAllGroup">
                             <GeneralIcon icon="maximizeAll" />
                             Expand all
@@ -550,12 +515,14 @@ const bgColor = computed(() => {
                             <GeneralIcon icon="minimizeAll" />
                             Collapse all
                           </NcMenuItem>
+                          -->
                         </NcMenu>
                       </template>
                     </NcDropdown>
                   </div>
                 </div>
                 <SmartsheetGridAggregation
+                  v-if="!appInfo.disableGroupByAggregation"
                   :scroll-left="props.scrollLeft || _scrollLeft"
                   :max-depth="maxDepth"
                   :group="grp"
@@ -565,6 +532,7 @@ const bgColor = computed(() => {
             </template>
             <GroupByTable
               v-if="!grp.nested && grp.rows"
+              :ref="(el) => (groupByTableRef = el)"
               :group="grp"
               :max-depth="maxDepth"
               :depth="depth"
@@ -605,11 +573,12 @@ const bgColor = computed(() => {
   <LazySmartsheetGridPaginationV2
     v-if="vGroup.root"
     v-model:pagination-data="vGroup.paginationData"
-    :show-size-changer="true"
+    :show-size-changer="false"
     :scroll-left="_scrollLeft"
     custom-label="groups"
     :depth="maxDepth"
     :change-page="(p: number) => groupWrapperChangePage(p, vGroup)"
+    :selected-cell-count="groupByTableRef?.selectedCellCount ?? 0"
   />
 
   <LazySmartsheetPagination
@@ -627,7 +596,24 @@ const bgColor = computed(() => {
         : ''
     }`"
     :fixed-size="undefined"
+    :selected-cell-count="groupByTableRef?.selectedCellCount ?? 0"
   ></LazySmartsheetPagination>
+
+  <div v-if="depth !== 0" class="absolute bottom-12 z-5 left-2 rtl:(right-2 left-auto)" @click.stop>
+    <NcButton
+      v-e="['c:row:add:grid']"
+      class="nc-group-grid-add-new-row"
+      size="small"
+      type="secondary"
+      :shadow="false"
+      @click.stop="openNewRecordHandler"
+    >
+      <div class="flex items-center gap-2">
+        <GeneralIcon icon="plus" />
+        New Record
+      </div>
+    </NcButton>
+  </div>
 </template>
 
 <style scoped lang="scss">
@@ -636,15 +622,15 @@ const bgColor = computed(() => {
   border-radius: 0 0 8px 8px !important;
 }
 :deep(.ant-collapse) {
-  @apply !border-gray-300 !bg-transparent;
+  @apply !border-nc-border-gray-dark !bg-transparent;
 }
 
 :deep(.ant-collapse-item) {
-  @apply !border-gray-300;
+  @apply !border-nc-border-gray-dark;
 }
 
 :deep(.ant-collapse-header) {
-  @apply !p-0 !border-gray-300 !rounded-lg;
+  @apply !p-0 !border-nc-border-gray-dark !rounded-lg;
 }
 :deep(.ant-collapse-item-active > .ant-collapse-header) {
   border-radius: 8px 8px 0 0 !important;

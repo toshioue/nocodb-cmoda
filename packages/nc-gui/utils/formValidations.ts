@@ -4,6 +4,23 @@ import { StringValidationType, UITypes } from 'nocodb-sdk'
 import type { ColumnType, Validation } from 'nocodb-sdk'
 import { getI18n } from '../plugins/a.i18n'
 
+export const NC_MAX_TEXT_LENGTH_DEFAULT = 100000
+
+export const formMaxTextLengthValidator = (maxLength: number) => ({
+  validator: (_rule: RuleObject, value: any) => {
+    return new Promise((resolve, reject) => {
+      const { t } = getI18n().global
+
+      if (value && String(value).length > maxLength) {
+        return reject(new Error(t('msg.error.inputExceedsMaxCharacters', { value: maxLength.toLocaleString() })))
+      }
+      return resolve(true)
+    })
+  },
+})
+
+export const TEXT_INPUT_UITYPES = [UITypes.SingleLineText, UITypes.LongText, UITypes.Email, UITypes.URL, UITypes.PhoneNumber]
+
 export const formEmailValidator = (val: Validation) => {
   return {
     validator: (_rule: RuleObject, value: any) => {
@@ -97,12 +114,21 @@ export const isEmptyValidatorValue = (v: Validation) => {
   return false
 }
 
-export const extractFieldValidator = (_validators: Validation[], element: ColumnType) => {
+export const extractFieldValidator = (
+  _validators: Validation[],
+  element: ColumnType,
+  maxTextLength = NC_MAX_TEXT_LENGTH_DEFAULT,
+) => {
   const rules: RuleObject[] = []
 
   // Add column default validators
   if ([UITypes.Number, UITypes.Currency, UITypes.Percent].includes(element.uidt)) {
     rules.push(formNumberInputValidator(element))
+  }
+
+  // Add default max text length validator for text-based fields
+  if (TEXT_INPUT_UITYPES.includes(element.uidt)) {
+    rules.push(formMaxTextLengthValidator(maxTextLength))
   }
 
   switch (element.uidt) {
@@ -141,8 +167,18 @@ export const extractFieldValidator = (_validators: Validation[], element: Column
   return rules
 }
 
+/**
+ * @description:
+ * This function sanitizes field names to ensure they are valid for form validation and avoid issues with nested object notation.
+ * - Replaces dots ('.') with underscores ('_') because dot notation is used to access object properties in many form validation libraries (e.g., useForm),
+ *   and having dots can cause the field to be treated as a nested object rather than a simple property.
+ * - Replaces square brackets ('[]') with underscores ('_') to avoid the field being interpreted as an array or nested structure.
+ *
+ * This ensures the field names are flat, unique, and compatible with form validation libraries.
+ * If the sanitized name already exists, a counter is appended to make it unique.
+ */
 export const getValidFieldName = (title: string, uniqueFieldNames: Set<string>) => {
-  title = title.replace(/\./g, '_')
+  title = title.replace(/\./g, '_').replace(/\[|\]/g, '_')
   let counter = 1
 
   let newTitle = title

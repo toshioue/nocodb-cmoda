@@ -1,17 +1,31 @@
-export function parseProp(v: any): any {
-  if (!v) return {}
-  try {
-    return typeof v === 'string' ? JSON.parse(v) ?? {} : v
-  } catch {
-    return {}
-  }
-}
+import { parseProp, stringifyProp } from 'nocodb-sdk'
 
-export function stringifyProp(v: any): string {
-  if (!v) return '{}'
-  try {
-    return typeof v === 'string' ? v : JSON.stringify(v) ?? '{}'
-  } catch {
-    return '{}'
+export { parseProp, stringifyProp }
+
+export const extractRowBackgroundColorStyle = (row: Row) => {
+  const result = {
+    rowBgColor: {},
+    rowLeftBorderColor: {},
+    rowBorderColor: {},
   }
+
+  if (row.rowMeta?.rowBgColor) {
+    result.rowBgColor = {
+      backgroundColor: `${row.rowMeta?.rowBgColor} !important`,
+
+      ...(row.rowMeta?.rowBorderColor
+        ? { borderColor: `${row.rowMeta?.rowBorderColor} !important` }
+        : {
+            borderColor: `${themeV3Colors.gray[200]} !important`,
+          }),
+    }
+  }
+
+  if (row.rowMeta?.rowLeftBorderColor) {
+    result.rowLeftBorderColor = {
+      backgroundColor: `${row.rowMeta?.rowLeftBorderColor} !important`,
+    }
+  }
+
+  return result
 }

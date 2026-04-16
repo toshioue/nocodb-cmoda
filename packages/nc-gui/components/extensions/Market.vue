@@ -1,6 +1,4 @@
 <script lang="ts" setup>
-import type { VNodeRef } from '@vue/runtime-core'
-
 interface Prop {
   modelValue?: boolean
 }
@@ -25,12 +23,6 @@ const tabs = [
     icon: 'ncPuzzleOutline',
   },
   {
-    title: 'Scripts',
-    tabKey: 'scripts',
-    icon: 'ncScript',
-    isDisabled: true,
-  },
-  {
     title: 'Build an extension',
     tabKey: 'build-an-extension',
     icon: 'ncSpanner',
@@ -40,32 +32,28 @@ const tabs = [
 
 const vModel = useVModel(props, 'modelValue', emit)
 
-const { availableExtensions, addExtension, getExtensionAssetsUrl, showExtensionDetails } = useExtensions()
+const searchWrapperRef = ref<HTMLDivElement>()
 
-const searchRef: VNodeRef = (el) => {
-  return el && (el as HTMLInputElement)?.focus()
-}
+const searchRef = ref<HTMLInputElement>()
 
 const searchQuery = ref<string>('')
 
+const showSearchBox = ref<boolean>(true)
+
 const activeTab = ref<TabKeysType>('extensions')
 
-const filteredAvailableExtensions = computed(() =>
-  (availableExtensions.value || []).filter(
-    (ext) =>
-      ext.title.toLowerCase().includes(searchQuery.value.toLowerCase()?.trim()) ||
-      ext.subTitle.toLowerCase().includes(searchQuery.value.toLowerCase()?.trim()),
-  ),
-)
+const focusSearchInput = () => {
+  if (activeTab.value === 'build-an-extension') return
 
-const onExtensionClick = (extensionId: string) => {
-  showExtensionDetails(extensionId)
-  vModel.value = false
+  nextTick(() => {
+    searchRef.value?.focus()
+  })
 }
 
-const onAddExtension = (ext: any) => {
-  addExtension(ext)
-  vModel.value = false
+const handleShowSearchInput = () => {
+  showSearchBox.value = true
+
+  focusSearchInput()
 }
 
 const handleSetActiveTab = (tab: TabItem) => {
@@ -73,26 +61,34 @@ const handleSetActiveTab = (tab: TabItem) => {
 
   searchQuery.value = ''
   activeTab.value = tab.tabKey
+
+  handleShowSearchInput()
 }
+
+onClickOutside(searchWrapperRef, () => {
+  if (searchQuery.value) {
+    return
+  }
+
+  showSearchBox.value = false
+})
+
+onMounted(() => {
+  focusSearchInput()
+})
 </script>
 
 <template>
-  <NcModal
-    v-model:visible="vModel"
-    :class="{ active: vModel }"
-    :footer="null"
-    size="lg"
-    wrap-class-name="nc-modal-extension-market"
-  >
+  <NcModal v-model:visible="vModel" :footer="null" size="lg" wrap-class-name="nc-modal-extension-market">
     <div class="h-full">
-      <div class="nc-extension-market-header flex items-center gap-3 p-4 border-b-1 border-gray-200">
+      <div class="nc-extension-market-header flex items-center gap-3 px-4 py-3 border-b-1 border-nc-border-gray-medium">
         <div
           class="flex items-center gap-3 flex-none"
           :style="{
             width: 'calc(\(100% - 358px - 24px\) / 2)',
           }"
         >
-          <GeneralIcon icon="ncPuzzleSolid" class="h-6 w-6 flex-none text-gray-700" />
+          <GeneralIcon icon="ncPuzzleSolid" class="h-6 w-6 flex-none text-nc-content-gray-subtle" />
           <div class="flex-1 font-semibold text-xl">Marketplace</div>
         </div>
         <div class="flex bg-nc-bg-gray-medium rounded-lg p-1">
@@ -100,7 +96,7 @@ const handleSetActiveTab = (tab: TabItem) => {
             <NcTooltip
               v-for="(tab, idx) of tabs"
               :key="idx"
-              :disabled="tab.tabKey === 'extensions'"
+              :disabled="!tab.isDisabled"
               class="nc-extension-market-header-tab-item"
               :class="{
                 'selected ': activeTab === tab.tabKey,
@@ -110,7 +106,7 @@ const handleSetActiveTab = (tab: TabItem) => {
               <div
                 class="px-3 py-1 flex items-center gap-2 text-xs rounded-md select-none"
                 :class="{
-                  'bg-white text-nc-content-gray-emphasis': activeTab === tab.tabKey,
+                  'bg-nc-bg-default text-nc-content-gray-emphasis': activeTab === tab.tabKey,
                   'text-nc-content-gray-subtle2': activeTab !== tab.tabKey,
                   'cursor-not-allowed opacity-60': tab.isDisabled,
                   'cursor-pointer': !tab.isDisabled,
@@ -124,76 +120,40 @@ const handleSetActiveTab = (tab: TabItem) => {
           </div>
         </div>
         <div class="flex-1 flex gap-3 justify-end">
-          <div class="flex-1 flex max-w-[290px]">
+          <div v-if="activeTab !== 'build-an-extension'" ref="searchWrapperRef" class="flex-1 flex max-w-[290px] justify-end">
+            <NcButton v-if="!searchQuery && !showSearchBox" class="!px-1" type="text" size="small" @click="handleShowSearchInput">
+              <GeneralIcon icon="search" class="h-4 w-4 text-current" />
+            </NcButton>
+
             <a-input
-              :ref="searchRef"
+              v-if="searchQuery || showSearchBox"
+              ref="searchRef"
               v-model:value="searchQuery"
               type="text"
               class="nc-input-border-on-value !h-8 !px-3 !py-1 !rounded-lg"
-              placeholder="Search for an extension or script"
+              :placeholder="`Search for ${activeTab === 'extensions' ? 'an extension' : 'a script'}`"
               allow-clear
             >
               <template #prefix>
-                <GeneralIcon icon="search" class="mr-2 h-4 w-4 text-gray-500 group-hover:text-black" />
+                <GeneralIcon
+                  icon="search"
+                  class="mr-2 h-4 w-4 text-nc-content-gray-muted group-hover:text-nc-content-gray-extreme"
+                />
               </template>
             </a-input>
           </div>
           <NcButton size="small" type="text" @click="vModel = false">
-            <GeneralIcon icon="close" class="text-gray-600" />
+            <GeneralIcon icon="close" class="text-nc-content-gray-subtle2" />
           </NcButton>
         </div>
       </div>
 
-      <div class="flex flex-col h-[calc(100%_-_65px)]">
-        <div v-if="activeTab === 'extensions'" class="h-full py-4">
-          <div class="h-full flex flex-col gap-6 flex-1 pt-2 px-6 max-w-[900px] w-full mx-auto">
-            <div v-if="searchQuery" class="text-base text-nc-content-gray-subtle">Search result for ‘{{ searchQuery }}’</div>
-            <div
-              class="flex flex-wrap gap-6 overflow-auto nc-scrollbar-thin pb-2"
-              :class="{
-                'h-full': searchQuery && !filteredAvailableExtensions.length && availableExtensions.length,
-              }"
-            >
-              <template v-for="ext of filteredAvailableExtensions" :key="ext.id">
-                <div
-                  class="nc-market-extension-item w-full md:w-[calc(50%_-_12px)] flex items-center gap-3 border-1 rounded-xl p-3 cursor-pointer hover:bg-gray-50 transition-all"
-                  @click="onExtensionClick(ext.id)"
-                >
-                  <div class="h-[60px] w-[60px] overflow-hidden m-auto flex-none">
-                    <img :src="getExtensionAssetsUrl(ext.iconUrl)" alt="icon" class="w-full h-full object-contain" />
-                  </div>
-                  <div class="flex-1 flex flex-grow flex-col gap-1">
-                    <div class="font-weight-600 text-base line-clamp-1">
-                      {{ ext.title }}
-                    </div>
-
-                    <div class="max-h-[32px] text-xs text-gray-500 line-clamp-2">{{ ext.subTitle }}</div>
-                  </div>
-                  <NcButton size="small" type="secondary" class="flex-none !px-7px" @click.stop="onAddExtension(ext)">
-                    <div class="flex items-center gap-1 -ml-3px text-small">
-                      <GeneralIcon icon="plus" />
-                      {{ $t('general.add') }}
-                    </div>
-                  </NcButton>
-                </div>
-              </template>
-              <div
-                v-if="searchQuery && !filteredAvailableExtensions.length && availableExtensions.length"
-                class="w-full h-full flex items-center justify-center"
-              >
-                <div class="pb-6 text-gray-500 flex flex-col items-center gap-6 text-center">
-                  <img
-                    src="~assets/img/placeholder/no-search-result-found.png"
-                    class="!w-[164px] flex-none"
-                    alt="No search results found"
-                  />
-
-                  {{ $t('title.noResultsMatchedYourSearch') }}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="flex flex-col h-[calc(100%_-_57px)]">
+        <ExtensionsMarketExtensionsTab
+          v-if="activeTab === 'extensions'"
+          v-model:is-open="vModel"
+          v-model:search-query="searchQuery"
+        />
 
         <template v-else-if="activeTab === 'scripts'">
           <!-- Coming soon  -->
@@ -207,12 +167,6 @@ const handleSetActiveTab = (tab: TabItem) => {
 </template>
 
 <style lang="scss" scoped>
-.nc-market-extension-item {
-  &:hover {
-    box-shadow: 0px 4px 8px -2px rgba(0, 0, 0, 0.08), 0px 2px 4px -2px rgba(0, 0, 0, 0.04);
-  }
-}
-
 .tab {
   @apply flex flex-row items-center gap-x-2;
 }

@@ -4,8 +4,6 @@ definePageMeta({
   hasSidebar: true,
 })
 
-useTheme()
-
 const { t } = useI18n()
 
 const { $e } = useNuxtApp()
@@ -17,6 +15,10 @@ const router = useRouter()
 const baseStore = useBase()
 
 const { loadProject } = baseStore
+
+const { base } = storeToRefs(baseStore)
+
+provide(ProjectInj, base)
 
 // create a new sidebar state
 const { toggle, toggleHasSidebar } = useSidebar('nc-left-sidebar', { hasSidebar: true, isOpen: true })
@@ -41,7 +43,15 @@ onBeforeMount(async () => {
       router.replace('/')
       return
     }
-    message.error(await extractSdkResponseErrorMsg(e))
+
+    const error = await extractSdkResponseErrorMsgv2(e)
+
+    message.error(error.message)
+
+    if (error.error === NcErrorType.ERR_BASE_NOT_FOUND) {
+      navigateTo({ name: 'index-typeOrId', params: { typeOrId: 'nc' } })
+      return
+    }
   }
 
   // if (route.name.toString().includes('baseType-baseId-index-index') && isUIAllowed('teamAndAuth')) {
@@ -97,10 +107,9 @@ useEventListener(document, 'keydown', async (e: KeyboardEvent) => {
 </script>
 
 <template>
-  <div>
-    <div>
+  <div class="h-full">
+    <div class="h-full">
       <NuxtPage />
-      <LazyGeneralPreviewAs float />
     </div>
   </div>
 </template>
@@ -112,7 +121,7 @@ useEventListener(document, 'keydown', async (e: KeyboardEvent) => {
 
 .nc-left-sidebar {
   .nc-sidebar-left-toggle-icon {
-    @apply opacity-0 transition-opacity duration-200 transition-colors text-gray-500/80 hover:text-gray-500/100;
+    @apply opacity-0 transition-opacity duration-200 transition-colors text-nc-content-gray-muted/80 hover:text-nc-content-gray-muted/100;
 
     .nc-left-sidebar {
       @apply !border-r-0;

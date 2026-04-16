@@ -1,8 +1,29 @@
 <script lang="ts" setup>
-const { appInfo } = useGlobal()
+const isBaseListModalOpen = ref(false)
 </script>
 
 <template>
+  <div class="nc-mini-sidebar-btn-full-width">
+    <div
+      data-testid="nc-workspace-menu"
+      class="nc-workspace-menu nc-mini-sidebar-ws-item nc-small-shadow"
+      @click="isBaseListModalOpen = true"
+    >
+      <GeneralWorkspaceIcon
+        :workspace="{
+          id: 'nc',
+          meta: {},
+        }"
+        show-nocodb-icon
+        class="flex-none border-1 border-nc-border-gray-medium"
+        size="mini-sidebar"
+      />
+    </div>
+  </div>
+
+  <WorkspaceBaseListModal v-model:visible="isBaseListModalOpen" />
+<!-- </template>
+
   <div class="flex flex-row flex-grow pl-0.5 pr-1 py-0.5 rounded-md w-full" style="max-width: calc(100% - 2.5rem)">
     <div class="flex-grow min-w-20">
       <div
@@ -21,13 +42,4 @@ const { appInfo } = useGlobal()
           </NcTooltip>
         </a>
         <div class="flex flex-grow"></div>
-      </div>
-    </div>
-  </div>
-</template>
-
-<style scoped lang="scss">
-.nc-workspace-menu-item {
-  @apply flex items-center pl-2 py-2 gap-2 text-sm hover:text-black;
-}
-</style>
+      </div> -->

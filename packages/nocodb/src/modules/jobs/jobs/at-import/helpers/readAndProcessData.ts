@@ -7,7 +7,7 @@ import PQueue from 'p-queue';
 import type { BulkDataAliasService } from '~/services/bulk-data-alias.service';
 import type { TablesService } from '~/services/tables.service';
 import type { AirtableBase } from 'airtable/lib/airtable_base';
-import type { TableType } from 'nocodb-sdk';
+import type { NcRequest, TableType } from 'nocodb-sdk';
 import type { Source } from '~/models';
 import type { NcContext } from '~/interface/config';
 
@@ -199,6 +199,7 @@ export async function importData(
         logBasic,
         logDetailed,
         logWarning,
+        req,
       }).catch((e) => {
         logger.error(e);
         logWarning(
@@ -249,6 +250,8 @@ export async function importData(
                       skip_hooks: true,
                       foreign_key_checks: !!source.isMeta(),
                       allowSystemColumn: true,
+                      // allow passing id
+                      undo: true,
                     });
 
                     logBasic(
@@ -296,6 +299,8 @@ export async function importData(
               skip_hooks: true,
               foreign_key_checks: !!source.isMeta(),
               allowSystemColumn: true,
+              // allow passing id
+              undo: true,
             });
 
             logBasic(
@@ -347,6 +352,7 @@ export async function importLTARData(
     idCounter,
     logBasic = (_str) => {},
     logWarning = (_str) => {},
+    req,
   }: {
     baseName: string;
     table: { title?: string; id?: string };
@@ -367,6 +373,7 @@ export async function importLTARData(
     logBasic: (string) => void;
     logDetailed: (string) => void;
     logWarning: (string) => void;
+    req: NcRequest;
   },
 ): Promise<number> {
   const assocTableMetas: Array<{
@@ -497,10 +504,12 @@ export async function importLTARData(
                       baseName,
                       tableName: assocMeta.modelMeta.id,
                       body: insertArray,
-                      cookie: {},
+                      cookie: req,
                       skip_hooks: true,
                       foreign_key_checks: !!source.isMeta(),
                       allowSystemColumn: true,
+                      // allow passing id
+                      undo: true,
                     });
 
                     insertArray = [];
@@ -541,10 +550,12 @@ export async function importLTARData(
               baseName,
               tableName: assocMeta.modelMeta.id,
               body: assocTableData[assocMeta.modelMeta.id],
-              cookie: {},
+              cookie: req,
               skip_hooks: true,
               foreign_key_checks: !!source.isMeta(),
               allowSystemColumn: true,
+              // allow passing id
+              undo: true,
             });
 
             importedCount += assocTableData[assocMeta.modelMeta.id].length;

@@ -16,7 +16,7 @@ const { api, isLoading, error } = useApi({ useGlobalInstance: true })
 
 const { t } = useI18n()
 
-const { navigateToTable } = useTablesStore()
+const { isEnabledOnboardingFlow, showOnboardingFlowLocalState } = useOnboardingFlow()
 
 const { clearWorkspaces } = useWorkspace()
 
@@ -77,18 +77,40 @@ async function signUp() {
 
     try {
       // TODO: Add to swagger
-      const base = (user as any).createdProject
-      const table = base?.tables?.[0]
+      if (isEnabledOnboardingFlow.value) {
+        const continueAfterOnboardingFlow = 'nc'
 
-      if (base && table) {
-        return await navigateToTable({
-          baseId: base.id,
-          tableId: table.id,
-          workspaceId: 'nc',
+        /**
+         * Onboarding flow is shown only for new users
+         */
+        showOnboardingFlowLocalState.value = true
+
+        await navigateTo({
+          path: '/',
+          query: continueAfterOnboardingFlow ? { continueAfterOnboardingFlow } : {},
         })
+
+        return
       }
+
+      // if user signed up then redirect to ws bases list page
+      return await navigateTo({
+        name: 'index-typeOrId',
+        params: {
+          typeOrId: 'nc',
+        },
+      })
     } catch (e) {
       console.error(e)
+    }
+
+    if (isEnabledOnboardingFlow.value) {
+      /**
+       * Onboarding flow is shown only for new users
+       */
+      showOnboardingFlowLocalState.value = true
+      await navigateTo('/')
+      return
     }
 
     await navigateTo({
@@ -119,9 +141,9 @@ onMounted(async () => {
     <NuxtLayout>
       <div class="md:bg-primary bg-opacity-5 signup h-full min-h-[600px] flex flex-col justify-center items-center">
         <div
-          class="bg-white mt-[60px] relative flex flex-col justify-center gap-2 w-full max-w-[500px] mx-auto p-8 md:(rounded-lg border-1 border-gray-200 shadow-xl)"
+          class="bg-nc-bg-default md:mt-[60px] relative flex flex-col justify-center gap-2 w-full max-w-[500px] mx-auto p-8 md:(rounded-lg border-1 border-nc-border-gray-medium shadow-xl)"
         >
-          <LazyGeneralNocoIcon class="color-transition hover:(ring ring-accent ring-opacity-100)" :animate="isLoading" />
+          <GeneralNocoIcon class="color-transition hover:(ring ring-accent ring-opacity-100)" :animate="isLoading" />
 
           <h1 class="prose-2xl font-bold self-center my-4">
             {{ $t('general.signUp') }}
@@ -151,6 +173,8 @@ onMounted(async () => {
               <a-form-item :label="$t('labels.email')" name="email" :rules="formRules.email">
                 <a-input
                   v-model:value="form.email"
+                  type="email"
+                  autocomplete="email"
                   size="large"
                   :placeholder="$t('msg.info.signUp.workEmail')"
                   @focus="resetError"
@@ -160,6 +184,7 @@ onMounted(async () => {
               <a-form-item :label="$t('labels.password')" name="password" :rules="formRules.password">
                 <a-input-password
                   v-model:value="form.password"
+                  autocomplete="new-password"
                   size="large"
                   class="password"
                   :placeholder="$t('msg.info.signUp.enterPassword')"
@@ -180,7 +205,7 @@ onMounted(async () => {
               <a
                 v-if="appInfo.googleAuthEnabled"
                 :href="`${appInfo.ncSiteUrl}/auth/google`"
-                class="scaling-btn bg-opacity-100 after:(!bg-white) !text-primary !no-underline"
+                class="scaling-btn bg-opacity-100 after:(!bg-nc-bg-default) !text-primary !no-underline"
               >
                 <span class="flex items-center gap-2">
                   <LogosGoogleGmail />
@@ -214,8 +239,8 @@ onMounted(async () => {
                   size="small"
                   class="my-1 hover:(ring ring-accent ring-opacity-100) focus:(!ring !ring-accent ring-opacity-100)"
                 />
-                <div class="prose-xs text-gray-500">{{ $t('msg.subscribeToOurWeeklyNewsletter') }}</div>
-              </div> -->
+                <div class="prose-xs text-nc-content-gray-muted">{{ $t('msg.subscribeToOurWeeklyNewsletter') }}</div>
+              </div>-->
 
               <div class="text-end prose-sm">
                 {{ $t('msg.info.signUp.alreadyHaveAccount') }}
@@ -226,9 +251,14 @@ onMounted(async () => {
           </a-form>
         </div>
 
-        <!-- <div class="prose-sm mt-4 text-gray-500">
+       <!-- <div class="prose-sm mt-4 text-nc-content-gray-muted">
           {{ $t('msg.bySigningUp') }}
-          <a class="prose-sm !text-gray-500 underline" target="_blank" href="https://nocodb.com/policy-nocodb" rel="noopener">
+          <a
+            class="prose-sm !text-nc-content-gray-muted underline"
+            target="_blank"
+            href="https://nocodb.com/policy-nocodb"
+            rel="noopener"
+          >
             {{ $t('title.termsOfService') }}</a
           >
         </div> -->
